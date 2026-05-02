@@ -74,11 +74,15 @@ def generate_audio_core(
     return full_audio, count
 
 
-def export_audio_batch(full_audio, file_path, output_kind="mp3", m4a_exporter=None):
+def export_audio_batch(full_audio, file_path, output_kind="mp3", m4a_exporter=None, export_progress_callback=None):
     """Xuất AudioSegment ra file; M4A vẫn dùng fallback ffmpeg hiện có của popup."""
     if output_kind == "m4a":
         if not m4a_exporter:
             raise ValueError("Thiếu m4a_exporter cho xuất M4A.")
-        m4a_exporter(full_audio, file_path)
+        # Pass progress callback to m4a_exporter nếu có
+        if export_progress_callback and hasattr(m4a_exporter, '__code__') and m4a_exporter.__code__.co_argcount > 2:
+            m4a_exporter(full_audio, file_path, export_progress_callback)
+        else:
+            m4a_exporter(full_audio, file_path)
     else:
         full_audio.export(file_path, format="mp3", bitrate="192k")

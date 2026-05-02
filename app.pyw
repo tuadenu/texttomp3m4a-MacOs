@@ -2254,13 +2254,20 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         dung_doc()
         doc_popup()
 
-    def export_m4a_with_fallback(full_audio, output_path):
+    def export_m4a_with_fallback(full_audio, output_path, progress_callback=None):
         import tempfile, os, subprocess, uuid
 
         temp_wav = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4().hex}.wav")
         try:
+            # Update UI before exporting
+            if progress_callback:
+                progress_callback("Đang chuẩn bị audio...", 50)
+            
             voice_audio = full_audio.set_channels(1).set_frame_rate(int(M4A_VOICE_SAMPLE_RATE))
             voice_audio.export(temp_wav, format="wav")
+
+            if progress_callback:
+                progress_callback("Đang chuyển đổi sang M4A...", 75)
 
             # Mono AAC bitrate thấp đủ rõ cho giọng nói và giảm mạnh dung lượng M4A.
             primary_cmd = [
@@ -2275,6 +2282,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             ]
             result = subprocess.run(primary_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if result.returncode == 0:
+                if progress_callback:
+                    progress_callback("Hoàn tất!", 100)
                 return
 
             fallback_cmd = [
@@ -2290,6 +2299,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             result2 = subprocess.run(fallback_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             if result2.returncode != 0:
                 raise Exception(result.stderr or result2.stderr or "FFmpeg không xuất được M4A.")
+            if progress_callback:
+                progress_callback("Hoàn tất!", 100)
         finally:
             try:
                 if os.path.exists(temp_wav):
@@ -2365,6 +2376,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     label_status.config(text=f"Đang xuất dòng {done}/{tong_dong}")
                     popup_progress.update_idletasks()
 
+                def update_export_progress(msg, pct):
+                    """Update progress during export (M4A conversion)."""
+                    progress["value"] = pct
+                    label_status.config(text=msg)
+                    popup_progress.update_idletasks()
+
                 full_audio, _ = generate_audio_core(
                     danh_sach_doc,
                     giong=giong,
@@ -2374,7 +2391,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     clean_text_func=lam_sach_van_ban,
                     tts_func=tao_file_mp3,
                 )
-                export_audio_batch(full_audio, file_path, output_kind, export_m4a_with_fallback)
+                export_audio_batch(full_audio, file_path, output_kind, export_m4a_with_fallback, export_progress_callback=update_export_progress)
                 stop_background_music()
                 popup_progress.destroy()
 
@@ -2540,7 +2557,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
                     file_name = f"{folder_name}_{file_idx + 1:03d}.m4a"
                     file_path = os.path.join(output_dir, file_name)
-                    export_m4a_with_fallback(full_audio, file_path)
+                    
+                    def update_export_progress(msg, pct):
+                        progress["value"] = int(pct)
+                        label_status.config(text=f"Đang xuất file {file_idx + 1}/{tong_file} - {msg}")
+                        popup_progress.update_idletasks()
+                    
+                    export_m4a_with_fallback(full_audio, file_path, progress_callback=update_export_progress)
                     files_da_tao.append(file_path)
 
                 stop_background_music()
