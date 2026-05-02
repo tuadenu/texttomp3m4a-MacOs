@@ -1,0 +1,6160 @@
+#Ứng dụng Text to MP3/M4A đa ngôn ngữ _tích hợp A.I, Discord, Amazon AWS, gTTS.
+import time
+import warnings
+import os
+import re
+from langdetect import detect
+from gtts import gTTS
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog, simpledialog
+import threading
+import datetime
+import ctypes
+import sys
+import json
+import base64
+import shutil
+from openai import OpenAI
+from google import genai
+import tempfile
+import subprocess
+import random
+import socket
+from datetime import datetime
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from config.settings import AWS_REGION, DEFAULT_VOICE
+from services.tts_service import (
+    export_audio_batch,
+    generate_audio_core,
+    process_text_lines,
+)
+from utils.file_reader import read_excel_vocab, read_text_file
+
+#=== chỉ chạy 1 app
+def check_already_running(port=65432):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(('127.0.0.1', port))
+    except socket.error:
+        print("Ứng dụng đã chạy!")
+        sys.exit()
+
+    # Ngăn socket bị đóng: lưu vào biến global
+    global singleton_socket
+    singleton_socket = s
+
+check_already_running()
+
+
+#============
+warnings.simplefilter("ignore")
+
+#warnings.filterwarnings("ignore", category=UserWarning) #tắt cảnh báo rác
+import pygame
+pygame.mixer.init()
+current_channel = None
+# Disabled: game audio channel is not used in audio-tool version.
+# mixer_channel_game = pygame.mixer.Channel(5)
+from pathlib import Path
+import uuid
+import boto3
+from pydub import AudioSegment
+
+
+def app_beep(freq=1000, duration=200, widget=None):
+    if os.name == "nt":
+        import winsound
+        winsound.Beep(freq, duration)
+        return
+
+    try:
+        if widget is not None:
+            widget.bell()
+            return
+        if tk._default_root is not None:
+            tk._default_root.bell()
+            return
+    except Exception:
+        pass
+
+    print("\a", end="", flush=True)
+
+
+def attach_mouse_text_menu(widget):
+    menu = tk.Menu(widget, tearoff=0)
+
+    def popup(event):
+        try:
+            widget.focus_set()
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+        return "break"
+
+    menu.add_command(label="Cắt", command=lambda: widget.event_generate("<<Cut>>"))
+    menu.add_command(label="Sao chép", command=lambda: widget.event_generate("<<Copy>>"))
+    menu.add_command(label="Dán", command=lambda: widget.event_generate("<<Paste>>"))
+    menu.add_separator()
+    menu.add_command(label="Chọn tất cả", command=lambda: widget.tag_add("sel", "1.0", "end-1c") if isinstance(widget, tk.Text) else (widget.selection_range(0, tk.END), widget.icursor(tk.END)))
+
+    for sequence in ("<Button-3>", "<Button-2>", "<Control-Button-1>"):
+        widget.bind(sequence, popup, add="+")
+
+
+def open_path_cross_platform(target):
+    if not target:
+        return
+
+    target = os.fspath(target)
+    try:
+        if os.name == "nt":
+            os.startfile(target)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", target])
+        else:
+            subprocess.Popen(["xdg-open", target])
+    except Exception as e:
+        raise Exception(f"Không mở được file: {e}")
+
+
+dang_doc_game = False
+
+def end_doc_game():
+    try:
+        if 'current_channel' in globals() and current_channel and current_channel.get_busy():
+            current_channel.stop()
+    except: pass
+
+
+def stop_all_doc():
+    global current_channel
+    try:
+        if current_channel and current_channel.get_busy():
+            current_channel.stop()
+    except:
+        pass
+
+
+
+
+#===================
+
+# Xác định thư mục gốc app (chạy EXE hoặc chạy Python)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    BASE_FOLDER = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    BASE_FOLDER = BASE_DIR
+
+ASSETS_DIR = os.path.join(BASE_FOLDER, "assets")
+SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")
+IMAGES_DIR = os.path.join(ASSETS_DIR, "images")
+FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
+
+# Thư mục dữ liệu app (AppData)
+APPDATA_ROOT = os.path.join(BASE_FOLDER, "AppData")
+os.makedirs(APPDATA_ROOT, exist_ok=True)
+
+# Đường dẫn logo mặc định
+LOGO_PATH = os.path.join(IMAGES_DIR, "logo.png")
+
+# Vault secret được mã hóa bằng mật khẩu dùng chung
+SECRET_VAULT_FILE = os.path.join(BASE_FOLDER, "secrets.enc")
+SECRET_VAULT_PASSWORD_ENV = "TEXTTOMP3_VAULT_PASSWORD"
+SECRET_VAULT_ITERATIONS = 390000
+
+# Disabled: Game/Image paths kept as constants only for legacy dead code.
+# Game - đường dẫn gốc (bản cài đặt)
+EXCEL_GAME_ORIGINAL = os.path.join(BASE_FOLDER, "Game_doan_chu.xlsx")
+
+# Game - đường dẫn dùng trong AppData (sẽ thao tác thật)
+APPDATA_GAME_FILE = os.path.join(APPDATA_ROOT, "Game_doan_chu.xlsx")
+APPDATA_IMAGE_FOLDER = os.path.join(APPDATA_ROOT, "images")
+
+# Gán biến dùng chung
+EXCEL_GAME_PATH = APPDATA_GAME_FILE
+IMAGE_FOLDER = APPDATA_IMAGE_FOLDER
+LICH_SU_FILE = os.path.join(APPDATA_ROOT, "lich_su_game.json")
+
+# Disabled: không còn tự động copy Excel game hoặc tạo folder ảnh game.
+# if not os.path.exists(APPDATA_GAME_FILE) and os.path.exists(EXCEL_GAME_ORIGINAL):
+#     shutil.copy(EXCEL_GAME_ORIGINAL, APPDATA_GAME_FILE)
+#     print("✅ Đã copy file Game_doan_chu.xlsx vào AppData")
+#
+# os.makedirs(APPDATA_IMAGE_FOLDER, exist_ok=True)
+
+
+def _derive_vault_key(password, salt):
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=SECRET_VAULT_ITERATIONS,
+        backend=default_backend(),
+    )
+    return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
+
+
+def _prompt_vault_password():
+    env_password = os.environ.get(SECRET_VAULT_PASSWORD_ENV, "").strip()
+    if env_password:
+        return env_password
+
+    temp_root = None
+    try:
+        temp_root = tk.Tk()
+        temp_root.withdraw()
+        password = simpledialog.askstring(
+            "Nhap mat khau secrets",
+            "Nhap mat khau de mo vault bi mat:\nGoi y: Sinh nhật Bảo Khiêm-Linh Dương Call 0916385682",
+            show="*",
+            parent=temp_root,
+        )
+        if password is None:
+            raise SystemExit("Nguoi dung da huy nhap mat khau secrets")
+        password = password.strip()
+        if not password:
+            raise SystemExit("Mat khau secrets rong")
+        return password
+    finally:
+        try:
+            if temp_root is not None:
+                temp_root.destroy()
+        except Exception:
+            pass
+
+
+def _load_legacy_bundle():
+    legacy_bundle = {}
+
+    legacy_config_path = os.path.join(BASE_FOLDER, "config_default.json")
+    if os.path.exists(legacy_config_path):
+        try:
+            with open(legacy_config_path, "r", encoding="utf-8") as f:
+                legacy_bundle["config_default"] = json.load(f)
+        except Exception:
+            legacy_bundle["config_default"] = {}
+
+    legacy_client_secret_path = os.path.join(BASE_FOLDER, "client_secret.json")
+    if os.path.exists(legacy_client_secret_path):
+        try:
+            with open(legacy_client_secret_path, "r", encoding="utf-8") as f:
+                legacy_bundle["client_secret_json"] = f.read()
+        except Exception:
+            legacy_bundle["client_secret_json"] = ""
+
+    return legacy_bundle
+
+
+def _load_secret_bundle():
+    secret_password = _prompt_vault_password()
+
+    if os.path.exists(SECRET_VAULT_FILE):
+        try:
+            with open(SECRET_VAULT_FILE, "r", encoding="utf-8") as f:
+                vault = json.load(f)
+
+            salt_b64 = vault.get("salt", "")
+            token = vault.get("token", "")
+            if not salt_b64 or not token:
+                raise ValueError("Secret vault thiếu salt hoặc token")
+
+            salt = base64.b64decode(salt_b64)
+            key = _derive_vault_key(secret_password, salt)
+            plain = Fernet(key).decrypt(token.encode("utf-8")).decode("utf-8")
+            bundle = json.loads(plain)
+            if not isinstance(bundle, dict):
+                raise ValueError("Secret vault không chứa JSON object hợp lệ")
+            return bundle
+        except (InvalidToken, ValueError, json.JSONDecodeError, OSError) as exc:
+            print(f"⚠ Không giải mã được secrets.enc: {exc}")
+            raise SystemExit("Không mo duoc secrets.enc. Hay kiem tra lai mat khau.")
+
+    return _load_legacy_bundle()
+
+
+def _sync_local_secret_files(secret_bundle):
+    config_defaults = secret_bundle.get("config_default", {})
+    if not isinstance(config_defaults, dict):
+        config_defaults = {}
+
+    if config_defaults and not os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config_defaults, f, indent=2, ensure_ascii=False)
+        except Exception as exc:
+            print(f"⚠ Không tạo được config.json local: {exc}")
+
+    client_secret_payload = secret_bundle.get("client_secret_json", "")
+    appdata_client_secret = os.path.join(APPDATA_ROOT, "client_secret.json")
+    if client_secret_payload and not os.path.exists(appdata_client_secret):
+        try:
+            try:
+                os.chmod(appdata_client_secret, 0o666)
+                ctypes.windll.kernel32.SetFileAttributesW(str(appdata_client_secret), 0)
+            except Exception:
+                pass
+            with open(appdata_client_secret, "w", encoding="utf-8") as f:
+                if isinstance(client_secret_payload, dict):
+                    json.dump(client_secret_payload, f, indent=2, ensure_ascii=False)
+                else:
+                    f.write(client_secret_payload)
+        except Exception as exc:
+            print(f"⚠ Không ghi được client_secret.json local: {exc}")
+
+    return config_defaults
+
+
+
+
+#======================
+
+# === FILE cấu hình ===
+CONFIG_FILE = os.path.join(APPDATA_ROOT, "config.json")
+
+secret_bundle = _load_secret_bundle()
+config_default = _sync_local_secret_files(secret_bundle)
+
+# === Đọc file config chính ===
+if os.path.exists(CONFIG_FILE):
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = json.load(f)
+else:
+    config = {}
+
+# === Các hàm validate ví dụ (anh có thể thay bằng logic riêng nếu muốn) ===
+#CHECK ĐÚNG ĐỊNH DẠNG EMAIL, SDT
+def is_valid(val, check_func):
+    try:
+        return check_func(val.strip())
+    except:
+        return False
+#mở file aN TOÀN    
+def mo_file_an_toan(path):
+    if os.path.exists(path):
+        open_path_cross_platform(path)
+    else:
+        messagebox.showwarning("Không tìm thấy file", f"Không tìm thấy file:\n{path}")
+#gỡ ẩn file
+def unprotect_file(path):
+    try:
+        # Gỡ ẩn, gỡ readonly
+        os.chmod(path, 0o666)
+        ctypes.windll.kernel32.SetFileAttributesW(str(path), 0)
+    except:
+        pass
+# Các hàm kiểm tra cấu hình
+is_email = lambda e: "@" in e and "." in e
+is_token = lambda t: ":" in t
+is_chat_id = lambda c: str(c).lstrip("-").isdigit()
+is_webhook = lambda u: "api/webhooks/" in u
+is_gpt = lambda k: k.startswith("sk-")
+is_gemini = lambda k: k.startswith("AIza")
+is_weather = lambda k: len(k) > 15
+
+# === Lấy giá trị từ config (ưu tiên file chính, fallback file mặc định) ===
+SENDER_EMAIL = config.get("SENDER_EMAIL", config_default.get("SENDER_EMAIL", ""))
+SENDER_NAME = config.get("SENDER_NAME", config_default.get("SENDER_NAME", ""))
+APP_PASSWORD = config.get("APP_PASSWORD", config_default.get("APP_PASSWORD", ""))
+AWS_ACCESS_KEY_ID = config.get("AWS_ACCESS_KEY_ID", config_default.get("AWS_ACCESS_KEY_ID", ""))
+AWS_SECRET_ACCESS_KEY = config.get("AWS_SECRET_ACCESS_KEY", config_default.get("AWS_SECRET_ACCESS_KEY", ""))
+AWS_REGION = config.get("AWS_REGION", config_default.get("AWS_REGION", "ap-southeast-2"))
+
+
+
+#Youtube
+APPDATA_CLIENT_SECRET = os.path.join(APPDATA_ROOT, "client_secret.json")
+if os.path.exists(APPDATA_CLIENT_SECRET):
+    print("✅ AppData đã có sẵn client_secret.json.")
+else:
+    print("⚠️ client_secret.json chưa được nạp vào AppData.")
+
+
+# Config AWS Polly=====================================
+#==============================
+# Email cấu hình
+#============================
+
+
+#====================
+def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
+                 engine="gTTS", file_out="out.mp3"):
+    """
+    Tạo file mp3 từ text, hỗ trợ gTTS hoặc Amazon Polly.
+    - Làm sạch trước khi đọc.
+    - Nếu rỗng: tạo 300ms im lặng để không vỡ pipeline ghép file.
+    - Bắt riêng lỗi 'No text to speak' từ gTTS.
+    """
+    from gtts import gTTS
+    from pydub import AudioSegment
+    import re
+
+    def _export_silence(path, ms=300):
+        AudioSegment.silent(duration=ms).export(path, format="mp3", bitrate="192k")
+        print(f"⏭️ Dòng rỗng → tạo {ms}ms im lặng: {path}")
+
+    try:
+        #slow = (toc_do == "Chậm")
+        # Nếu là tiếng Việt thì luôn tốc độ bình thường
+        if (lang or "").lower().startswith("vi"):
+            slow = False
+        else:
+            slow = (toc_do == "Chậm")
+
+
+        # ✅ Làm sạch văn bản (không để None)
+        try:
+            text = lam_sach_van_ban(text or "")
+        except Exception:
+            text = str(text or "").strip()
+
+        # ✅ Chuẩn hoá lang
+        lang_clean = (lang or "vi").lower().strip()
+        if lang_clean.startswith("vi"):
+            lang_clean = "vi"
+        elif lang_clean.startswith(("zh", "zh-cn", "zh_tw", "zh-hk")):
+            lang_clean = "zh"
+        elif lang_clean.startswith("ja"):
+            lang_clean = "ja"
+        elif lang_clean.startswith("en"):
+            lang_clean = "en"
+
+        # ✅ Nếu sau khi làm sạch mà rỗng → tạo im lặng và thoát
+        if not text.strip():
+            _export_silence(file_out, 300)
+            return
+
+        # ✅ Polly không hỗ trợ tiếng Việt → fallback gTTS
+        if engine == "Polly" and lang_clean == "vi":
+            print("⚠ Polly không hỗ trợ tiếng Việt. Dùng gTTS.")
+            engine = "gTTS"
+
+        # ================= gTTS =================
+        if engine == "gTTS":
+            lang_code = lang_clean.split("-")[0]  # gTTS chỉ cần mã ngắn
+            try:
+                tts = gTTS(text=text, lang=lang_code, slow=slow)
+                tts.save(file_out)
+                print(f"✅ Đã tạo file bằng gTTS: {file_out}")
+                return
+            except Exception as e:
+                msg = str(e)
+                # Trường hợp text rỗng/không hợp lệ ở mức gTTS
+                if "No text to speak" in msg or "No text to send to TTS API" in msg:
+                    _export_silence(file_out, 300)
+                    return
+                raise  # lỗi khác: ném tiếp để biết mà xử lý
+
+        # ================= Amazon Polly =================
+        elif engine == "Polly":
+            import boto3
+
+            polly_client = boto3.Session(
+                aws_access_key_id=AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+                region_name=AWS_REGION
+            ).client('polly')
+
+            # Chọn giọng theo lang & giới tính
+            if lang_clean == "ja":
+                voice_id = "Mizuki" if voice in ["Nữ", "Female"] else "Takumi"
+            elif lang_clean == "zh":
+                voice_id = "Zhiyu"  # zh chỉ có nữ
+                if voice in ["Nam", "Male"]:
+                    print("⚠ Polly tiếng Trung không có giọng Nam, dùng Zhiyu (nữ).")
+            elif lang_clean == "en":
+                voice_id = "Joanna" if voice in ["Nữ", "Female"] else "Matthew"
+            else:
+                # Ngôn ngữ khác không chắc hỗ trợ → fallback gTTS
+                print("⚠ Polly không hỗ trợ ngôn ngữ này. Dùng gTTS.")
+                return tao_file_mp3(text, lang_clean, voice, toc_do, "gTTS", file_out)
+
+            # Làm sạch dấu chấm → khoảng nghỉ nhẹ cho Polly
+            text_pol = re.sub(r"^\d+\s*\.\s*\.\s*", "", text)  # "5. ." dạng
+            text_pol = re.sub(r"(\s*\.\s*){1,}", ' <break time="400ms"/> ', text_pol).strip()
+
+            # SSML + tốc độ
+            if toc_do == "Chậm":
+                ssml_text = f"<speak><prosody rate='80%'>{text_pol}</prosody></speak>"
+            else:
+                ssml_text = f"<speak>{text_pol}</speak>"
+
+            response = polly_client.synthesize_speech(
+                VoiceId=voice_id,
+                OutputFormat='mp3',
+                Text=ssml_text,
+                TextType="ssml"
+            )
+
+            with open(file_out, 'wb') as f:
+                f.write(response['AudioStream'].read())
+
+            print(f"✅ Đã tạo file bằng Amazon Polly: {file_out}")
+            return
+
+        else:
+            raise Exception("Engine không hợp lệ (gTTS hoặc Polly).")
+
+    except Exception as e:
+        print("❌ Lỗi tạo file mp3:", e)
+        raise
+
+#=========================
+    
+
+#=====
+
+
+def thong_bao_loi_cauhinh(loai, chi_tiet="", hien_popup=True):
+    r"""
+    Hiển thị lỗi cấu hình + ghi log vào AppData\loi_cauhinh.txt
+    """
+    try:
+        from datetime import datetime
+        os.makedirs(APPDATA_ROOT, exist_ok=True)
+        log_path = os.path.join(APPDATA_ROOT, "loi_cauhinh.txt")
+        unprotect_file(log_path)
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ❌ {loai} lỗi: {chi_tiet}\n")
+
+        print(f"🛑 Lỗi {loai}: {chi_tiet}")
+        if hien_popup:
+            messagebox.showerror("Lỗi cấu hình", f"{loai} bị lỗi:\n{chi_tiet}")
+    except Exception as e:
+        print("‼ Không thể ghi log lỗi:", e)
+
+#==================
+
+# === Lấy API KEY ===
+GPT_API_KEY = config.get("GPT_API_KEY", "").strip()
+if not is_valid(GPT_API_KEY, is_gpt):
+    thong_bao_loi_cauhinh("GPT API Key", "Sai định dạng hoặc rỗng → dùng mặc định.", hien_popup=False)
+    GPT_API_KEY = config_default.get("GPT_API_KEY", "")
+
+GEMINI_API_KEY = config.get("GEMINI_API_KEY", "").strip()
+if not is_valid(GEMINI_API_KEY, is_gemini):
+    thong_bao_loi_cauhinh("Gemini API Key", "Sai định dạng hoặc rỗng → dùng mặc định.", hien_popup=False)
+    GEMINI_API_KEY = config_default.get("GEMINI_API_KEY", "")
+
+DISCORD_WEBHOOK_URL = config.get("DISCORD_WEBHOOK_URL", "").strip()
+if not is_valid(DISCORD_WEBHOOK_URL, is_webhook):
+    thong_bao_loi_cauhinh("Discord Webhook", "Không chứa /api/webhooks → dùng mặc định.", hien_popup=False)
+    DISCORD_WEBHOOK_URL = config_default.get("DISCORD_WEBHOOK_URL", "")
+
+#===========================BIẾN TOÀN CỤC ============================================================BIẾN TOÀN CỤC===============
+client = OpenAI(api_key=GPT_API_KEY) # Đối tượng API GPT
+#Biến điều khiển đọc âm thanh
+doc_thread = None
+dang_doc = False
+file_am_thanh = ""
+noi_dung_cuoi = ""
+dang_tam_dung = False
+dung_doc_ngay = False
+tam_dung = False  # biến toàn cục
+tam_dung_doc = False
+chup_anh_luu = None
+
+#Kênh âm thanh bằng pygame
+current_seek_pos = 0  # vị trí phát hiện tại (giây)
+seek_start_time = 0   # thời điểm bắt đầu phát, tính bằng time.time()
+#==================================================
+###====CÁC FILE KHÁC HỆ THỐNG====
+#Sound , font các biến âm thanh=============================================================================
+
+def pick_existing_asset(*names):
+    for name in names:
+        candidate = os.path.join(SOUNDS_DIR, name)
+        if os.path.exists(candidate):
+            return candidate
+    for name in names:
+        candidate = os.path.join(BASE_FOLDER, name)
+        if os.path.exists(candidate):
+            return candidate
+    return os.path.join(SOUNDS_DIR, names[0])
+
+
+def pick_existing_executable(*names):
+    for name in names:
+        candidate = os.path.join(BASE_FOLDER, name)
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+CLICK_SOUND = pick_existing_asset("click.ogg", "click.wav")
+WARNING_SOUND = pick_existing_asset("warning.ogg", "warning.wav")
+SUCCESS_SOUND = pick_existing_asset("Success.ogg", "Success.wav", "Success1.wav")
+TRUE_SOUND = pick_existing_asset("True.ogg", "True.wav", "True1.wav")
+FALSE_SOUND = pick_existing_asset("False.ogg", "False.wav", "False1.wav")
+WIN_SOUND = pick_existing_asset("Win.ogg", "Win.wav", "Win1.wav")
+#background_music
+BACKGROUND_MUSIC = pick_existing_asset("background_music.ogg", "background_music.mp3", "background_music.MP3")
+
+#============font chữ đa ngôn ngữ
+
+FONT_LATIN = os.path.join(FONTS_DIR, "DejaVuSans.ttf")
+FONT_CJK = os.path.join(FONTS_DIR, "SamsungGothicKorean.ttf")
+
+#=======================================
+
+# Tài nguyên tĩnh
+##LOGO_PATH = os.path.join(IMAGES_DIR, "logo.jpg")
+##if not os.path.exists(LOGO_PATH):
+##    LOGO_PATH = os.path.join(IMAGES_DIR, "logo.png")
+ICON_ICO_PATH = os.path.join(IMAGES_DIR, "logo.ico")
+
+#==================
+
+# ==== Thiết lập ffmpeg cho pydub xuất mp3 ====
+
+
+FOLDER = os.path.dirname(os.path.abspath(sys.argv[0]))
+
+FFMPEG_DOWNLOAD_URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+
+def resolve_ffmpeg_paths():
+    system_ffmpeg = shutil.which("ffmpeg")
+    system_ffprobe = shutil.which("ffprobe")
+    if system_ffmpeg:
+        return system_ffmpeg, system_ffprobe or system_ffmpeg, None
+
+    cache_root = os.path.join(APPDATA_ROOT, "ffmpeg_bin")
+    cache_folder = os.path.join(cache_root, "bin")
+    cache_ffmpeg = pick_existing_executable("ffmpeg", "ffmpeg.exe")
+    cache_ffprobe = pick_existing_executable("ffprobe", "ffprobe.exe")
+    if cache_ffmpeg:
+        return cache_ffmpeg, cache_ffprobe or cache_ffmpeg, cache_folder
+
+    def find_ffmpeg_folder(search_root):
+        for current_root, _, files in os.walk(search_root):
+            if "ffmpeg" in files or "ffmpeg.exe" in files:
+                ffmpeg_name = "ffmpeg" if "ffmpeg" in files else "ffmpeg.exe"
+                ffprobe_name = "ffprobe" if "ffprobe" in files else "ffprobe.exe"
+                ffmpeg_path = os.path.join(current_root, ffmpeg_name)
+                ffprobe_path = os.path.join(current_root, ffprobe_name)
+                return ffmpeg_path, ffprobe_path if os.path.isfile(ffprobe_path) else ffmpeg_path, current_root
+        return None, None, None
+
+    try:
+        import zipfile
+        from urllib.request import urlopen
+
+        os.makedirs(cache_root, exist_ok=True)
+        zip_path = os.path.join(cache_root, "ffmpeg_release.zip")
+        print("ℹ️ Không thấy ffmpeg trong PATH, đang tải bản portable về AppData...")
+
+        with urlopen(FFMPEG_DOWNLOAD_URL, timeout=120) as response, open(zip_path, "wb") as output_file:
+            shutil.copyfileobj(response, output_file)
+
+        with zipfile.ZipFile(zip_path, "r") as archive:
+            archive.extractall(cache_root)
+
+        try:
+            os.remove(zip_path)
+        except:
+            pass
+
+        downloaded = find_ffmpeg_folder(cache_root)
+        if downloaded[0]:
+            return downloaded
+    except Exception as e:
+        print(f"⚠️ Tải ffmpeg tự động thất bại: {e}")
+
+    bundle_folder = os.path.join(FOLDER, "ffmpeg_bin", "bin")
+    bundle_ffmpeg = pick_existing_executable(os.path.join("ffmpeg_bin", "bin", "ffmpeg"), os.path.join("ffmpeg_bin", "bin", "ffmpeg.exe"))
+    bundle_ffprobe = pick_existing_executable(os.path.join("ffmpeg_bin", "bin", "ffprobe"), os.path.join("ffmpeg_bin", "bin", "ffprobe.exe"))
+    if bundle_ffmpeg:
+        return bundle_ffmpeg, bundle_ffprobe or bundle_ffmpeg, bundle_folder
+
+    return None, None, None
+
+
+FFMPEG_PATH, ffprobe_path, FFMPEG_FOLDER = resolve_ffmpeg_paths()
+M4A_VOICE_BITRATE = "48k"
+M4A_VOICE_FALLBACK_BITRATE = "40k"
+M4A_VOICE_SAMPLE_RATE = "22050"
+
+if FFMPEG_PATH:
+    AudioSegment.converter = FFMPEG_PATH
+    AudioSegment.ffmpeg = FFMPEG_PATH
+    AudioSegment.ffprobe = ffprobe_path
+#=======Gửi discor chung
+def gui_discord_thong_bao(msg=""):
+    try:
+        if not DISCORD_WEBHOOK_URL:
+            raise ValueError("Webhook URL trống")
+
+        import requests
+        requests.post(DISCORD_WEBHOOK_URL, json={"content": msg})
+    except Exception as e:
+        print("Lỗi gửi Discord:", e)
+#==========Set logo icon cho toàn thông báo app
+def set_popup_icon(win):
+    try:
+        win.iconbitmap(ICON_ICO_PATH)
+    except Exception:
+        pass
+
+#=======
+#===Nhạc nền:
+
+def play_background_music():
+    """Phát nhạc nền lặp vô hạn"""
+    try:
+        pygame.mixer.music.load(BACKGROUND_MUSIC)
+        pygame.mixer.music.play(-1)  # -1: loop vô hạn
+        print("🎵 Đang phát nhạc nền...")
+    except Exception as e:
+        print(f"⚠️ Lỗi phát nhạc nền: {e}")
+
+def stop_background_music():
+    """Dừng nhạc nền"""
+    try:
+        pygame.mixer.music.stop()
+        print("🛑 Đã dừng nhạc nền.")
+    except Exception as e:
+        print(f"⚠️ Lỗi dừng nhạc nền: {e}")
+
+
+#=======Mật khẩu , phím mini, gui mail khi quên
+def ask_password_with_keyboard(callback):
+    pw_window = tk.Toplevel(root)
+    set_popup_icon(pw_window)
+    pw_window.title("Nhập mật khẩu")
+    pw_window.geometry("400x440")
+    pw_window.resizable(False, False)
+    pw_window.grab_set()
+    pw_window.attributes('-topmost', True)
+
+    tk.Label(pw_window, text="Nhập mật khẩu:", font=("Arial", 20)).pack(pady=10)
+    entry_pw = tk.Entry(pw_window, show="*", font=("Arial", 16))
+    entry_pw.pack()
+
+    def insert_char(ch): entry_pw.insert(tk.END, ch)
+    def delete_last(): entry_pw.delete(len(entry_pw.get()) - 1, tk.END)
+    def clear_entry(): entry_pw.delete(0, tk.END)
+
+    def submit():
+        password = entry_pw.get()
+        pw_window.destroy()
+        try:
+            with open(os.path.join(APPDATA_ROOT, "pass.txt"), "r") as f:
+                mat_khau_dung = f.read().strip()
+        except:
+            mat_khau_dung = "1234"
+
+        if password == mat_khau_dung:
+            callback(True)
+        else:
+            messagebox.showerror("Sai mật khẩu", "❌ Mật khẩu không đúng.")
+            callback(False)
+
+    tk.Button(pw_window, text="OK", width=10, command=submit).pack(pady=5)
+
+    # === Bàn phím mini ===
+    frm_kb = tk.Frame(pw_window)
+    frm_kb.pack()
+    btns = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['←', '0', 'C']]
+    for r, row in enumerate(btns):
+        for c, char in enumerate(row):
+            if char == '←':
+                cmd = delete_last
+            elif char == 'C':
+                cmd = clear_entry
+            else:
+                cmd = lambda ch=char: insert_char(ch)
+            tk.Button(frm_kb, text=char, width=5, height=2, command=cmd).grid(row=r, column=c, padx=2, pady=2)
+
+    # === Quên mật khẩu ===
+    def quen_mat_khau():
+     
+        def send_password_request():
+            phone = entry_phone.get().strip()
+            email_user = entry_email.get().strip()
+            diachi = entry_diachi.get().strip()
+
+            if not phone.isdigit() or len(phone) < 9:
+                messagebox.showwarning("Lỗi", "Số điện thoại không hợp lệ.", parent=popup)
+                return
+            if "@" not in email_user or "." not in email_user:
+                messagebox.showwarning("Lỗi", "Email không hợp lệ.", parent=popup)
+                return
+            if not diachi:
+                messagebox.showwarning("Lỗi", "Vui lòng nhập địa chỉ liên hệ.", parent=popup)
+                return
+
+            try:
+                with open(os.path.join(APPDATA_ROOT, "pass.txt"), "r") as f:
+                    current_pw = f.read().strip()
+            except:
+                current_pw = "1234"
+
+            import smtplib
+            from email.message import EmailMessage
+
+            msg1 = EmailMessage()
+            msg1["Subject"] = "🔐 Mật khẩu Máy Học Tập"
+            msg1["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
+            msg1["To"] = email_user
+            msg1.set_content(
+                f"Chào bạn,\n\nMật khẩu hiện tại của bạn là:\n🔑 {current_pw}\n\n"
+                f"Vui lòng bảo mật thông tin này.\n\n-- Máy Học Tập --"
+            )
+
+            msg2 = EmailMessage()
+            msg2["Subject"] = "📩 Yêu cầu quên mật khẩu"
+            msg2["From"] = f"{SENDER_NAME} <{SENDER_EMAIL}>"
+            msg2["To"] = SENDER_EMAIL
+
+            noi_dung = (
+                f"📝 YÊU CẦU QUÊN MẬT KHẨU:\n\n"
+                f"📞 Số điện thoại: {phone}\n"
+                f"📧 Email người dùng: {email_user}\n"
+                f"🏠 Địa chỉ liên hệ: {diachi}\n"
+                f"🔐 Mật khẩu hiện tại: {current_pw}"
+            )
+
+            msg2.set_content(noi_dung + "\n\n" + get_system_info())
+
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+                smtp.login(SENDER_EMAIL, APP_PASSWORD)
+                smtp.send_message(msg1)
+                smtp.send_message(msg2)
+
+            messagebox.showinfo("Thành công", f"📧 Đã gửi mật khẩu tới {email_user}", parent=popup)
+            popup.destroy()
+
+        # ========== Cửa sổ to đẹp giữa màn hình ==========
+        popup = tk.Toplevel(pw_window)
+        set_popup_icon(popup)
+        popup.title("🔐 Quên mật khẩu?")
+        popup.geometry("550x360")
+        popup.resizable(False, False)
+        popup.transient(pw_window)
+        popup.grab_set()
+        popup.attributes("-topmost", True)
+
+        popup.update_idletasks()
+        w, h = 550, 360
+        x = root.winfo_x() + (root.winfo_width() - w) // 2
+        y = root.winfo_y() + (root.winfo_height() - h) // 2
+        popup.geometry(f"{w}x{h}+{x}+{y}")
+
+        tk.Label(popup, text="Vui lòng điền thông tin khôi phục:", font=("Arial", 13, "bold")).pack(pady=12)
+
+        def add_input(label_text):
+            frame = tk.Frame(popup)
+            frame.pack(pady=6)
+            tk.Label(frame, text=label_text + ":", font=("Arial", 11), width=18, anchor="e").pack(side="left", padx=5)
+            entry = tk.Entry(frame, font=("Arial", 13), width=35)
+            entry.pack(side="left", ipady=6)
+            return entry
+
+        entry_phone = add_input("📞 Số điện thoại")
+        entry_email = add_input("📧 Email của bạn")
+        entry_diachi = add_input("🏠 Địa chỉ liên hệ")
+
+        tk.Button(
+            popup, text="📤 Gửi yêu cầu", font=("Arial", 12, "bold"),
+            bg="#4caf50", fg="white", width=18, height=1,
+            command=send_password_request
+        ).pack(pady=20)
+
+
+
+    tk.Button(pw_window, text="❓ Quên mật khẩu", fg="blue", command=quen_mat_khau).pack(pady=5)
+
+def doi_mat_khau():
+    def thuc_hien(ok):
+        if not ok:
+            return
+
+        win = tk.Toplevel(root)
+        set_popup_icon(win)
+        win.title("🔐 Đổi mật khẩu ứng dụng")
+        win.geometry("650x600")
+        win.grab_set()
+        win.resizable(False, False)
+
+        tk.Label(win, text="🔒 Nhập mật khẩu cũ:", font=("Arial", 11)).pack(pady=(10, 2))
+        entry_old = tk.Entry(win, show="*", font=("Arial", 13), width=35)
+        entry_old.pack()
+
+        tk.Label(win, text="🔐 Mật khẩu mới:", font=("Arial", 11)).pack(pady=(8, 2))
+        entry1 = tk.Entry(win, show="*", font=("Arial", 13), width=35)
+        entry1.pack()
+
+        tk.Label(win, text="🔁 Nhập lại mật khẩu:", font=("Arial", 11)).pack(pady=(8, 2))
+        entry2 = tk.Entry(win, show="*", font=("Arial", 13), width=35)
+        entry2.pack()
+
+        tk.Label(win, text="📧 Email của bạn:", font=("Arial", 11)).pack(pady=(8, 2))
+        entry_email = tk.Entry(win, font=("Arial", 13), width=35)
+        entry_email.pack()
+
+        tk.Label(win, text="📞 Số điện thoại:", font=("Arial", 11)).pack(pady=(8, 2))
+        entry_sdt = tk.Entry(win, font=("Arial", 13), width=35)
+        entry_sdt.pack()
+
+        def insert(ch):
+            for e in [entry_old, entry1, entry2]:
+                if e.focus_get() == e:
+                    e.insert(tk.END, ch)
+
+        def backspace():
+            for e in [entry_old, entry1, entry2]:
+                if e.focus_get() == e:
+                    e.delete(len(e.get()) - 1, tk.END)
+
+        def clear_all():
+            for e in [entry_old, entry1, entry2]:
+                if e.focus_get() == e:
+                    e.delete(0, tk.END)
+
+        frm_kb = tk.Frame(win)
+        frm_kb.pack(pady=8)
+        keys = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['←', '0', 'C']]
+        for r, row in enumerate(keys):
+            for c, ch in enumerate(row):
+                cmd = backspace if ch == '←' else (clear_all if ch == 'C' else lambda x=ch: insert(x))
+                tk.Button(frm_kb, text=ch, width=5, height=2, command=cmd).grid(row=r, column=c, padx=2, pady=2)
+
+        def xac_nhan():
+            pass_path = os.path.join(APPDATA_ROOT, "pass.txt")
+
+            # Nếu chưa có file pass.txt → tự tạo với mật khẩu mặc định "1234"
+            if not os.path.exists(pass_path):
+                try:
+                    unprotect_file(pass_path)
+                    with open(pass_path, "w", encoding="utf-8") as f:
+                        f.write("1234")
+                except Exception as e:
+                    messagebox.showerror("Lỗi", f"Không thể tạo file pass.txt: {e}", parent=win)
+                    return
+
+            try:
+                with open(pass_path, "r", encoding="utf-8") as f:
+                    mk_cu = f.read().strip()
+            except:
+                mk_cu = "1234"
+
+            old = entry_old.get().strip()
+            new1 = entry1.get().strip()
+            new2 = entry2.get().strip()
+            email = entry_email.get().strip()
+            sdt = entry_sdt.get().strip()
+
+            if not all([old, new1, new2, email, sdt]):
+                messagebox.showwarning("Thiếu", "Vui lòng điền đầy đủ thông tin.", parent=win)
+                return
+            if old != mk_cu:
+                messagebox.showerror("Sai mật khẩu", "❌ Mật khẩu cũ không đúng.", parent=win)
+                return
+            if new1 != new2:
+                messagebox.showerror("Không khớp", "❌ Hai mật khẩu mới không khớp.", parent=win)
+                return
+            if "@" not in email or "." not in email:
+                messagebox.showerror("Email không hợp lệ", "Vui lòng nhập đúng định dạng email.", parent=win)
+                return
+
+            # ✅ Ghi mật khẩu mới vào pass.txt
+            try:
+                with open(pass_path, "w", encoding="utf-8") as f:
+                    f.write(new1)
+            except Exception as e:
+                messagebox.showerror("Lỗi ghi file", f"Không thể lưu mật khẩu mới: {e}", parent=win)
+                return
+
+            try:
+                import smtplib
+                from email.message import EmailMessage
+
+                msg_user = EmailMessage()
+                msg_user['Subject'] = "🔐 Mật khẩu mới của bạn"
+                msg_user['From'] = SENDER_EMAIL
+                msg_user['To'] = email
+                msg_user.set_content(f"""
+Chào bạn,
+
+Bạn vừa đổi mật khẩu thành công ứng dụng text to mp3 đa ngôn ngữ.
+
+🔐 Mật khẩu mới: {new1}
+📞 Số điện thoại: {sdt}
+
+Cảm ơn bạn đã sử dụng ứng dụng.
+""")
+
+                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+                    smtp.login(SENDER_EMAIL, APP_PASSWORD)
+                    smtp.send_message(msg_user)
+
+                messagebox.showinfo("Thành công", f"📧 Đã gửi mật khẩu mới tới {email}", parent=win)
+                win.destroy()
+
+            except Exception as e:
+                messagebox.showerror("Lỗi gửi mail", f"Không thể gửi email:\n{e}", parent=win)
+
+        # ✅ Thêm nút Đổi mật khẩu đầy đủ
+        tk.Button(win, text="✅ Đổi mật khẩu", bg="green", fg="white", font=("Arial", 12, "bold"), command=xac_nhan).pack(pady=12)
+
+    ask_password_with_keyboard(thuc_hien)
+
+#=======================NHÓM  - HỎI A.I , ĐỌC ĐỀ, XUẤT MP3====
+#hàm hỏi A.I
+def goi_gpt_cau_hoi(prompt):
+    from openai import OpenAI
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Lỗi GPT: {e}"
+##có chọn ngôn ngữ
+def goi_gemini_cau_hoi(prompt):
+    from langdetect import detect
+    import re
+
+    LANGUAGE_KEYWORDS = {
+        "tiếng Trung": "zh",
+        "tiếng Nhật": "ja",
+        "tiếng Anh": "en",
+        "tiếng Việt": "vi"
+    }
+
+    def get_expected_lang(text):
+        for key, lang_code in LANGUAGE_KEYWORDS.items():
+            if key.lower() in text.lower():
+                return lang_code
+        return "vi"
+
+    def contains_pinyin_or_english(text):
+        return bool(re.search(r"[a-zA-Z]{2,}", text))
+
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+
+        expected_lang = get_expected_lang(prompt)
+        original_lang = detect(prompt)
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt,
+        )
+        text = (response.text or "").strip()
+
+        # Nếu có pinyin/English hoặc sai ngôn ngữ → hỏi lại
+        if detect(text) != expected_lang or contains_pinyin_or_english(text):
+            prompt_fix = f"""
+Chỉ trả lời bằng đúng ngôn ngữ '{expected_lang}', không thêm phiên âm, không thêm chú giải hay dịch. Trả lời đơn giản, chỉ liệt kê.
+Nội dung yêu cầu là:
+{prompt}
+"""
+            text = (client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt_fix,
+            ).text or "").strip()
+
+        # Nếu prompt gốc là tiếng Việt → chèn dòng tiêu đề tiếng Việt lên đầu
+        if original_lang == "vi":
+            text = f"{prompt}:\n\n{text}"
+
+        return text
+
+    except Exception as e:
+        return f"Lỗi Gemini: {e}"
+
+
+
+def gui_hoi_gpt():
+    cau_hoi = entry_cau_hoi.get().strip()
+    if not cau_hoi:
+        messagebox.showwarning("Chưa nhập câu hỏi", "Hãy nhập nội dung để hỏi.")
+        return
+
+    txt_de.delete("1.0", tk.END)
+    txt_de.insert(tk.END, "⏳ Đang gửi hỏi Bố ...\n")
+
+    def call():
+        try:
+            ket_qua = goi_gpt_cau_hoi(cau_hoi)
+            if any(x in ket_qua.lower() for x in ["Bố", "quota", "error", "api key", "invalid", "401", "403"]):
+                raise Exception("Bố có thể đang bận")
+
+            txt_de.delete("1.0", tk.END)
+            txt_de.insert(tk.END, ket_qua)
+        except:
+            txt_de.delete("1.0", tk.END)
+            txt_de.insert(tk.END, "⚠ Có thể Bố đang bận, chuyển sang hỏi Mẹ -  ...\n⏳ Đang hỏi mẹ- ...\n")
+            ket_qua = goi_gemini_cau_hoi(cau_hoi)
+            txt_de.delete("1.0", tk.END)
+            txt_de.insert(tk.END, ket_qua)
+
+    threading.Thread(target=call, daemon=True).start()
+def gui_hoi_gemini(on_done=None):
+    cau_hoi = entry_cau_hoi.get().strip()
+    if not cau_hoi:
+        messagebox.showwarning("Chưa nhập câu hỏi", "Hãy nhập nội dung để hỏi cho các nhà thông thái!")
+        return
+    txt_de.delete("1.0", tk.END)
+    txt_de.insert(tk.END, "⏳ Đang hỏi mẹ ...")
+    def call():
+        ket_qua = goi_gemini_cau_hoi(cau_hoi)
+        txt_de.delete("1.0", tk.END)
+        txt_de.insert(tk.END, ket_qua)
+        if on_done:
+            on_done()
+    threading.Thread(target=call, daemon=True).start()
+#=========================
+def nhap_giong_noi_advanced(entry_cau_hoi, on_text_got=None, root=None):
+    
+    import os, sys, threading
+
+    wave_running = {"on": True}
+    record_flag = {"is_recording": True}
+
+    try:
+        global dung_doc_ngay
+        dung_doc_ngay = True
+        if "pygame" in sys.modules:
+            import pygame
+            if pygame.mixer.get_init():
+                pygame.mixer.music.stop()
+    except Exception:
+        pass
+
+    def show_countdown_and_record():
+        popup = tk.Toplevel(root)
+        set_popup_icon(popup)
+        popup.title("Ghi âm")
+
+        # 👉 Căn giữa màn hình và cao lên
+        screen_w = popup.winfo_screenwidth()
+        screen_h = popup.winfo_screenheight()
+        win_w, win_h = 370, 200
+        x = (screen_w - win_w) // 2
+        y = (screen_h - win_h) // 3
+        popup.geometry(f"{win_w}x{win_h}+{x}+{y}")
+
+        popup.grab_set()
+        popup.resizable(False, False)
+
+        tk.Label(popup, text="🎤 Hãy nói vào micro...", font=("Arial", 13, "bold")).pack(pady=6)
+        lbl_count = tk.Label(popup, text="", font=("Arial", 32, "bold"), fg="red")
+        lbl_count.pack(pady=6)
+
+        canvas_wave = tk.Canvas(popup, width=300, height=60, bg="white")
+        canvas_wave.pack(pady=6)
+        progress_am = ttk.Progressbar(popup, orient="horizontal", length=280, mode="determinate", maximum=100)
+        progress_am.pack(pady=(0, 5))
+
+        root.update_idletasks()
+
+        def countdown(n=3):
+            if n > 0:
+                lbl_count.config(text=str(n))
+                popup.after(700, countdown, n - 1)
+            else:
+                lbl_count.config(text="Bắt đầu!")
+                app_beep(1200, 200, popup)
+
+                # ✅ Giữ lại popup một chút để sóng âm hiện rõ rồi đóng 6 giây
+                def stop_wave_and_close():
+                    wave_running["on"] = False
+                    if popup.winfo_exists():
+                        popup.destroy()
+                popup.after(6000, stop_wave_and_close)
+
+                threading.Thread(target=run_record, daemon=True).start()
+                threading.Thread(target=vong_lap_suong_am, args=(canvas_wave, progress_am), daemon=True).start()
+
+
+        countdown(3)
+
+    #  vong_lap_suong_am(canvas):
+    def vong_lap_suong_am(canvas, progressbar):
+        import sounddevice as sd
+        import numpy as np
+        import colorsys
+
+        w, h = 300, 60
+        middle = h // 2
+        scale = h / 2
+        latest_data = {"data": None}
+
+        def get_color(volume):
+            volume = min(1.0, max(0.0, volume))
+            hue = 0.33 * (1 - volume)
+            r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+            return '#%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255))
+
+        def audio_callback(indata, frames, time_, status):
+            latest_data["data"] = indata[:, 0].copy()
+
+        def draw_loop():
+           
+            if not wave_running["on"] or not canvas.winfo_exists():
+                return
+
+            data = latest_data.get("data")
+            if data is not None:
+                try:
+                    canvas.delete("all")
+                    step = max(1, len(data) // w)
+                    volume_raw = np.mean(np.abs(data))  # độ nhạy ổn định hơn norm
+                    color = get_color(volume_raw)
+
+                    for x in range(w):
+                        y = int(data[x * step] * scale)
+                        canvas.create_line(x, middle, x, middle - y, fill=color, width=1)
+
+                    # 💡 Làm mượt dao động bằng buffer trung bình
+                    if not hasattr(progressbar, "_vol_buffer"):
+                        progressbar._vol_buffer = []
+
+                    buffer = progressbar._vol_buffer
+                    buffer.append(volume_raw)
+                    if len(buffer) > 5:
+                        buffer.pop(0)
+
+                    volume_smoothed = sum(buffer) / len(buffer)
+                    volume_scaled = min(100, max(0, int(volume_smoothed * 1000)))
+                    progressbar["value"] = volume_scaled
+
+                except Exception as e:
+                    print("⛔ Lỗi vẽ sóng âm:", e)
+                    wave_running["on"] = False
+                    return
+
+            canvas.after(50, draw_loop)
+
+
+        try:
+            stream = sd.InputStream(callback=audio_callback, channels=1, samplerate=44100, blocksize=512)
+            stream.start()
+            canvas.after(50, draw_loop)
+            time.sleep(10)
+            stream.stop()
+        except Exception as e:
+            print("⛔ Lỗi mở stream sóng âm:", e)
+
+
+
+
+    def run_record():
+        import sounddevice as sd
+        import speech_recognition as sr
+        import numpy as np
+        fs = 44100
+        recognizer = sr.Recognizer()
+        try:
+            recording = sd.rec(int(5 * fs), samplerate=fs, channels=1, dtype='int16') #thời gian ghi âm chỉnh int(10 * fs)
+            sd.wait()
+
+            audio_np = np.squeeze(recording)
+            audio_bytes = audio_np.tobytes()
+            audio = sr.AudioData(audio_bytes, sample_rate=fs, sample_width=2)
+
+            detected_lang = "vi"
+            text = ""
+
+            for lang_code in ["vi-VN", "en-US", "ja-JP", "zh-CN"]:
+                try:
+                    text = recognizer.recognize_google(audio, language=lang_code)
+                    detected_lang = lang_code.split("-")[0]
+                    break
+                except sr.UnknownValueError:
+                    continue
+
+            if not text.strip():
+                raise sr.UnknownValueError
+
+            # 🔒 Chống lỗi gTTS không hỗ trợ ngôn ngữ lạ
+            if detected_lang not in ["vi", "en", "ja", "zh"]:
+                detected_lang = "vi"
+
+            entry_cau_hoi.delete(0, tk.END)
+            entry_cau_hoi.insert(tk.END, text)
+            entry_cau_hoi.focus_set()
+            print(f"Nhận: [{detected_lang}] {text}")
+
+            def send_and_read():
+                gui_hoi_gemini()
+                # Đợi tới khi có nội dung thực sự (hoặc timeout tối đa 20 giây)
+                bat_dau = time.time()
+                while True:
+                    content = txt_de.get("1.0", tk.END).strip()
+                    if content and "⏳" not in content:
+                        break
+                    if time.time() - bat_dau > 20:  # Sau 20 giây vẫn chưa có thì bỏ
+                        print("⚠ Quá thời gian chờ nội dung GPT/Gemini.")
+                        return
+                    time.sleep(0.2)
+
+                                    
+                doc_noi_dung_de()
+
+            threading.Thread(target=send_and_read, daemon=True).start()
+            if on_text_got:
+                on_text_got(text, detected_lang)
+
+        except sr.UnknownValueError:
+            def canh_bao_va_doc_lai():
+                def show_popup():
+                    try:
+                        if root and root.winfo_exists():
+                            popup = tk.Toplevel(root)
+                            set_popup_icon(popup)
+                            popup.title("Lỗi")
+                            popup.geometry("340x120+{}+{}".format(root.winfo_x() + 200, root.winfo_y() + 150))
+                            popup.configure(bg="white")
+                            popup.resizable(False, False)
+                            popup.attributes("-topmost", True)
+                            tk.Label(popup, text="⚠ Không nhận diện được giọng nói.", font=("Arial", 12), bg="white", fg="red").pack(pady=15)
+                            popup.after(5000, popup.destroy)
+                    except Exception as e:
+                        print("⚠ Không thể tạo popup:", e)
+
+                try:
+                    if root and root.winfo_exists():
+                        root.after(0, show_popup)
+                except Exception as e:
+                    print("⚠ Không thể gọi lại GUI sau khi nhận diện lỗi:", e)
+
+                def phat_loi():
+                    try:
+                        
+                        import pygame
+                        if not os.path.exists(APPDATA_ROOT):
+                            os.makedirs(APPDATA_ROOT, exist_ok=True)
+                        path = os.path.join(APPDATA_ROOT, f"mic_prompt_{int(time.time())}.mp3")
+                        tts = gTTS("Hãy nói vào mic để hỏi tôi!", lang="vi")
+                        tts.save(path)
+                        pygame.mixer.init()
+                        pygame.mixer.music.load(path)
+                        pygame.mixer.music.play()
+                    except Exception as e:
+                        print("Không phát được nhắc mic:", e)
+
+                threading.Thread(target=phat_loi, daemon=True).start()
+
+            try:
+                if root and root.winfo_exists():
+                    root.after(0, canh_bao_va_doc_lai)
+            except Exception as e:
+                print("⚠ Không thể gọi lại GUI sau khi nhận diện lỗi:", e)
+
+        except sr.RequestError:
+            try:
+                entry_cau_hoi.after(0, lambda: messagebox.showerror("Lỗi", "Không thể kết nối dịch vụ nhận dạng."))
+            except:
+                pass
+        except Exception as e:
+            try:
+                entry_cau_hoi.after(0, lambda: messagebox.showwarning("Lỗi khác", str(e)))
+            except:
+                pass
+        finally:
+            record_flag["is_recording"] = False
+
+    show_countdown_and_record()
+
+##===============
+# ===== DEAD CODE: VIDEO / YOUTUBE UPLOAD =====
+# DEAD CODE - remove later. Feature disabled in audio-tool version.
+
+def popup_google_login(file_path):
+    print("Disabled: YouTube/video upload feature removed in audio-tool version.")
+    try:
+        messagebox.showinfo("Đã tắt", "Tính năng upload video YouTube đã được tắt.")
+    except Exception:
+        pass
+    return
+
+    import tkinter as tk
+    from tkinter import messagebox
+    from google_auth_oauthlib.flow import InstalledAppFlow
+    from google.oauth2.credentials import Credentials
+    import os
+
+    APPDATA_ROOT = os.path.join(BASE_FOLDER, "AppData")
+    TOKEN_JSON = os.path.join(APPDATA_ROOT, "token.json")
+    CLIENT_SECRET_FILE = os.path.join(APPDATA_ROOT, "client_secret.json")
+
+    SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
+
+    # ==== Kiểm tra token trước ====
+    if os.path.exists(TOKEN_JSON):
+        creds = Credentials.from_authorized_user_file(TOKEN_JSON, SCOPES)
+        if creds and creds.valid:
+            popup_youtube_upload_v2(file_path)
+            return
+
+    # ==== Nếu chưa có token hoặc token không hợp lệ, hiện popup login ====
+    popup = tk.Toplevel()
+    popup.title("Đăng nhập Google")
+    popup.geometry("400x180")
+    popup.grab_set()
+    set_popup_icon(popup)
+
+    tk.Label(popup, text="Đăng nhập tài khoản Google\nđể chuẩn bị upload YouTube", font=("Arial", 11)).pack(pady=15)
+
+    def start_login():
+        try:
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
+            creds = flow.run_local_server(port=0)
+
+            unprotect_file(TOKEN_JSON)
+            with open(TOKEN_JSON, "w", encoding="utf-8") as f:
+                f.write(creds.to_json())
+
+            messagebox.showinfo("Thành công", "✅ Đăng nhập thành công và đã lưu!")
+            popup.destroy()
+            popup_youtube_upload_v2(file_path)
+
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Đăng nhập lỗi:\n{e}")
+
+    tk.Button(popup, text="🔑 Đăng nhập Google", bg="green", fg="white", command=start_login).pack(pady=10)
+    tk.Button(popup, text="Đóng", command=popup.destroy).pack(pady=5)
+
+
+
+def popup_youtube_upload_v2(file_path):
+    print("Disabled: YouTube/video upload feature removed in audio-tool version.")
+    try:
+        messagebox.showinfo("Đã tắt", "Tính năng upload video YouTube đã được tắt.")
+    except Exception:
+        pass
+    return
+
+    import tkinter as tk
+    from tkinter import ttk, messagebox
+    import threading
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    import os
+    import webbrowser
+    import pyperclip
+    import shutil
+    import tempfile
+
+    APPDATA_ROOT = os.path.join(BASE_FOLDER, "AppData")
+    TOKEN_JSON = os.path.join(APPDATA_ROOT, "token.json")
+
+    popup = tk.Toplevel()
+    popup.title("Upload video YouTube")
+    popup.geometry("460x520")
+    popup.grab_set()
+    set_popup_icon(popup)
+
+    tk.Label(popup, text="Tiêu đề:", font=("Arial", 10, "bold")).pack(pady=3)
+    entry_title = tk.Entry(popup, width=55)
+
+    video_name = os.path.basename(file_path)
+    title_default = f"{video_name} from App Text to MP3 \nVCJ School International.(84)986183806 VCJ Co.Ltd"
+    entry_title.insert(0, title_default)
+    entry_title.pack(pady=2)
+
+    tk.Label(popup, text="Mô tả:", font=("Arial", 10, "bold")).pack(pady=3)
+    text_desc = tk.Text(popup, width=55, height=5)
+    text_desc.insert("1.0", " Đây là video {video_name} xuất tự động từ phần mềm Text to MP3 đa ngôn ngữ. \n Thuộc dự án Máy học tập Thông minh Smart Learning, \n VCJ School International. (84)986183806 \n VCj Co., Ltd")
+    text_desc.pack(pady=2)
+
+    tk.Label(popup, text="Chế độ:", font=("Arial", 10, "bold")).pack(pady=3)
+    combo_privacy = ttk.Combobox(popup, values=["public", "unlisted", "private"])
+    combo_privacy.current(1) # mặc định là không côNG KHAI, unlisted (1), công khai thì là (0) public, riêng tư là (2) pribvate
+    combo_privacy.pack(pady=2)
+
+    tk.Label(popup, text="Đường dẫn video:", font=("Arial", 10, "bold")).pack(pady=3)
+    entry_file = tk.Entry(popup, width=55)
+    entry_file.insert(0, file_path)
+    entry_file.pack(pady=2)
+
+    progress_var = tk.StringVar()
+    progress_var.set("Chưa bắt đầu")
+    tk.Label(popup, textvariable=progress_var, fg="green").pack(pady=5)
+
+    progress_bar = ttk.Progressbar(popup, orient="horizontal", length=350, mode="determinate")
+    progress_bar.pack(pady=5)
+
+    def start_upload_thread():
+        def run_upload():
+            try:
+                creds = Credentials.from_authorized_user_file(TOKEN_JSON, ["https://www.googleapis.com/auth/youtube.upload"])
+                youtube = build("youtube", "v3", credentials=creds)
+
+                original_path = entry_file.get()
+                file_name = os.path.basename(original_path)
+
+                # Nếu tên file dài, copy sang tên tạm
+                if len(file_name) > 90:
+                    short_name = "temp_upload_video.mp4"
+                    temp_dir = tempfile.gettempdir()
+                    temp_path = os.path.join(temp_dir, short_name)
+                    shutil.copy(original_path, temp_path)
+                    entry_file.delete(0, tk.END)
+                    entry_file.insert(0, temp_path)
+                else:
+                    temp_path = original_path
+
+                # Giới hạn title
+                title = entry_title.get()
+                if len(title) > 100:
+                    title = title[:100]
+
+                media = MediaFileUpload(temp_path, chunksize=-1, resumable=True, mimetype="video/*")
+
+                request = youtube.videos().insert(
+                    part="snippet,status",
+                    body={
+                        "snippet": {
+                            "title": title,
+                            "description": text_desc.get("1.0", "end-1c"),
+                            "tags": ["text-to-mp3", "multi-language"],
+                            "categoryId": "27"
+                        },
+                        "status": {
+                            "privacyStatus": combo_privacy.get()
+                        }
+                    },
+                    media_body=media
+                )
+
+                response = None
+                while response is None:
+                    status, response = request.next_chunk()
+                    if status:
+                        percent = int(status.progress() * 100)
+                        progress_var.set(f"Đang tải: {percent}%")
+                        progress_bar["value"] = percent
+                        popup.update_idletasks()
+
+                progress_var.set("✅ Đã upload xong!")
+                progress_bar["value"] = 100
+
+                video_id = response['id']
+                video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+                def open_and_copy():
+                    webbrowser.open(video_url)
+                    pyperclip.copy(video_url)
+                    messagebox.showinfo("Đã copy", "🔗 Link video đã được copy vào clipboard!")
+
+                tk.Button(popup, text="🔗 Mở & Copy Link", bg="green", fg="white", command=open_and_copy).pack(pady=5)
+                pygame.mixer.init()
+                pygame.mixer.music.load(SUCCESS_SOUND)
+                pygame.mixer.music.play()
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] ✅ Video đã upload Youtube thành công: {video_url}")
+                messagebox.showinfo("Hoàn tất", f"✅ Video đã upload thành công!\nID: {video_id}")
+                
+            except Exception as ex:
+                progress_var.set("❌ Lỗi")
+                messagebox.showerror("Lỗi", f"Lỗi upload: {ex}")
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] Lỗi upload: {ex}")
+
+        threading.Thread(target=run_upload, daemon=True).start()
+        progress_var.set("🔄 Đang khởi tạo...")
+
+    def logout_google():
+        try:
+            if os.path.exists(TOKEN_JSON):
+                unprotect_file(TOKEN_JSON)
+                os.remove(TOKEN_JSON)
+                messagebox.showinfo("Đăng xuất", "✅ Đã xoá token. Lần sau sẽ yêu cầu đăng nhập lại.")
+                popup.destroy()
+            else:
+                messagebox.showinfo("Đăng xuất", "Không có token để xoá (chưa từng đăng nhập).")
+        except Exception as e:
+            messagebox.showerror("Lỗi", f"Lỗi khi xoá token: {e}")
+
+    tk.Button(popup, text="🚀 Upload", bg="blue", fg="white", command=start_upload_thread).pack(pady=6)
+    tk.Button(popup, text="Đăng xuất Google", bg="red", fg="white", command=logout_google).pack(pady=3)
+    tk.Button(popup, text="Đóng", command=popup.destroy).pack(pady=3)
+
+# ===== END DEAD CODE: VIDEO / YOUTUBE UPLOAD =====
+# ==========
+
+#==============XỬ LÝ VĂN BẢN TRƯỚC KHI ĐỌC=====
+def lam_sach_van_ban(text):
+    import re
+    if not text:
+        return ""
+
+    # Quy ước ký tự bullet / đánh dấu cần loại
+    BULLETS = r'•◦‣▪▫■□◆◇♦⬤●○★☆✓✔✗✘☑✅❌➤➔▶►→←·※■□▪▫❖✦✧'
+    BULLETS_CLASS = f"[{BULLETS}]"
+
+    # 1) Chuẩn hoá phép toán thường gặp
+    text = re.sub(r'(?<=\d)\s*-\s*(?=\d)', ' trừ ', text)
+    text = re.sub(r'(?<=\d)\s*\*\s*(?=\d)', ' nhân ', text)
+    text = text.replace("×", " nhân ").replace("÷", " chia ").replace("/", " chia ")
+    text = text.replace("+", " cộng ").replace("=", " bằng ")
+
+    # 2) Bỏ các ký tự trang trí/markdown
+    text = re.sub(r'[*_`]+', '', text).replace('"', '').replace("“", '').replace("”", '')
+    text = re.sub(r'_+', ' ', text)
+
+    # 3) Loại bullet đầu dòng, dấu gạch đầu dòng thừa
+    text = re.sub(rf'^\s*(?:{BULLETS_CLASS}|[-–—])+(\s+|$)', '', text)
+
+    # 4) Loại mọi bullet còn sót lại ở giữa câu
+    text = re.sub(rf'{BULLETS_CLASS}', ' ', text)
+
+    # 5) Dấu câu tiếng Trung -> chuẩn
+    text = text.replace("。", ".").replace("，", ",").replace("、", ",").replace("？", "?")
+
+    # 6) Rút gọn khoảng trắng
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # 7) Nếu chỉ còn ký tự không phải chữ/số thì coi như rỗng (bỏ qua khi TTS)
+    #   Bao phủ Latin có dấu, CJK, Hiragana/Katakana, Hangul, và số
+    if not re.search(r'[A-Za-zÀ-ỿ\u0100-\u024F\u1E00-\u1EFF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7A3\d]', text):
+        return ""
+
+    return text
+
+
+def tach_de_thanh_danh_sach_da_ngon_ngu():
+    
+    from langdetect import detect
+    noi_dung = txt_de.get("1.0", tk.END).strip()
+    danh_sach = []
+    for dong in noi_dung.split('\n'):
+        dong = dong.strip()
+        if not dong:
+            continue
+        try:
+            lang = detect(dong)
+        except:
+            lang = "vi"
+        danh_sach.append((dong, lang))
+    return danh_sach
+
+
+def doan_ngon_ngu_theo_ky_tu(text):
+    text = text.strip()
+    count_zh = sum(0x4E00 <= ord(c) <= 0x9FFF for c in text)
+    count_ja = sum(0x3040 <= ord(c) <= 0x30FF for c in text)
+    count_ko = sum(0xAC00 <= ord(c) <= 0xD7AF for c in text)
+    count_vi = sum(c in 'ăâêôơưđáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựỳýỵỷỹ' for c in text.lower())
+
+    if count_ja > 0:
+        return "ja"
+    elif count_zh > 0:
+        return "zh"
+    elif count_ko > 0:
+        return "ko"
+    elif count_vi > 0:
+        return "vi"
+    else:
+        try:
+            from langdetect import detect
+            return detect(text)
+        except:
+            return "vi"
+
+
+def doc_noi_dung_de():
+    import threading, tempfile, os, time
+    import tkinter as tk
+    from tkinter import messagebox
+    from gtts import gTTS
+    import pygame
+    from langdetect import detect
+
+    global dung_doc_ngay, dang_doc, channel_doc
+    dung_doc_ngay = False
+
+    def run():
+        global noi_dung_cuoi, dang_doc, channel_doc
+        if dang_doc:
+            print("⛔ Đang đọc, không thể đọc mới.")
+            return
+
+        noi_dung = txt_de.get("1.0", tk.END).strip()
+        if not noi_dung:
+            messagebox.showinfo("Trống", "Không có nội dung để đọc.", parent=root)
+            return
+
+        noi_dung_cuoi = noi_dung
+        cac_dong = noi_dung.split('\n')
+
+        try:
+            pygame.mixer.init()
+        except:
+            pass
+
+        try:
+            channel_doc = pygame.mixer.Channel(1)
+        except Exception as e:
+            print("❌ Lỗi tạo kênh âm thanh:", e)
+            return
+
+        dang_doc = True
+
+        gtts_supported = ["vi", "en", "ja", "zh", "ko", "fr", "de", "es", "it", "pt"]
+
+        chon_combo = combo_ngon_ngu.get().strip()
+        lang_from_combo = {
+            "Tiếng Việt": "vi",
+            "Tiếng Anh": "en",
+            "Tiếng Nhật": "ja",
+            "Tiếng Trung": "zh"
+        }.get(chon_combo, None)
+
+        for dong in cac_dong:
+            if dung_doc_ngay:
+                print("⛔ Dừng đọc ngay.")
+                break
+
+            dong = dong.strip()
+            if not dong:
+                continue
+
+            try:
+                dong_sach = lam_sach_van_ban(dong)
+
+                # Ưu tiên ngôn ngữ do người dùng chọn
+                if lang_from_combo:
+                    lang = lang_from_combo
+                else:
+                    try:
+                        lang = detect(dong_sach)
+                    except:
+                        lang = "vi"
+
+                lang = lang.lower()
+                if lang in ["zh-cn", "zh-tw", "zh-hk"]:
+                    lang = "zh"
+
+                if lang not in gtts_supported:
+                    print(f"⚠ Ngôn ngữ '{lang}' không hỗ trợ, dùng tiếng Việt.")
+                    lang = "vi"
+
+                print(f"📢 Đọc ({lang}): {dong_sach}")
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tf:
+                    file_path = tf.name
+
+                toc_do = combo_toc_do.get()
+                slow = True if toc_do == "Chậm" else False
+                gTTS(text=dong_sach, lang=lang, slow=slow).save(file_path)
+
+                sound = pygame.mixer.Sound(file_path)
+                channel_doc.play(sound)
+                time.sleep(0.2)  # chờ để âm thanh bắt đầu phát
+
+                while channel_doc.get_busy():
+                    if dung_doc_ngay:
+                        print("⛔ Dừng đọc giữa dòng.")
+                        channel_doc.stop()
+                        break
+                    time.sleep(0.1)
+
+                os.remove(file_path)
+
+                if dung_doc_ngay:
+                    break
+
+            except Exception as e:
+                print(f"❌ Lỗi đọc dòng: {e}")
+                continue
+
+        dang_doc = False
+        print("✅ Kết thúc đọc nội dung.")
+
+    threading.Thread(target=run).start()
+
+#=================
+
+def toggle_tam_dung():
+    import pygame
+    global dung_doc_ngay
+    dung_doc_ngay = True
+    if not pygame.mixer.get_init():
+        return
+    if pygame.mixer.music.get_busy():
+        pygame.mixer.music.stop()
+        dung_doc_ngay = True
+        btn_tam_dung.config(text="▶️ Dừng Đọc")
+    else:
+        btn_tam_dung.config(text="⏸ Dừng Đọc")
+
+
+#Share Zalo
+
+
+def open_zalo_and_folder(file_path):
+    try:
+        # Mở thư mục chứa file
+        folder_path = os.path.dirname(file_path)
+        open_path_cross_platform(folder_path)
+
+        # Mở Zalo Desktop
+        zalo_path = r"C:\Users\{}\AppData\Local\Programs\Zalo\Zalo.exe".format(os.getlogin())
+        if os.path.exists(zalo_path):
+            open_path_cross_platform(zalo_path)
+        else:
+            tk.messagebox.showwarning("Zalo", "⚠ Không tìm thấy Zalo Desktop. Vui lòng kiểm tra đường dẫn hoặc mở thủ công.")
+    except Exception as e:
+        tk.messagebox.showerror("Lỗi", f"Không mở được Zalo hoặc thư mục:\n{e}")
+
+#=================
+
+def convert_seconds_to_timestamp(seconds):
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds - int(seconds)) * 1000)
+    return f"{h:02}:{m:02}:{s:02},{ms:03}"
+
+
+#===============
+def build_danh_sach_doc_from_text():
+    lines = txt_de.get("1.0", tk.END).split("\n")
+    danh_sach = []
+    for line in lines:
+        line = line.strip()
+        if line:
+            danh_sach.append((line, "vi"))
+    return danh_sach
+# ===== DEAD CODE: GAME DATA / HISTORY =====
+# DEAD CODE - remove later. Game Đoán Chữ disabled in audio-tool version.
+
+
+def tai_lich_su():
+    print("Disabled: game history removed in audio-tool version.")
+    return []
+
+    try:
+        if os.path.exists(LICH_SU_FILE):
+            with open(LICH_SU_FILE, "r", encoding="utf-8") as f:
+                du_lieu = json.load(f)
+                for ng in du_lieu:
+                    if "thoigian" not in ng:
+                        ng["thoigian"] = datetime.now().strftime("%H:%M %d/%m/%Y")
+                    if "ngonngu" not in ng:
+                        ng["ngonngu"] = "Ja"  # mã rút gọn mặc định
+                return du_lieu
+        else:
+            return []
+    except json.JSONDecodeError:
+        print("⚠️ File lịch sử bị lỗi JSON. Đang thử sửa...")
+        try:
+            with open(LICH_SU_FILE, "r", encoding="utf-8") as f:
+                content = f.read()
+            if not content.strip().endswith("]"):
+                content += "]"
+            with open(LICH_SU_FILE, "w", encoding="utf-8") as f:
+                f.write(content)
+            with open(LICH_SU_FILE, "r", encoding="utf-8") as f:
+                du_lieu = json.load(f)
+            for ng in du_lieu:
+                if "thoigian" not in ng:
+                    ng["thoigian"] = datetime.now().strftime("%H:%M %d/%m/%Y")
+                if "ngonngu" not in ng:
+                    ng["ngonngu"] = "Ja"
+            print("✅ Đã sửa lỗi JSON tự động.")
+            return du_lieu
+        except Exception as e:
+            print("❌ Không thể sửa file JSON:", e)
+            return []
+    except Exception as e:
+        print("❌ Lỗi đọc lịch sử game:", e)
+        return []
+
+
+
+def doc_du_lieu_game(ngonngu):
+    print("Disabled: Game Đoán Chữ data loading removed in audio-tool version.")
+    return None
+
+    if ngonngu == "Dnn":
+        df_ja = pd.read_excel(EXCEL_GAME_PATH, sheet_name="Ja")
+        df_cn = pd.read_excel(EXCEL_GAME_PATH, sheet_name="Cn")
+        df_en = pd.read_excel(EXCEL_GAME_PATH, sheet_name="En")
+        df = pd.concat([df_ja, df_cn, df_en], ignore_index=True)
+    else:
+        df = pd.read_excel(EXCEL_GAME_PATH, sheet_name=ngonngu)
+
+    df = df.dropna(subset=["Câu hỏi", "Câu rút gọn", "Đáp án", "Nghĩa TV"])
+    return df
+
+
+def play_sound(sound_path):
+    pygame.mixer.init()
+    pygame.mixer.music.load(sound_path)
+    pygame.mixer.music.play()
+
+def luu_diem(ten, level, diem, ngonngu=""):
+    print("Disabled: game score saving removed in audio-tool version.")
+    return
+
+    from datetime import datetime
+    try:
+        # 🔁 Ánh xạ ngôn ngữ đầy đủ → mã rút gọn
+        ma_hoa = {
+            "Tiếng Nhật": "Ja",
+            "Tiếng Trung": "Cn",
+            "Tiếng Anh": "En",
+            "Đa ngôn ngữ": "Dnn"
+        }
+        ngonngu_ma = ma_hoa.get(ngonngu, ngonngu)  # nếu đã là mã rút gọn thì giữ nguyên
+
+        lich_su = tai_lich_su()
+        lich_su.append({
+            "ten": ten,
+            "level": level,
+            "diem": diem,
+            "ngonngu": ngonngu_ma,
+            "thoigian": datetime.now().strftime("%H:%M %d/%m/%Y")
+        })
+        if len(lich_su) > 100:
+            lich_su = lich_su[-100:]  # Giữ lại 100 người gần nhất
+
+        unprotect_file(LICH_SU_FILE)
+        with open(LICH_SU_FILE, "w", encoding="utf-8") as f:
+            json.dump(lich_su, f, ensure_ascii=False, indent=2)
+
+    except Exception as e:
+        print("❌ Lỗi lưu điểm:", e)
+
+        
+#====
+# ===== END DEAD CODE: GAME DATA / HISTORY =====
+
+
+#===========
+#Chọn ngôn ngữ thủ công=========================================
+#==========================
+
+background_path = LOGO_PATH
+count = 0
+popup_lang_open = False  # Chỉ mở 1 cửa sổ
+
+
+#===============================================CỬA SỔ CHỌN NGÔN NGỮ====================================
+def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
+#def mo_popup_chon_lang():
+    from tkinter import ttk, filedialog
+    from langdetect import detect
+    import tempfile, os, threading, time
+    import pygame
+    global popup_lang_open, popup, background_path
+    #global combo_engine, combo_giong_popup, combo_toc_do_popup
+
+    if popup_lang_open:
+        tk.messagebox.showwarning("Đang mở", "Cửa sổ chọn ngôn ngữ đã được mở rồi!")
+        return
+
+    popup_lang_open = True
+    popup = tk.Toplevel(root)
+    set_popup_icon(popup)
+    popup.title("Chọn ngôn ngữ từng dòng")
+    popup.geometry("1280x820+40+20")
+    popup.minsize(1120, 740)
+    popup.grab_set()
+    popup.transient(root)
+
+    body_frame = tk.Frame(popup, bg="#eef3ee")
+    body_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    body_frame.columnconfigure(0, weight=1)
+    body_frame.columnconfigure(1, weight=0)
+    body_frame.rowconfigure(0, weight=1)
+
+    left_frame = tk.Frame(body_frame, bg="#ffffff")
+    left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+    right_frame = tk.Frame(body_frame, bg="#f8fff8", width=340)
+    right_frame.grid(row=0, column=1, sticky="ns")
+    right_frame.pack_propagate(False)
+
+    danh_sach = []
+    
+
+    
+    for dong in txt_de.get("1.0", tk.END).split('\n'):
+        dong = dong.strip()
+        if not dong:
+            continue
+        try:
+            lang = detect(dong)
+            if lang == "ko" and any('\u4e00' <= c <= '\u9fff' for c in dong):
+                lang = "zh-cn"
+        except:
+            lang = "vi"
+        if lang == "zh":
+            lang = "zh-cn"
+        danh_sach.append((dong, lang))
+
+        
+    selected_lang_list = [lang for _, lang in danh_sach]
+    
+    canvas = tk.Canvas(left_frame, bg="#ffffff", highlightthickness=0)
+    frame = tk.Frame(canvas)
+    vsb = tk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=vsb.set)
+
+    canvas.pack(side="left", fill="both", expand=True)
+    vsb.pack(side="right", fill="y")
+    list_window = canvas.create_window((0, 0), window=frame, anchor="nw")
+
+    def on_list_canvas_configure(event):
+        canvas.itemconfigure(list_window, width=event.width)
+
+    canvas.bind("<Configure>", on_list_canvas_configure)
+
+    lang_options = ['vi', 'en', 'ja', 'zh', 'zh-cn']
+    combos = []
+    allowed_langs = ["vi", "zh", "ja", "en", "zh-cn"]
+
+    # Frame tùy chọn bên phải (scroll được để không bị che nút)
+    option_canvas = tk.Canvas(right_frame, bg="#f8fff8", highlightthickness=0)
+    option_vsb = tk.Scrollbar(right_frame, orient="vertical", command=option_canvas.yview)
+    option_canvas.configure(yscrollcommand=option_vsb.set)
+    option_canvas.pack(side="left", fill="both", expand=True)
+    option_vsb.pack(side="right", fill="y")
+
+    option_frame = tk.Frame(option_canvas, bg="#f8fff8")
+    option_window = option_canvas.create_window((0, 0), window=option_frame, anchor="nw")
+
+    def on_option_frame_configure(event):
+        option_canvas.configure(scrollregion=option_canvas.bbox("all"))
+
+    option_frame.bind("<Configure>", on_option_frame_configure)
+
+    def on_option_canvas_configure(event):
+        option_canvas.itemconfigure(option_window, width=event.width)
+
+    option_canvas.bind("<Configure>", on_option_canvas_configure)
+
+    tk.Label(option_frame, text="Cấu hình xuất", font=("Arial", 12, "bold"), bg="#f8fff8").pack(anchor="w", padx=10, pady=(4, 6))
+    
+    # ==== Chọn ngôn ngữ muốn giữ lại ====
+    tk.Label(option_frame, text="Ngôn ngữ sử dụng:", font=("Arial", 10, "bold"), bg="#f8fff8").pack(anchor="w", padx=10, pady=(6, 2))
+
+    ngon_ngu_flags = {
+        "vi": tk.BooleanVar(value=True),
+        "en": tk.BooleanVar(value=True),
+        "ja": tk.BooleanVar(value=True),
+        "zh": tk.BooleanVar(value=True)
+    }
+    for code, name in [("vi", "Tiếng Việt"), ("en", "Tiếng Anh"), ("ja", "Tiếng Nhật"), ("zh", "Tiếng Trung")]:
+        cb = tk.Checkbutton(option_frame, text=name, variable=ngon_ngu_flags[code], bg="#f8fff8")
+        cb.pack(anchor="w", padx=10)
+
+
+    tk.Label(option_frame, text="Engine:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(8, 2))
+    combo_engine = ttk.Combobox(option_frame, values=["gTTS", "Polly"], state="readonly")
+    combo_engine.set("Polly")
+    combo_engine.pack(fill="x", padx=10, pady=2)
+    
+
+    tk.Label(option_frame, text="Tốc độ:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(10, 2))
+    combo_toc_do_popup = ttk.Combobox(option_frame, values=["Chậm", "Bình thường"], state="readonly")
+    combo_toc_do_popup.set("Chậm")
+    combo_toc_do_popup.pack(fill="x", padx=10, pady=2)
+
+    tk.Label(option_frame, text="Giọng đọc:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(10, 2))
+    combo_giong_popup = ttk.Combobox(option_frame, values=["Nam", "Nữ", "Hội thoại 1 câu nam - 1 câu nữ"], state="readonly")
+    combo_giong_popup.set("Hội thoại 1 câu nam - 1 câu nữ")
+    combo_giong_popup.pack(fill="x", padx=10, pady=2)
+
+    
+
+
+    
+    #==== phân trang khi văn bản dài:
+    current_page = 0
+    ITEMS_PER_PAGE = 710 # 710 dòng max 1 trang, giới hạn có thể hiện thị
+
+    #Tạo hàm tính danh sách theo trang
+    def get_page_data(danh_sach, page, items_per_page=710):
+        start = page * items_per_page
+        end = start + items_per_page
+        return danh_sach[start:end]
+
+    #Thêm nút điều hướng
+    def next_page():
+        nonlocal current_page
+        if (current_page + 1) * ITEMS_PER_PAGE < len(danh_sach):
+            current_page += 1
+            rebuild_page()
+
+    def prev_page():
+        nonlocal current_page
+        if current_page > 0:
+            current_page -= 1
+            rebuild_page()
+
+    #Viết hàm rebuild
+    def rebuild_page():
+        for widget in frame.winfo_children():
+            widget.destroy()
+
+        combos.clear()
+
+        page_data = get_page_data(danh_sach, current_page, ITEMS_PER_PAGE)
+        for i, (dong, lang) in enumerate(page_data):
+            global_index = i + current_page * ITEMS_PER_PAGE
+
+            label = tk.Label(frame, text=f"{i+1 + current_page * ITEMS_PER_PAGE}. {dong}", anchor='w', justify='left', wraplength=840)
+
+            if lang not in allowed_langs:
+                label.configure(bg="yellow")
+                loi_path = os.path.join(APPDATA_ROOT, "loi_ngon_ngu.txt")
+                unprotect_file(loi_path)
+                with open(loi_path, "a", encoding="utf-8") as f:
+                    f.write(f"Dòng {i+1 + current_page * ITEMS_PER_PAGE}: {dong}\n")
+
+            label.pack(fill="x", padx=5)
+
+            combo = ttk.Combobox(frame, values=lang_options)
+            combo.set(selected_lang_list[global_index])  # ✅ Lấy ngôn ngữ đang chọn từ list
+
+            combo.pack(fill="x", padx=5, pady=2)
+            combos.append((dong, combo))
+
+            def on_combo_change(event, idx=global_index, lbl=label):
+                selected_lang_list[idx] = event.widget.get()
+                lbl.configure(bg="lightgreen")
+
+            combo.bind("<<ComboboxSelected>>", on_combo_change)
+        
+        tk.Label(frame, text="", height=2).pack()
+        frame.update_idletasks()
+        canvas.config(scrollregion=canvas.bbox("all"))
+
+
+
+    #===
+    rebuild_page() # gọi lại trang
+
+    #==============
+    #===Báo chưa sửa lỗi ngôn ngữ
+
+    def kiem_tra_ngon_ngu_hop_le(selected_lang_list, allowed_langs):
+        """
+        Kiểm tra danh sách ngôn ngữ được chọn, nếu có dòng chưa đúng, hiện popup báo lỗi.
+        Trả về True nếu hợp lệ, False nếu có lỗi.
+        """
+        # Tìm những dòng không hợp lệ
+        danh_sach_loi = [i + 1 for i, lang in enumerate(selected_lang_list) if lang not in allowed_langs]
+
+        if danh_sach_loi:
+            msg = "⚠ Có dòng chưa được sửa đúng ngôn ngữ!\n\nCác dòng lỗi: " + ", ".join(map(str, danh_sach_loi))
+            tk.messagebox.showerror("Lỗi", msg)
+            return False
+
+        return True
+
+    #======
+    def chon_bg(): #chọn ảnh nền video
+        print("Disabled: chọn background/video removed in audio-tool version.")
+        try:
+            messagebox.showinfo("Đã tắt", "Tính năng chọn background video đã được tắt.", parent=popup)
+        except Exception:
+            pass
+        return
+
+        global background_path
+        from tkinter import filedialog, messagebox
+        f = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
+        if f:
+            background_path = f
+            messagebox.showinfo("OK", "Đã chọn background:\n" + f)
+
+    def get_engine_giong_tocdo():
+        try:
+            return (
+                combo_engine.get(),
+                combo_giong_popup.get(),
+                combo_toc_do_popup.get()
+            )
+        except Exception as e:
+            print("⚠️ Không lấy được engine/giong/tốc độ:", e)
+            return ("gTTS", "Nam", "Bình thường")
+
+
+
+
+    def on_engine_change(event=None):
+        engine = combo_engine.get()
+
+        # ✅ Cập nhật toàn bộ list
+        for idx, lang in enumerate(selected_lang_list):
+            if lang == "zh-cn" and engine == "Polly":
+                selected_lang_list[idx] = "zh"
+                print(f"⚠ Đã tự động chuyển zh-cn ➜ zh (Polly) để đọc chuẩn hơn.")
+
+        # ✅ Cập nhật lại combobox đang hiện
+        for i, (dong, combo) in enumerate(combos):
+            global_index = i + current_page * ITEMS_PER_PAGE
+            combo.set(selected_lang_list[global_index])
+    combo_engine.bind("<<ComboboxSelected>>", on_engine_change)
+
+    def doc_popup():
+        danh_sach_doc = process_text_lines(danh_sach, selected_lang_list)
+        #danh_sach_doc = [(dong, combo.get().strip()) for dong, combo in combos]
+        toc_do = combo_toc_do_popup.get()
+        giong = combo_giong_popup.get()
+        engine = combo_engine.get()
+
+        def run_doc():
+            global dung_doc_ngay, dang_doc
+            dung_doc_ngay = False
+            dang_doc = True
+            count = 0
+
+            for dong, lang in danh_sach_doc:
+                if dung_doc_ngay: break
+                try:
+                    dong_sach = lam_sach_van_ban(dong)
+                    voice = "Nam" if (giong == "Hội thoại 1 câu nam - 1 câu nữ" and count % 2 == 0) else "Nữ" if giong == "Hội thoại 1 câu nam - 1 câu nữ" else giong
+                    if giong == "Hội thoại 1 câu nam - 1 câu nữ": count += 1
+
+                    print(f"📢 Đọc ({lang}) [{voice}] Engine: {engine}")
+                    temp_mp3 = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4().hex}.mp3")
+                    tao_file_mp3(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine=engine, file_out=temp_mp3)
+
+                    pygame.mixer.init()
+                    sound = pygame.mixer.Sound(temp_mp3)
+                    channel = pygame.mixer.find_channel()
+                    if channel:
+                        channel.play(sound)
+                        while channel.get_busy():
+                            if dung_doc_ngay:
+                                channel.stop()
+                                break
+                            time.sleep(0.1)
+                    os.remove(temp_mp3)
+                except Exception as e:
+                    print(f"❌ Lỗi đọc: {e}")
+                    continue
+
+            dang_doc = False
+            print("✅ Kết thúc đọc nội dung.")
+
+        threading.Thread(target=run_doc).start()
+
+    def dung_doc():
+        global dung_doc_ngay
+        dung_doc_ngay = True
+
+    def doc_lai_popup():
+        dung_doc()
+        doc_popup()
+
+    def export_m4a_with_fallback(full_audio, output_path):
+        import tempfile, os, subprocess, uuid
+
+        temp_wav = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4().hex}.wav")
+        try:
+            voice_audio = full_audio.set_channels(1).set_frame_rate(int(M4A_VOICE_SAMPLE_RATE))
+            voice_audio.export(temp_wav, format="wav")
+
+            # Mono AAC bitrate thấp đủ rõ cho giọng nói và giảm mạnh dung lượng M4A.
+            primary_cmd = [
+                FFMPEG_PATH, "-y",
+                "-i", temp_wav,
+                "-c:a", "aac",
+                "-b:a", M4A_VOICE_BITRATE,
+                "-ac", "1",
+                "-ar", M4A_VOICE_SAMPLE_RATE,
+                "-movflags", "+faststart",
+                output_path,
+            ]
+            result = subprocess.run(primary_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode == 0:
+                return
+
+            fallback_cmd = [
+                FFMPEG_PATH, "-y",
+                "-i", temp_wav,
+                "-c:a", "aac",
+                "-b:a", M4A_VOICE_FALLBACK_BITRATE,
+                "-ac", "1",
+                "-ar", M4A_VOICE_SAMPLE_RATE,
+                "-movflags", "+faststart",
+                output_path,
+            ]
+            result2 = subprocess.run(fallback_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result2.returncode != 0:
+                raise Exception(result.stderr or result2.stderr or "FFmpeg không xuất được M4A.")
+        finally:
+            try:
+                if os.path.exists(temp_wav):
+                    os.remove(temp_wav)
+            except:
+                pass
+
+    def xuat_popup_audio(output_kind="mp3"):
+        if not kiem_tra_ngon_ngu_hop_le(selected_lang_list, allowed_langs):
+            return
+
+        export_profiles = {
+            "mp3": {
+                "extension": ".mp3",
+                "filetypes": [("MP3 files", "*.mp3")],
+                "save_title": "Lưu file MP3",
+                "progress_title": "Đang xuất MP3",
+                "done_title": "Hoàn tất xuất MP3",
+                "done_label": "🎉 Đã xuất file MP3:\n",
+                "discord_message": "🎧 File MP3 mới được xuất từ Máy Học Tập",
+                "discord_mime": "audio/mpeg",
+                "export_kwargs": {"format": "mp3", "bitrate": "192k"},
+            },
+            "m4a": {
+                "extension": ".m4a",
+                "filetypes": [("M4A files", "*.m4a")],
+                "save_title": "Lưu file M4A",
+                "progress_title": "Đang xuất M4A",
+                "done_title": "Hoàn tất xuất M4A",
+                "done_label": "🎉 Đã xuất file M4A:\n",
+                "discord_message": "🎧 File M4A mới được xuất từ Máy Học Tập",
+                "discord_mime": "audio/mp4",
+                "export_kwargs": None,
+            },
+        }
+
+        spec = export_profiles.get(output_kind, export_profiles["mp3"])
+
+        danh_sach_doc = process_text_lines(danh_sach, selected_lang_list)
+        toc_do = combo_toc_do_popup.get()
+        giong = combo_giong_popup.get()
+        engine = combo_engine.get()
+
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=spec["extension"],
+            filetypes=spec["filetypes"],
+            title=spec["save_title"],
+        )
+        if not file_path:
+            return
+
+        popup_progress = tk.Toplevel(popup)
+        set_popup_icon(popup_progress)
+        popup_progress.title(spec["progress_title"])
+        popup_progress.geometry("420x120")
+        popup_progress.grab_set()
+        popup_progress.transient(popup)
+
+        label_status = tk.Label(popup_progress, text="Bắt đầu...", font=("Arial", 11))
+        label_status.pack(pady=5)
+        progress = ttk.Progressbar(popup_progress, orient="horizontal", length=300, mode="determinate")
+        progress.pack(pady=5)
+
+        # 👉 Bắt đầu phát nhạc nền
+        play_background_music()
+
+        def thread_xuat():
+            tong_dong = len(danh_sach_doc)
+
+            try:
+                def update_audio_progress(done, total):
+                    progress["value"] = int(done / total * 100) if total else 100
+                    label_status.config(text=f"Đang xuất dòng {done}/{tong_dong}")
+                    popup_progress.update_idletasks()
+
+                full_audio, _ = generate_audio_core(
+                    danh_sach_doc,
+                    giong=giong,
+                    toc_do=toc_do,
+                    engine=engine,
+                    progress_callback=update_audio_progress,
+                    clean_text_func=lam_sach_van_ban,
+                    tts_func=tao_file_mp3,
+                )
+                export_audio_batch(full_audio, file_path, output_kind, export_m4a_with_fallback)
+                stop_background_music()
+                popup_progress.destroy()
+
+                def open_file():
+                    try:
+                        open_path_cross_platform(file_path)
+                    except Exception as e:
+                        tk.messagebox.showerror("Lỗi", f"Không mở được file:\n{e}")
+
+                def open_folder():
+                    try:
+                        open_path_cross_platform(os.path.dirname(file_path))
+                    except Exception as e:
+                        tk.messagebox.showerror("Lỗi", f"Không mở được thư mục:\n{e}")
+
+                def gui_discord():
+                    try:
+                        import requests
+                        webhook_url = DISCORD_WEBHOOK_URL
+                        if not webhook_url or "api/webhooks/" not in webhook_url:
+                            tk.messagebox.showerror("Lỗi", "Webhook Discord không hợp lệ.")
+                            return
+
+                        with open(file_path, "rb") as f:
+                            files = {"file": (os.path.basename(file_path), f, spec["discord_mime"])}
+                            data = {"content": spec["discord_message"]}
+                            response = requests.post(webhook_url, data=data, files=files)
+
+                        if response.status_code in [200, 204]:
+                            tk.messagebox.showinfo("OK", "✅ Đã gửi file lên Discord thành công!")
+                        else:
+                            tk.messagebox.showerror("Lỗi", f"Không gửi được Discord.\nHTTP {response.status_code}\n{response.text}")
+                    except Exception as e:
+                        tk.messagebox.showerror("Lỗi", f"Không gửi Discord:\n{e}")
+
+                popup_done = tk.Toplevel(popup)
+                set_popup_icon(popup_done)
+
+                pygame.mixer.init()
+                pygame.mixer.music.load(SUCCESS_SOUND)
+                pygame.mixer.music.play()
+                gui_discord_thong_bao(f"🟢 Đã xuất xong file {output_kind.upper()}: {file_path}")
+
+                popup_done.title(spec["done_title"])
+                popup_done.geometry("480x180")
+                popup_done.grab_set()
+                popup_done.transient(popup)
+
+                tk.Label(popup_done, text=spec["done_label"] + file_path, font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+                frm = tk.Frame(popup_done); frm.pack(pady=3)
+                tk.Button(frm, text="Mở file", width=10, command=lambda: [popup_done.destroy(), open_file()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup_done.destroy(), open_folder()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Gửi Discord", width=12, command=lambda: [popup_done.destroy(), gui_discord()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Gửi Zalo", width=12, command=lambda: [popup_done.destroy(), open_zalo_and_folder(file_path)]).pack(side="left", padx=6)
+                tk.Button(popup_done, text="Đóng", command=popup_done.destroy).pack(pady=8)
+
+            except Exception as e:
+                stop_background_music()
+                popup_progress.destroy()
+                pygame.mixer.init()
+                pygame.mixer.music.load(WARNING_SOUND)
+                pygame.mixer.music.play()
+                tk.messagebox.showerror("Lỗi", f"Xuất {output_kind.upper()} bị lỗi:\n{e}")
+                gui_discord_thong_bao(f"🟢 Xuất {output_kind.upper()} bị lỗi: {file_path}")
+
+        threading.Thread(target=thread_xuat, daemon=True).start()
+
+    def xuat_popup_mp3():
+        xuat_popup_audio("mp3")
+
+    def xuat_popup_m4a():
+        xuat_popup_audio("m4a")
+
+    def xuat_popup_m4a_multifiles():
+        if not kiem_tra_ngon_ngu_hop_le(selected_lang_list, allowed_langs):
+            return
+
+        use_default = messagebox.askyesno(
+            "M4A MultiFiles",
+            "Dùng mặc định 2 dòng cho mỗi file M4A?\nChọn No để nhập số dòng theo ý bạn.",
+            parent=popup,
+        )
+        if use_default:
+            so_dong_moi_file = 2
+        else:
+            so_dong_moi_file = simpledialog.askinteger(
+                "M4A MultiFiles",
+                "Nhập số dòng cho mỗi file M4A:",
+                parent=popup,
+                minvalue=1,
+                initialvalue=2,
+            )
+            if not so_dong_moi_file:
+                return
+
+        parent_dir = filedialog.askdirectory(title="Chọn thư mục lưu M4A MultiFiles")
+        if not parent_dir:
+            return
+
+        danh_sach_doc = [(dong, selected_lang_list[idx]) for idx, (dong, _) in enumerate(danh_sach)]
+        if not danh_sach_doc:
+            messagebox.showwarning("Trống", "Không có nội dung để xuất.", parent=popup)
+            return
+
+        toc_do = combo_toc_do_popup.get()
+        giong = combo_giong_popup.get()
+        engine = combo_engine.get()
+        count = 0
+
+        from datetime import datetime
+        folder_name = f"M4A_MutiFiles_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        output_dir = os.path.join(parent_dir, folder_name)
+        os.makedirs(output_dir, exist_ok=True)
+
+        popup_progress = tk.Toplevel(popup)
+        set_popup_icon(popup_progress)
+        popup_progress.title("Đang xuất M4A MultiFiles")
+        popup_progress.geometry("420x130")
+        popup_progress.grab_set()
+        popup_progress.transient(popup)
+
+        label_status = tk.Label(popup_progress, text="Bắt đầu...", font=("Arial", 11))
+        label_status.pack(pady=5)
+        progress = ttk.Progressbar(popup_progress, orient="horizontal", length=300, mode="determinate")
+        progress.pack(pady=5)
+
+        play_background_music()
+
+        def thread_multi():
+            nonlocal count
+
+            tong_dong = len(danh_sach_doc)
+            tong_file = (tong_dong + so_dong_moi_file - 1) // so_dong_moi_file
+            dong_da_xu_ly = 0
+            files_da_tao = []
+
+            try:
+                for file_idx in range(tong_file):
+                    bat_dau = file_idx * so_dong_moi_file
+                    ket_thuc = min(bat_dau + so_dong_moi_file, tong_dong)
+                    group = danh_sach_doc[bat_dau:ket_thuc]
+
+                    start_processed = dong_da_xu_ly
+
+                    def update_multi_progress(done, total):
+                        current_done = start_processed + done
+                        progress["value"] = int(current_done / tong_dong * 100) if tong_dong else 100
+                        label_status.config(text=f"Đang xuất file {file_idx + 1}/{tong_file} - dòng {current_done}/{tong_dong}")
+                        popup_progress.update_idletasks()
+
+                    full_audio, count = generate_audio_core(
+                        group,
+                        giong=giong,
+                        toc_do=toc_do,
+                        engine=engine,
+                        start_count=count,
+                        initial_silence_ms=250,
+                        progress_callback=update_multi_progress,
+                        clean_text_func=lam_sach_van_ban,
+                        tts_func=tao_file_mp3,
+                    )
+                    dong_da_xu_ly += len(group)
+
+                    file_name = f"{folder_name}_{file_idx + 1:03d}.m4a"
+                    file_path = os.path.join(output_dir, file_name)
+                    export_m4a_with_fallback(full_audio, file_path)
+                    files_da_tao.append(file_path)
+
+                stop_background_music()
+                popup_progress.destroy()
+
+                def open_folder():
+                    try:
+                        open_path_cross_platform(output_dir)
+                    except Exception as e:
+                        tk.messagebox.showerror("Lỗi", f"Không mở được thư mục:\n{e}")
+
+                pygame.mixer.init()
+                pygame.mixer.music.load(SUCCESS_SOUND)
+                pygame.mixer.music.play()
+                gui_discord_thong_bao(f"🟢 Đã xuất xong M4A MultiFiles: {output_dir}")
+
+                popup_done = tk.Toplevel(popup)
+                set_popup_icon(popup_done)
+                popup_done.title("Hoàn tất xuất M4A MultiFiles")
+                popup_done.geometry("500x190")
+                popup_done.grab_set()
+                popup_done.transient(popup)
+
+                tk.Label(
+                    popup_done,
+                    text=f"🎉 Đã xuất {len(files_da_tao)} file M4A vào:\n" + output_dir,
+                    font=("Arial", 11, "bold"),
+                    fg="green",
+                ).pack(pady=13)
+                frm = tk.Frame(popup_done); frm.pack(pady=3)
+                tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup_done.destroy(), open_folder()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Đóng", width=10, command=popup_done.destroy).pack(side="left", padx=6)
+
+            except Exception as e:
+                stop_background_music()
+                popup_progress.destroy()
+                pygame.mixer.init()
+                pygame.mixer.music.load(WARNING_SOUND)
+                pygame.mixer.music.play()
+                tk.messagebox.showerror("Lỗi", f"Xuất M4A MultiFiles bị lỗi:\n{e}")
+
+        threading.Thread(target=thread_multi, daemon=True).start()
+    def run_xuat_srt_thread():
+        print("Disabled: MP3+SRT subtitle export removed in audio-tool version.")
+        try:
+            messagebox.showinfo("Đã tắt", "Tính năng tạo phụ đề + MP3 đã được tắt.", parent=popup)
+        except Exception:
+            pass
+        return
+
+        if not kiem_tra_ngon_ngu_hop_le(selected_lang_list, allowed_langs):
+            return
+
+        danh_sach_doc = [(dong, selected_lang_list[idx]) for idx, (dong, _) in enumerate(danh_sach)]
+        engine = combo_engine.get()
+        giong = combo_giong_popup.get()
+        toc_do = combo_toc_do_popup.get()
+        count = 0
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".mp3", filetypes=[("MP3 files", "*.mp3")], title="Lưu file MP3 + SRT")
+        if not file_path:
+            return
+
+        popup_progress = tk.Toplevel(popup)
+        set_popup_icon(popup_progress)
+        popup_progress.title("Đang xuất MP3 + SRT")
+        popup_progress.geometry("420x120")
+        popup_progress.grab_set()
+        popup_progress.transient(popup)
+
+        label_status = tk.Label(popup_progress, text="Bắt đầu...", font=("Arial", 11))
+        label_status.pack(pady=5)
+        progress = ttk.Progressbar(popup_progress, orient="horizontal", length=300, mode="determinate")
+        progress.pack(pady=5)
+
+        # 👉 Bắt đầu phát nhạc nền
+        play_background_music()
+
+        def thread_export():
+            nonlocal count
+            from pydub import AudioSegment
+            import tempfile, os, uuid
+
+            full_audio = AudioSegment.silent(duration=500)
+            temp_dir = tempfile.gettempdir()
+            current_time = 0.0
+            srt_entries = []
+            tong_dong = len(danh_sach_doc)
+
+            try:
+                for i, (dong, lang) in enumerate(danh_sach_doc):
+                    dong_sach = lam_sach_van_ban(dong)
+
+                    # Giọng
+                    if giong == "Hội thoại 1 câu nam - 1 câu nữ":
+                        voice = "Nam" if count % 2 == 0 else "Nữ"
+                        count += 1
+                    else:
+                        voice = giong
+
+                    temp_mp3 = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex}.mp3")
+
+                    try:
+                        # Nếu rỗng → chèn im lặng 300ms, KHÔNG tạo SRT cho dòng này
+                        if not dong_sach.strip():
+                            segment = AudioSegment.silent(duration=300)
+                            full_audio += segment + AudioSegment.silent(duration=300)
+                            current_time += 0.3 + 0.3
+                        else:
+                            # Tạo file TTS
+                            tao_file_mp3(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine=engine, file_out=temp_mp3)
+
+                            # Nạp đoạn, lỗi → im lặng 300ms
+                            try:
+                                segment = AudioSegment.from_mp3(temp_mp3)
+                            except Exception as e2:
+                                print(f"⚠ Không nạp được mp3 tạm: {e2} → chèn im lặng 300ms")
+                                segment = AudioSegment.silent(duration=300)
+
+                            # Ghép âm
+                            full_audio += segment + AudioSegment.silent(duration=300)
+
+                            # Thời lượng & SRT (chỉ tạo khi có text hợp lệ)
+                            duration_sec = getattr(segment, "duration_seconds", 0.3)
+                            start_str = convert_seconds_to_timestamp(current_time)
+                            end_str = convert_seconds_to_timestamp(current_time + duration_sec)
+                            srt_entries.append(f"{len(srt_entries)+1}\n{start_str} --> {end_str}\n{dong_sach}\n\n")
+                            current_time += duration_sec + 0.3
+                    except Exception as e:
+                        msg = str(e)
+                        if "No text to speak" in msg or "No text to send to TTS API" in msg:
+                            # Im lặng 300ms, không SRT
+                            segment = AudioSegment.silent(duration=300)
+                            full_audio += segment + AudioSegment.silent(duration=300)
+                            current_time += 0.3 + 0.3
+                        else:
+                            raise
+                    finally:
+                        try:
+                            if os.path.exists(temp_mp3):
+                                os.remove(temp_mp3)
+                        except:
+                            pass
+
+                    progress["value"] = int((i + 1) / tong_dong * 100)
+                    label_status.config(text=f"Đang xuất {i+1}/{tong_dong}")
+                    popup_progress.update_idletasks()
+
+                # Xuất MP3 + SRT
+                full_audio.export(file_path, format="mp3", bitrate="192k")
+                file_srt = os.path.splitext(file_path)[0] + ".srt"
+                with open(file_srt, "w", encoding="utf-8") as f:
+                    f.writelines(srt_entries)
+
+                stop_background_music()
+                popup_progress.destroy()
+
+                # 🎉 Popup xong
+                def open_file():
+                    try:
+                        open_path_cross_platform(file_path)
+                    except Exception as e:
+                        tk.messagebox.showerror("Lỗi", f"Không mở được file:\n{e}")
+
+                def open_folder():
+                    try:
+                        open_path_cross_platform(os.path.dirname(file_path))
+                    except Exception as e:
+                        tk.messagebox.showerror("Lỗi", f"Không mở được thư mục:\n{e}")
+
+                def gui_discord():
+                    try:
+                        import requests
+                        webhook_url = DISCORD_WEBHOOK_URL
+                        if not webhook_url or "api/webhooks/" not in webhook_url:
+                            tk.messagebox.showerror("Lỗi", "Webhook Discord không hợp lệ.")
+                            return
+
+                        with open(file_path, "rb") as f:
+                            files = {"file": (os.path.basename(file_path), f, "audio/mpeg")}
+                            data = {"content": "🎧 File MP3 mới được xuất từ Máy Học Tập"}
+                            response = requests.post(webhook_url, data=data, files=files)
+
+                        if response.status_code in [200, 204]:
+                            tk.messagebox.showinfo("OK", "✅ Đã gửi file lên Discord thành công!")
+                        else:
+                            tk.messagebox.showerror("Lỗi", f"Không gửi được Discord.\nHTTP {response.status_code}\n{response.text}")
+                    except Exception as e:
+                        tk.messagebox.showerror("Lỗi", f"Không gửi Discord:\n{e}")
+
+                popup_done = tk.Toplevel(popup)
+                set_popup_icon(popup_done)
+                pygame.mixer.init()
+                pygame.mixer.music.load(SUCCESS_SOUND)
+                pygame.mixer.music.play()
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] Đã xuất xong mp3 và phụ đề : {file_path}")
+
+                popup_done.title("Hoàn tất xuất MP3 + SRT")
+                popup_done.geometry("480x180")
+                popup_done.grab_set()
+                popup_done.transient(popup)
+
+                tk.Label(popup_done, text="🎉 Đã xuất file MP3 + SRT:\n" + file_path, font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+                frm = tk.Frame(popup_done); frm.pack(pady=3)
+                tk.Button(frm, text="Mở file", width=10, command=lambda: [popup_done.destroy(), open_file()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup_done.destroy(), open_folder()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Gửi Discord", width=12, command=lambda: [popup_done.destroy(), gui_discord()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Gửi Zalo", width=12, command=lambda: [popup_done.destroy(), open_zalo_and_folder(file_path)]).pack(side="left", padx=6)
+                tk.Button(popup_done, text="Đóng", command=popup_done.destroy).pack(pady=8)
+
+            except Exception as e:
+                stop_background_music()
+                popup_progress.destroy()
+                pygame.mixer.init()
+                pygame.mixer.music.load(WARNING_SOUND)
+                pygame.mixer.music.play()
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] Lỗi mp3 và phụ đề!!! : {file_path}")
+                tk.messagebox.showerror("Lỗi", f"Xuất MP3 + SRT lỗi:\n{e}")
+
+        threading.Thread(target=thread_export, daemon=True).start()
+
+
+    def run_xuat_video_thread():
+        print("Disabled: popup video export removed in audio-tool version.")
+        try:
+            messagebox.showinfo("Đã tắt", "Tính năng tạo video đã được tắt.", parent=popup)
+        except Exception:
+            pass
+        return
+
+        if not kiem_tra_ngon_ngu_hop_le(selected_lang_list, allowed_langs):
+            return
+
+        danh_sach_doc = [(dong, selected_lang_list[idx]) for idx, (dong, _) in enumerate(danh_sach)]
+        engine = combo_engine.get()
+        giong = combo_giong_popup.get()
+        toc_do = combo_toc_do_popup.get()
+        count = 0
+
+        global background_path
+        if not background_path or not os.path.isfile(background_path):
+            background_path = LOGO_PATH
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".mp4", filetypes=[("MP4 files", "*.mp4")], title="Lưu file video")
+        if not file_path:
+            return
+
+        popup_progress = tk.Toplevel(popup)
+        set_popup_icon(popup_progress)
+        popup_progress.title("Đang xuất Video")
+        popup_progress.geometry("420x150")
+        popup_progress.grab_set()
+        popup_progress.transient(popup)
+
+        label_status = tk.Label(popup_progress, text="Bắt đầu...", font=("Arial", 11))
+        label_status.pack(pady=5)
+        progress = ttk.Progressbar(popup_progress, orient="horizontal", length=300, mode="determinate")
+        progress.pack(pady=5)
+
+        stop_video_export = {"stop": False}
+        def cancel_export_video():
+            stop_video_export["stop"] = True
+            label_status.config(text="⚠️ Đã yêu cầu huỷ, đang dừng...")
+
+        btn_cancel = tk.Button(popup_progress, text="❌ Huỷ xuất video", fg="red", command=cancel_export_video)
+        btn_cancel.pack(pady=5)
+
+        def tao_anh_text(background_path, text, output_path):
+            import textwrap
+            from PIL import Image, ImageDraw, ImageFont
+
+            img = Image.open(background_path).convert("RGB")
+            draw = ImageDraw.Draw(img)
+            font_size = 42
+            try:
+                font = ImageFont.truetype(FONT_CJK, font_size)
+            except Exception as e:
+                print(f"⚠ Không tải được font: {e}, dùng default")
+                font = ImageFont.load_default()
+
+            text = text or ""  # phụ đề rỗng vẫn render fine
+            wrapped_text = "\n".join(textwrap.wrap(text, width=40)) if text else ""
+            w, h = img.size
+            if wrapped_text:
+                lines = wrapped_text.split("\n")
+                line_height = draw.textbbox((0, 0), "A", font=font)[3] + 10
+                total_text_height = line_height * len(lines)
+                y = h - total_text_height - 50
+                for line in lines:
+                    line_width = draw.textbbox((0, 0), line, font=font)[2]
+                    x = (w - line_width) // 2
+                    draw.text((x, y), line, font=font, fill="white", stroke_width=2, stroke_fill="black")
+                    y += line_height
+
+            # Fix kích thước chẵn cho x264
+            w_new, h_new = img.size
+            if w_new % 2 != 0 or h_new % 2 != 0:
+                img = img.resize((w_new - w_new % 2, h_new - h_new % 2))
+
+            img.save(output_path)
+
+        def thread_video():
+            import tempfile, uuid, subprocess, shutil
+            from pydub import AudioSegment
+
+            full_video_list = []
+            temp_dir = tempfile.gettempdir()
+            tong_dong = len(danh_sach_doc)
+            nonlocal count
+
+            # Chốt engine và startupinfo
+            engine_now = combo_engine.get().lower()
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+            # Helper: chuẩn hoá lang
+            def normalize_lang(l):
+                l = (l or "vi").lower()
+                if l.startswith("vi"): return "vi"
+                if l.startswith(("zh", "zh-cn", "zh_tw", "zh-hk")): return "zh"
+                if l.startswith("ja"): return "ja"
+                if l.startswith("en"): return "en"
+                return "vi"
+
+            # Helper: tạo mp3 an toàn từ text (có chèn im lặng nếu cần)
+            def safe_tts_to_mp3(text_in, lang_in, voice_in, engine_in, out_mp3):
+                from gtts import gTTS
+                lang_norm = normalize_lang(lang_in)
+                text_clean = lam_sach_van_ban(text_in or "")
+                if not text_clean.strip():
+                    # rỗng → tạo im lặng 300ms
+                    AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
+                    return "silence"
+
+                if engine_in == "gtts":
+                    try:
+                        gTTS(text=text_clean, lang=lang_norm, slow=(toc_do == "Chậm")).save(out_mp3)
+                        return "ok"
+                    except Exception as e:
+                        if "No text to speak" in str(e) or "No text to send to TTS API" in str(e):
+                            AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
+                            return "silence"
+                        raise
+                else:
+                    # Polly: tiếng Việt fallback gTTS
+                    if lang_norm == "vi":
+                        try:
+                            gTTS(text=text_clean, lang="vi", slow=(toc_do == "Chậm")).save(out_mp3)
+                            return "ok"
+                        except Exception as e:
+                            if "No text to speak" in str(e) or "No text to send to TTS API" in str(e):
+                                AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
+                                return "silence"
+                            raise
+                    else:
+                        # dùng hàm chung của bạn
+                        try:
+                            tao_file_mp3(text_clean, lang=lang_norm, voice=voice_in, toc_do=toc_do, engine="Polly", file_out=out_mp3)
+                            return "ok"
+                        except Exception as e:
+                            if "No text to speak" in str(e) or "No text to send to TTS API" in str(e):
+                                AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
+                                return "silence"
+                            raise
+
+            try:
+                for i, (dong, lang) in enumerate(danh_sach_doc):
+                    if stop_video_export["stop"]:
+                        print("⚠️ Đã huỷ xuất video.")
+                        break
+
+                    dong_sach = lam_sach_van_ban(dong)
+
+                    # Chọn giọng
+                    if giong == "Hội thoại 1 câu nam - 1 câu nữ":
+                        voice_video = "Nam" if count % 2 == 0 else "Nữ"
+                        count += 1
+                    else:
+                        voice_video = giong
+
+                    temp_mp3 = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex}.mp3")
+                    temp_img = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex}.png")
+                    temp_mp4 = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex}.mp4")
+
+                    try:
+                        # 1) Âm thanh: an toàn với rỗng
+                        status = safe_tts_to_mp3(dong_sach, lang, voice_video, engine_now, temp_mp3)
+
+                        # +1.5s im lặng cuối đoạn cho dễ ghép
+                        try:
+                            segment = AudioSegment.from_mp3(temp_mp3)
+                        except Exception as e2:
+                            print(f"⚠ Không nạp được mp3 tạm: {e2} → chèn im lặng 300ms")
+                            segment = AudioSegment.silent(duration=300)
+                        segment += AudioSegment.silent(duration=1500)
+                        segment.export(temp_mp3, format="mp3", bitrate="192k")
+
+                        # 2) Ảnh phụ đề (nếu text rỗng → render ảnh không chữ)
+                        tao_anh_text(background_path, dong_sach if status != "silence" else "", temp_img)
+
+                        # 3) Tạo video đoạn
+                        cmd = [
+                            FFMPEG_PATH, "-y",
+                            "-loop", "1",
+                            "-i", temp_img.replace(os.sep, "/"),
+                            "-i", temp_mp3.replace(os.sep, "/"),
+                            "-c:v", "libx264", "-tune", "stillimage", "-c:a", "aac", "-b:a", "192k",
+                            "-pix_fmt", "yuv420p",
+                            "-shortest", temp_mp4
+                        ]
+                        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, startupinfo=startupinfo)
+                        if result.returncode != 0:
+                            print("⚠️ FFmpeg stderr:\n", result.stderr)
+                            raise Exception(f"❌ Lỗi ffmpeg: {result.stderr}")
+
+                        full_video_list.append(temp_mp4)
+                    finally:
+                        # Dọn rác tạm
+                        for p in [temp_mp3, temp_img]:
+                            try:
+                                if os.path.exists(p): os.remove(p)
+                            except: pass
+
+                    progress["value"] = int((i + 1) / tong_dong * 100)
+                    label_status.config(text=f"Đã ghép {i+1}/{tong_dong}")
+                    popup_progress.update_idletasks()
+
+                if stop_video_export["stop"]:
+                    popup_progress.destroy()
+                    tk.messagebox.showinfo("Đã huỷ", "Đã huỷ xuất video thành công.")
+                    for vid in full_video_list:
+                        try: os.remove(vid)
+                        except: pass
+                    return
+
+                # Nối các đoạn
+                list_file = os.path.join(temp_dir, f"list_{uuid.uuid4().hex}.txt")
+                with open(list_file, "w", encoding="utf-8") as f:
+                    for vid in full_video_list:
+                        f.write(f"file '{vid.replace(os.sep, '/')}'\n")
+
+                temp_output = tempfile.mktemp(suffix=".mp4")
+                cmd_concat = [
+                    FFMPEG_PATH, "-y",
+                    "-f", "concat", "-safe", "0",
+                    "-i", list_file,
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    "-b:a", "192k",
+                    "-pix_fmt", "yuv420p",
+                    temp_output
+                ]
+                result = subprocess.run(cmd_concat, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, startupinfo=startupinfo)
+                if result.returncode != 0:
+                    print("⚠️ FFmpeg stderr:\n", result.stderr)
+                    raise Exception(f"❌ Lỗi nối video: {result.stderr}")
+
+                shutil.move(temp_output, file_path)
+                try: os.remove(list_file)
+                except: pass
+                for vid in full_video_list:
+                    try: os.remove(vid)
+                    except: pass
+
+                popup_progress.destroy()
+
+                try:
+                    pygame.mixer.init()
+                    pygame.mixer.music.load(SUCCESS_SOUND)
+                    pygame.mixer.music.play()
+                except: pass
+
+                popup_done = tk.Toplevel()
+                pygame.mixer.init()
+                pygame.mixer.music.load(SUCCESS_SOUND)
+                pygame.mixer.music.play()
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] Đã xuất xong video: {file_path}")
+
+                popup_done.title("✅ Hoàn tất xuất video")
+                popup_done.geometry("480x180")
+                popup_done.grab_set()
+                set_popup_icon(popup_done)
+
+                tk.Label(popup_done, text="✅ Đã xuất video:\n" + file_path, font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+                frm = tk.Frame(popup_done); frm.pack(pady=3)
+                tk.Button(frm, text="Mở file", width=10, command=lambda: mo_file_an_toan(file_path)).pack(side="left", padx=6)
+                tk.Button(frm, text="Mở thư mục", width=12, command=lambda: open_path_cross_platform(os.path.dirname(file_path))).pack(side="left", padx=6)
+                tk.Button(frm, text="Đăng YouTube", width=12, command=lambda: popup_google_login(file_path)).pack(side="left", padx=6)
+                tk.Button(popup_done, text="Đóng", command=popup_done.destroy).pack(pady=8)
+
+            except Exception as e:
+                popup_progress.destroy()
+                try:
+                    if os.path.exists(WARNING_SOUND):
+                        pygame.mixer.music.load(WARNING_SOUND)
+                        pygame.mixer.music.play()
+                except: pass
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] Xuất video lỗi")
+                tk.messagebox.showerror("Lỗi", f"Xuất video lỗi:\n{e}")
+
+        threading.Thread(target=thread_video, daemon=True).start()
+
+
+            
+    #===Ép ngôn ngữ đã chọn
+    def ep_toan_bo_dong_ve_lang():
+        lang_da_chon = [k for k, v in ngon_ngu_flags.items() if v.get()]
+        if not lang_da_chon:
+            tk.messagebox.showwarning("Thiếu lựa chọn", "Bạn cần chọn ít nhất 1 ngôn ngữ.")
+            return
+
+        def doan_lang_theo_kytu_va_checkbox(text):
+            text = text.strip()
+
+            count_han = sum(0x4E00 <= ord(c) <= 0x9FFF for c in text)
+            count_kana = sum(0x3040 <= ord(c) <= 0x30FF for c in text)
+            count_vi = sum(c in 'ăâêôơưđáàảãạấầẩẫậắằẳẵặéèẻẽẹếềểễệíìỉĩịóòỏõọốồổỗộớờởỡợúùủũụứừửữựỳýỵỷỹ' for c in text.lower())
+            count_ascii = sum('a' <= c.lower() <= 'z' for c in text)
+
+            # Ưu tiên theo kiểu ký tự nếu có trong checkbox
+            if count_kana > 0 and "ja" in lang_da_chon:
+                return "ja"
+            if count_han > 0:
+                if "ja" in lang_da_chon:
+                    return "ja"
+                elif "zh" in lang_da_chon:
+                    return "zh"
+            if count_vi > 0 and "vi" in lang_da_chon:
+                return "vi"
+            if count_ascii > 0 and "en" in lang_da_chon:
+                return "en"
+            # Mặc định nếu không xác định được
+            return lang_da_chon[0]
+
+        # Thực hiện ép
+        for idx, item in enumerate(danh_sach):
+            dong = item[0]
+            lang_ep = doan_lang_theo_kytu_va_checkbox(dong)
+            selected_lang_list[idx] = lang_ep
+
+        rebuild_page()
+        pygame.mixer.init()
+        pygame.mixer.music.load(SUCCESS_SOUND)
+        pygame.mixer.music.play()
+        tk.messagebox.showinfo("Đã ép", "✅ Đã gán ngôn ngữ cho từng dòng theo ký tự & lựa chọn.")
+
+    #===================
+    # ====== Toàn cục để dừng đọc âm thanh cũ
+# ===== DEAD CODE: GAME UI / GAME AUDIO / GAME IMAGE =====
+# DEAD CODE - remove later. Các hàm game bên dưới đã bị ngắt entry point.
+    def doc_noi_dung_tung_dong_popup(text, engine, giong, toc_do, callback=None, lang=None):
+        # DEAD CODE - remove later. Chỉ còn phục vụ Game Đoán Chữ đã disable.
+        import tempfile, os, uuid, pygame, time
+        import threading
+
+        def run_doc():
+            global current_channel
+            try:
+                dong_doc = lam_sach_van_ban(text)
+
+                # 🔁 Chỉ tự đoán ngôn ngữ nếu lang=None
+                lang_doc = lang
+                if not lang:
+                    if any('\u3040' <= c <= '\u30ff' or '\u4e00' <= c <= '\u9faf' for c in dong_doc):
+                        lang_doc = "ja"
+                    elif any('\u4e00' <= c <= '\u9fff' for c in dong_doc):
+                        lang_doc = "zh"
+                    else:
+                        lang_doc = "vi"
+
+                temp_mp3 = os.path.join(tempfile.gettempdir(), f"game_{uuid.uuid4().hex}.mp3")
+                tao_file_mp3(dong_doc, lang=lang_doc, voice=giong, toc_do=toc_do, engine=engine, file_out=temp_mp3)
+
+                if not pygame.mixer.get_init():
+                    pygame.mixer.init()
+
+                if current_channel and current_channel.get_busy():
+                    current_channel.stop()
+
+                sound = pygame.mixer.Sound(temp_mp3)
+                current_channel = pygame.mixer.find_channel()
+                if current_channel:
+                    current_channel.play(sound)
+                    while current_channel.get_busy():
+                        time.sleep(0.1)
+
+                if callback:
+                    callback()
+
+                try:
+                    os.remove(temp_mp3)
+                except:
+                    pass
+            except Exception as e:
+                print("❌ Lỗi đọc nội dung:", e)
+
+        threading.Thread(target=run_doc, daemon=True).start()
+
+
+
+#==============Game
+    def doc_dap_an_chinh(thong_bao_text, dap_an_dung, ngonngu, them_nghia_la=False):
+
+    #def doc_dap_an_chinh(thong_bao_text, dap_an_dung, ngonngu):
+        global dang_doc_game
+        try:
+            end_doc_game()
+
+            engine = combo_engine.get()
+            giong = combo_giong_popup.get()
+            toc_do = combo_toc_do_popup.get()
+
+            import re
+            match = re.match(r"^(.*?)[。.．]?\s*(\(|（)(.+?)(\)|）)?$", dap_an_dung.strip())
+            if match:
+                phan1 = match.group(1).strip()  # phần tiếng gốc
+                phan2 = match.group(3).strip()  # nghĩa tiếng Việt
+            else:
+                phan1 = dap_an_dung.strip()
+                phan2 = ""
+
+            # ✅ Xác định mã ngôn ngữ để đọc phần tiếng gốc
+            if ngonngu == "Ja":
+                lang_phan1 = "ja"
+            elif ngonngu == "Cn":
+                lang_phan1 = "zh"
+            elif ngonngu == "En":
+                lang_phan1 = "en"
+            elif ngonngu == "Dnn":
+                try:
+                    from langdetect import detect
+                    lang_phan1 = detect(phan1)
+                except:
+                    lang_phan1 = "vi"
+            else:
+                lang_phan1 = "vi"
+
+
+            def ket_thuc_doc():
+                global dang_doc_game
+                dang_doc_game = False
+
+            def doc_nghia_tv():
+                if phan2:
+                    text = f"nghĩa là {phan2}" if them_nghia_la else phan2
+                    doc_noi_dung_tung_dong_popup(text, engine, giong, toc_do, lang="vi", callback=ket_thuc_doc)
+                else:
+                    ket_thuc_doc()
+
+
+
+            def doc_phan1():
+                doc_noi_dung_tung_dong_popup(phan1, engine, giong, toc_do, lang=lang_phan1, callback=doc_nghia_tv)
+
+
+            def doc_thong_bao():
+                doc_noi_dung_tung_dong_popup(thong_bao_text, engine, giong, toc_do, lang="vi", callback=doc_phan1)
+
+            threading.Thread(target=doc_thong_bao, daemon=True).start()
+
+        except Exception as e:
+            print("❌ Lỗi đọc đáp án:", e)
+            dang_doc_game = False
+
+
+
+    def thong_bao_dung(game, dap_an_dung, cau_hoi_full, tiep_cau_tiep, ch=None, ngonngu=None):
+        import tkinter as tk
+        from PIL import Image, ImageTk
+        end_doc_game()  # 🛑 Dừng âm đọc cũ ngay
+
+        popup = tk.Toplevel(game)
+        popup.title("🎓 Chính xác!")
+        popup.configure(bg="white")
+        set_popup_icon(popup)
+
+        popup.update_idletasks()
+        w, h = 740, 520
+        x = (popup.winfo_screenwidth() // 2) - (w // 2)
+        y = (popup.winfo_screenheight() // 2) - (h // 2)
+        popup.geometry(f"{w}x{h}+{x}+{y}")
+        popup.grab_set()
+
+        tk.Label(popup, text="✅ Đúng rồi!", fg="green", bg="white",
+                 font=("Arial", 26, "bold")).pack(pady=10)
+
+        tk.Label(popup, text="🎯 Đáp án đúng là:", fg="green", bg="white",
+                 font=("Arial", 16, "bold")).pack()
+
+        tk.Label(popup, text=dap_an_dung, fg="green", bg="white",
+                 font=("Arial", 18, "bold")).pack()
+
+        # 🖼️ Hiển thị ảnh nếu có
+        if isinstance(ch, dict) and ch and "images" in ch:
+
+            img_path = ""
+            if ngonngu == "Dnn":
+                for subfolder in ["Ja", "Cn", "En"]:
+                    path = os.path.join(IMAGE_FOLDER, subfolder, ch["images"])
+                    if os.path.exists(path):
+                        img_path = path
+                        break
+            else:
+                thu_muc_anh = os.path.join(IMAGE_FOLDER, ngonngu)
+                path = os.path.join(thu_muc_anh, ch["images"])
+                if os.path.exists(path):
+                    img_path = path
+
+            if img_path:
+                try:
+                    img = Image.open(img_path).resize((180, 180))
+                    tk_img = ImageTk.PhotoImage(img)
+                    lbl_img = tk.Label(popup, image=tk_img, bg="white")
+                    lbl_img.image = tk_img
+                    lbl_img.pack(pady=5)
+                except Exception as e:
+                    print("⚠ Không thể hiển thị ảnh trong popup:", e)
+
+
+        tk.Label(popup, text=cau_hoi_full, fg="black", bg="white",
+                 font=("Arial", 14), justify="left", wraplength=w - 40).pack(pady=10)
+
+        tk.Button(popup, text="Tiếp tục", font=("Arial", 14),
+                  command=lambda: [popup.destroy(), end_doc_game(), tiep_cau_tiep()]).pack(pady=15)
+
+        global dang_doc_game
+        dang_doc_game = True
+        doc_dap_an_chinh("Chính xác! Đáp án là:", dap_an_dung, ngonngu)
+
+
+    
+
+    def thong_bao_sai(game, tieu_de, dap_an_dung, cau_hoi_full, on_close, ch=None, ngonngu=None):
+        import tkinter as tk
+        from PIL import Image, ImageTk
+        import os
+
+        end_doc_game()
+
+        popup = tk.Toplevel(game)
+        popup.title("❌ Sai rồi!")
+        popup.configure(bg="white")
+        set_popup_icon(popup)
+
+        popup.update_idletasks()
+        w, h = 740, 520
+        x = (popup.winfo_screenwidth() // 2) - (w // 2)
+        y = (popup.winfo_screenheight() // 2) - (h // 2)
+        popup.geometry(f"{w}x{h}+{x}+{y}")
+        popup.grab_set()
+        popup.protocol("WM_DELETE_WINDOW", lambda: None)
+
+        # Tiêu đề sai
+        tk.Label(popup, text=tieu_de, fg="red", bg="white",
+                 font=("Arial", 24, "bold")).pack(pady=10)
+
+        # Đáp án đúng
+        tk.Label(popup, text="🟢 Đáp án đúng phải là:", font=("Arial", 16, "bold"),
+                 fg="green", bg="white").pack()
+        tk.Label(popup, text=dap_an_dung, font=("Arial", 18, "bold"),
+                 fg="green", bg="white").pack()
+
+        # Ảnh nếu có
+        if isinstance(ch, dict) and ch and "images" in ch:
+            img_path = ""
+            if ngonngu == "Dnn":
+                for subfolder in ["Ja", "Cn", "En"]:
+                    path = os.path.join(IMAGE_FOLDER, subfolder, ch["images"])
+                    if os.path.exists(path):
+                        img_path = path
+                        break
+            else:
+                thu_muc_anh = os.path.join(IMAGE_FOLDER, ngonngu)
+                path = os.path.join(thu_muc_anh, ch["images"])
+                if os.path.exists(path):
+                    img_path = path
+
+            if img_path:
+                try:
+                    img = Image.open(img_path).resize((180, 180))
+                    tk_img = ImageTk.PhotoImage(img)
+                    lbl_img = tk.Label(popup, image=tk_img, bg="white")
+                    lbl_img.image = tk_img
+                    lbl_img.pack(pady=5)
+                except Exception as e:
+                    print("⚠ Không thể hiển thị ảnh trong popup:", e)
+
+
+        # Câu hỏi đầy đủ
+        tk.Label(popup, text=cau_hoi_full, font=("Arial", 14), bg="white",
+                 justify="left", wraplength=w - 40).pack(pady=10)
+
+        # Nút tiếp tục
+        def dong_popup():
+            popup.destroy()
+            end_doc_game()
+            on_close()
+
+        tk.Button(popup, text="▶ Tiếp tục", font=("Arial", 14),
+                  command=dong_popup).pack(pady=15)
+
+        # 🔊 Đọc nội dung giống như popup đúng
+        global dang_doc_game
+        dang_doc_game = True
+        #doc_dap_an_chinh(tieu_de + " Đáp án đúng phải là:", dap_an_dung, ngonngu)
+        doc_dap_an_chinh(f"{tieu_de} Đáp án đúng phải là:", dap_an_dung, ngonngu, them_nghia_la=True)
+
+
+
+
+
+#==============
+
+    def choi_game_ngay_trong_popup(df, ten, level, ngonngu):
+        import tempfile, threading, time
+        from pydub import AudioSegment
+        import pygame
+        timer_thread = None
+        
+        game = tk.Toplevel(popup)
+        set_popup_icon(game)
+        game.title("Game Đoán Chữ")
+        game.state('zoomed')     # ✅ Full màn hình an toàn
+        game.grab_set()
+        # Khởi tạo điểm
+        diem = 0
+
+        # Hiển thị thông tin người chơi ở góc trái
+        label_thong_tin = tk.Label(game,
+
+            text=f"{ten} \n Lv{level} – {diem}đ",
+            font=("Arial", 15, "bold"), fg="green")
+        label_thong_tin.place(x=5, y=5)
+
+        label_cau = tk.Label(game, text="", font=("Arial", 28, "bold"), fg="red", wraplength=900, justify="center") # Tăng cỡ chữ câu hỏi, đáp án, và đổi màu
+
+        label_cau.pack(pady=20)
+
+        frame_btn = tk.Frame(game)
+        frame_btn.pack()
+
+        #timer_label = tk.Label(game, text="", font=("Arial", 14), fg="blue") #Đổi màu đếm ngược và cỡ chữ
+        timer_label = tk.Label(game, text="", font=("Arial", 20, "bold"), fg="red", bg="white", bd=2, relief="solid")
+        timer_label.pack()
+
+
+        result_label = tk.Label(game, text="", font=("Arial", 14), fg="blue")
+        result_label.pack(pady=10)
+
+        cau_hoi = df.sample(level * 5).to_dict(orient="records")
+        idx = 0
+        diem = 0
+        stop_timer = [False]
+        #========
+        #Gửi discor điểm game
+        def lay_top_diem(ngonngu):
+            try:
+                lich_su_daydu = tai_lich_su()
+                if not lich_su_daydu:
+                    return "Không rõ", 0, 0
+
+                # Lọc theo mã ngôn ngữ
+                top = max(
+                    [r for r in lich_su_daydu if r.get("ngonngu") == ngonngu],
+                    key=lambda r: (r.get("level", 0), r.get("diem", 0)),
+                    default=None
+                )
+
+                if top:
+                    return top["ten"], top["level"], top["diem"]
+            except Exception as e:
+                print("❌ Lỗi khi lấy top điểm:", e)
+
+            return "Không rõ", 0, 0
+
+        #======
+        def gui_discord_gui_diem(ten, level, diem, ngonngu):
+            import requests
+            from datetime import datetime
+            import tempfile, cv2, os, threading
+            from tkinter import messagebox
+            from pygrabber.dshow_graph import FilterGraph
+
+            webhook_url = DISCORD_WEBHOOK_URL
+            if not webhook_url or "api/webhooks/" not in webhook_url:
+                messagebox.showerror("Lỗi", "Webhook Discord không hợp lệ.")
+                return
+
+            # 👉 Hiện popup đang gửi
+            sending_popup = tk.Toplevel()
+            set_popup_icon(sending_popup)
+            sending_popup.title("Đang gửi Discord...")
+            sending_popup.geometry("360x100")
+            sending_popup.attributes("-topmost", True)
+            tk.Label(sending_popup, text="🔄 Đang gửi điểm và ảnh lên Discord...", font=("Arial", 12)).pack(pady=20)
+            sending_popup.update()
+
+            try:
+                # 🔠 Tên ngôn ngữ
+                ngon_ngu_text = {
+                    "Ja": "Tiếng Nhật",
+                    "Cn": "Tiếng Trung",
+                    "En": "Tiếng Anh",
+                    "Dnn": "Đa ngôn ngữ"
+                }.get(ngonngu, "Không xác định")
+
+                # 🏆 Lấy top điểm
+                top_name, top_level, top_diem = lay_top_diem(ngonngu)
+                thoigian = datetime.now().strftime("Lúc %Hh%M ngày %d/%m/%Y")
+
+                # 📸 Lấy danh sách tên camera
+                graph = FilterGraph()
+                danh_sach_ten_cam = graph.get_input_devices()  # List[str]
+
+                # 📷 Chụp ảnh từ nhiều camera
+                image_files = []
+                image_cam_names = {}  # Map từ ảnh sang tên cam
+                threads = []
+
+                def chup_anh_tu_cam(cam_index):
+                    try:
+                        cap = cv2.VideoCapture(cam_index, cv2.CAP_DSHOW)
+                        if cap.isOpened():
+                            ret, frame = cap.read()
+                            if ret:
+                                img_path = os.path.join(tempfile.gettempdir(), f"webcam_{cam_index}.jpg")
+                                cv2.imwrite(img_path, frame)
+                                cam_name = danh_sach_ten_cam[cam_index] if cam_index < len(danh_sach_ten_cam) else f"Camera {cam_index}"
+                                print(f"✅ Cam {cam_index}: {cam_name} – đã chụp {img_path}")
+                                image_files.append(img_path)
+                                image_cam_names[img_path] = cam_name
+                            else:
+                                print(f"⚠️ Cam {cam_index} mở được nhưng không lấy được frame.")
+                        else:
+                            print(f"❌ Cam {cam_index} không mở được.")
+                        cap.release()
+                    except Exception as e:
+                        print(f"❌ Cam {cam_index} lỗi: {e}")
+
+                # 👁 Danh sách camera theo thứ tự ưu tiên (C270 là cam 1)
+                indices = [1, 0, 2, 3, 4]
+
+                for i in indices:
+                    t = threading.Thread(target=chup_anh_tu_cam, args=(i,))
+                    t.start()
+                    threads.append(t)
+
+                for t in threads:
+                    t.join(timeout=5)
+
+                # 📑 Tạo nội dung gửi Discord
+                noi_dung = (
+                    f"📢 **{thoigian}**\n\n"
+                    f"🎉 __**{ten.upper()}**__ đã hoàn thành **Level {level} {ngon_ngu_text}** với số điểm 👉 __**{diem * 10} điểm**__ 🎯 trong Game Đoán Chữ!\n\n"
+                    f"🏆 Kỷ lục {ngon_ngu_text} hiện tại: {top_name} – Level {top_level} – {top_diem} điểm!\n"
+                )
+
+                if image_files:
+                    noi_dung += "\n📷 Ảnh từ các camera:\n"
+                    for img in image_files:
+                        ten_cam = image_cam_names.get(img, "Webcam")
+                        noi_dung += f"- {ten_cam}\n"
+                else:
+                    noi_dung += "\n⚠️ Không có camera khả dụng để chụp ảnh."
+
+                noi_dung += "\n\n© Cty TNHH Du Lịch & Thương Mại Quốc Tế Việt Trung Nhật\n📞 0986183806"
+
+                # 📤 Chuẩn bị file gửi
+                files = {}
+                for idx, img in enumerate(image_files):
+                    try:
+                        f = open(img, "rb")
+                        files[f"file{idx+1}"] = (os.path.basename(img), f, "image/jpeg")
+                        print(f"📤 Chuẩn bị gửi ảnh: {img}")
+                    except Exception as e:
+                        print(f"⚠️ Không thể mở ảnh {img} để gửi: {e}")
+
+                # 🔗 Gửi
+                response = requests.post(webhook_url, data={"content": noi_dung}, files=files if files else None)
+
+                # 🧹 Đóng và xoá ảnh tạm
+                for f in files.values():
+                    try:
+                        f[1].close()
+                        os.remove(os.path.join(tempfile.gettempdir(), f[0]))
+                        print(f"🧹 Đã xoá ảnh tạm: {f[0]}")
+                    except Exception as e:
+                        print(f"⚠️ Không xoá được ảnh {f[0]}: {e}")
+
+                sending_popup.destroy()
+                if response.status_code in [200, 204]:
+                    messagebox.showinfo("✅ Thành công", "Đã gửi điểm và ảnh lên Discord!")
+                else:
+                    messagebox.showerror("Lỗi", f"❌ Không gửi được lên Discord.\nHTTP {response.status_code}\n{response.text}")
+
+            except Exception as e:
+                sending_popup.destroy()
+                messagebox.showerror("Lỗi", f"❌ Lỗi gửi Discord:\n{e}")
+
+        #===================
+
+
+
+        def hien_cau_hoi():
+            nonlocal idx, diem, timer_label, timer_thread, stop_timer
+            global dang_doc_game
+            nonlocal frame_btn, ngonngu  # ✅ thêm nonlocal ngonngu
+
+            if dang_doc_game:
+                game.after(500, hien_cau_hoi)
+                return
+
+            for widget in frame_btn.winfo_children():
+                widget.destroy()
+            if timer_label:
+                timer_label.destroy()
+
+            if idx >= len(cau_hoi):
+                #if diem == len(cau_hoi):  # ✅ Đúng hết
+                if diem >= int(len(cau_hoi) * 0.7):  # ✅ Qua level nếu đúng ≥ 70%
+
+                    result_label.config(text=f"Hoàn thành level {level}!", fg="green")
+                    play_sound(WIN_SOUND)
+                    luu_diem(ten, level, diem * 10, ngonngu=ngonngu)
+
+                    popup = tk.Toplevel(game)
+                    popup.title("🎉 Hoàn thành level!")
+                    popup.configure(bg="white")
+                    w, h = 740, 420
+                    x = (popup.winfo_screenwidth() // 2) - (w // 2)
+                    y = (popup.winfo_screenheight() // 2) - (h // 2)
+                    popup.geometry(f"{w}x{h}+{x}+{y}")
+                    popup.transient(game)
+                    popup.grab_set()
+                    set_popup_icon(popup)
+                    popup.protocol("WM_DELETE_WINDOW", lambda: None)
+
+                    tk.Label(popup, text=f"🎉 Bạn đã hoàn thành Level {level}!", font=("Arial", 16, "bold"),
+                             fg="green", bg="white").pack(pady=10)
+
+
+                    
+                    # === Thông báo chúc mừng 2 ngôn ngữ ===
+                    ngon_ngu_text = {"Ja": "tiếng Nhật", "Cn": "tiếng Trung", "En": "tiếng Anh", "Dnn": "đa ngôn ngữ"}.get(ngonngu, "không xác định")
+                    thong_bao_tv = f"🎉 Chúc mừng {ten} đã qua level {level} ({ngon_ngu_text}) với số điểm {diem * 10}!"
+
+                    thong_bao_ngonngu = ""
+
+                    if ngonngu == "Ja":
+                        thong_bao_ngonngu = f"🎉 {ten}さん、おめでとうございます！レベル{level}（日本語）を{diem*10}点で合格しました！"
+                    elif ngonngu == "Cn":
+                        thong_bao_ngonngu = f"🎉 恭喜 {ten} 通过了第 {level} 级（中文）考试，得分为 {diem * 10} 分！"
+                    elif ngonngu == "En":
+                        thong_bao_ngonngu = f"🎉 Congratulations {ten} for passing level {level} (English) with score {diem * 10}!"
+                    elif ngonngu == "Dnn":
+                        thong_bao_tv = f"🎉 Chúc mừng {ten} đã qua level {level} phần đa ngôn ngữ với số điểm {diem * 10}!"
+
+                    tk.Label(popup, text=thong_bao_tv, font=("Arial", 14, "bold"),
+                             fg="green", bg="white", wraplength=460, justify="center").pack(pady=10)
+
+                    if thong_bao_ngonngu:
+                        tk.Label(popup, text=thong_bao_ngonngu, font=("Arial", 13),
+                                 fg="black", bg="white", wraplength=460, justify="center").pack(pady=5)
+
+                    # === Đọc 2 dòng thông báo ===
+                    try:
+                        engine = combo_engine.get()
+                        giong = combo_giong_popup.get()
+                        toc_do = combo_toc_do_popup.get()
+
+                        def doc_tv():
+                            level_text = f"level {level}"
+                            if ngonngu == "Ja":
+                                level_text += " tiếng Nhật"
+                            elif ngonngu == "Cn":
+                                level_text += " tiếng Trung"
+                            elif ngonngu == "En":
+                                level_text += " tiếng Anh"
+                            elif ngonngu == "Dnn":
+                                level_text += " phần đa ngôn ngữ"
+
+                            text_full = f"{thong_bao_tv} ({level_text})"
+                            doc_noi_dung_tung_dong_popup(text_full, engine, giong, toc_do, lang="vi")
+
+
+                        if thong_bao_ngonngu:
+                            lang_map = {"Ja": "ja", "Cn": "zh", "En": "en"}
+                            lang_code = lang_map.get(ngonngu, "vi")
+                            doc_noi_dung_tung_dong_popup(thong_bao_ngonngu, engine, giong, toc_do, lang=lang_code, callback=doc_tv)
+                        else:
+                            doc_tv()
+                    except Exception as e:
+                        print("❌ Lỗi đọc thông báo chúc mừng:", e)
+
+
+
+
+                    tk.Label(popup, text="Bạn muốn tiếp tục chơi hay lưu kết quả lại?", font=("Arial", 13),
+                             bg="white").pack(pady=5)
+
+                    btn_frame = tk.Frame(popup, bg="white")
+                    btn_frame.pack(pady=15)
+
+                    def tiep():
+                        popup.destroy()
+                        game.destroy()
+                        choi_game_ngay_trong_popup(df, ten, level + 1, ngonngu=ngonngu)
+
+                    def luu_ket_qua():
+                        popup.destroy()
+                        game.destroy()
+
+                    def thoat():
+                        popup.destroy()
+                        game.destroy()
+
+                    tk.Button(btn_frame,
+                              text="📤 Gửi Discord",
+                              font=("Arial", 13),
+                              width=18,
+                              bg="#7289DA",
+                              fg="white",
+                              command=lambda: threading.Thread(
+                                  target=gui_discord_gui_diem,
+                                  args=(ten, level, diem, ngonngu),
+                                  daemon=True).start()
+                              ).grid(row=3, column=0, padx=10, pady=5)
+
+
+                    tk.Button(btn_frame, text="▶ Tiếp tục chơi", font=("Arial", 13), width=18,
+                              bg="lightgreen", command=tiep).grid(row=0, column=0, padx=10, pady=5)
+                    tk.Button(btn_frame, text="💾 Lưu kết quả", font=("Arial", 13), width=18,
+                              bg="lightblue", command=luu_ket_qua).grid(row=1, column=0, padx=10, pady=5)
+                    tk.Button(btn_frame, text="❌ Thoát", font=("Arial", 13), width=18,
+                              bg="tomato", command=thoat).grid(row=2, column=0, padx=10, pady=5)
+
+                else:
+                    # ❌ Sai ≥ 1 câu
+                    play_sound(FALSE_SOUND)
+                    popup = tk.Toplevel(game)
+                    popup.title("Game Over")
+                    popup.geometry("620x420")
+                    popup.transient(game)
+                    popup.grab_set()
+                    set_popup_icon(popup)
+                    popup.protocol("WM_DELETE_WINDOW", lambda: None)
+
+                    tk.Label(popup, text="Game over! Bạn chưa trả lời đúng tất cả!", font=("Arial", 18), fg="red").pack(pady=10)
+                    tk.Label(popup, text=f"Điểm của bạn: {diem}/{len(cau_hoi)}", font=("Arial", 14)).pack(pady=5)
+                    tk.Label(popup, text="Bạn có muốn chơi lại level này không?", font=("Arial", 14)).pack(pady=5)
+
+                    def choi_lai():
+                        popup.destroy()
+                        game.destroy()
+                        choi_game_ngay_trong_popup(df, ten, level, ngonngu=ngonngu)
+
+                    def thoat():
+                        popup.destroy()
+                        game.destroy()
+
+                    tk.Button(popup, text="🔁 Chơi lại", font=("Arial", 13), width=18,
+                              bg="orange", command=choi_lai).pack(pady=5)
+                    tk.Button(popup, text="❌ Thoát", font=("Arial", 13), width=18,
+                              bg="tomato", command=thoat).pack(pady=5)
+
+                return
+
+
+            
+            ch = cau_hoi[idx]
+            cau_so = idx + 1
+            label_cau.config(text=f"Câu hỏi số {cau_so}/{len(cau_hoi)} – Level {level}\n\n{ch['Câu hỏi']}\n{ch['Câu rút gọn']}")
+
+            dap_an_dung = ch["Đáp án"] + f" ({ch['Nghĩa TV']})"
+            cac_dap_an = df.sample(3).apply(lambda r: r["Đáp án"] + f" ({r['Nghĩa TV']})", axis=1).tolist()
+            cac_dap_an.append(dap_an_dung)
+            random.shuffle(cac_dap_an)
+
+            global current_channel
+            if current_channel and current_channel.get_busy():
+                current_channel.stop()
+
+            try:
+                cau_chinh = ch["Câu hỏi"]
+                cau_rut_gon = ch["Câu rút gọn"]
+                engine = combo_engine.get()
+                toc_do = combo_toc_do_popup.get()
+                giong_mac_dinh = combo_giong_popup.get()
+
+                def doc_cau_hoi_dung_polly():
+                    import pygame, tempfile, uuid
+                    from langdetect import detect
+
+                    if ngonngu == "Dnn":
+                        try: lang_code = detect(cau_chinh)
+                        except: lang_code = "vi"
+                    else:
+                        lang_code = {"Ja": "ja", "Cn": "zh", "En": "en"}.get(ngonngu, "vi")
+
+                    path_nam = os.path.join(tempfile.gettempdir(), f"game_{uuid.uuid4().hex}_nam.mp3")
+                    path_nu = os.path.join(tempfile.gettempdir(), f"game_{uuid.uuid4().hex}_nu.mp3")
+
+                    tao_file_mp3(cau_chinh, lang=lang_code, voice="Nam", toc_do=toc_do, engine="Polly", file_out=path_nam)
+                    pygame.mixer.init()
+                    pygame.mixer.music.load(path_nam)
+                    pygame.mixer.music.play()
+                    while pygame.mixer.music.get_busy(): time.sleep(0.1)
+                    time.sleep(0.5)
+                    tao_file_mp3(cau_rut_gon, lang=lang_code, voice="Nữ", toc_do=toc_do, engine="Polly", file_out=path_nu)
+                    pygame.mixer.music.load(path_nu)
+                    pygame.mixer.music.play()
+
+                if engine == "Polly":
+                    threading.Thread(target=doc_cau_hoi_dung_polly, daemon=True).start()
+                else:
+                    if ngonngu == "Dnn":
+                        from langdetect import detect
+                        try: lang_cau_hoi = detect(cau_chinh)
+                        except: lang_cau_hoi = "vi"
+                    else:
+                        lang_cau_hoi = {"Ja": "ja", "Cn": "zh", "En": "en"}.get(ngonngu, "vi")
+                    doc_noi_dung_tung_dong_popup(cau_chinh + "\n" + cau_rut_gon, engine, giong_mac_dinh, toc_do, lang=lang_cau_hoi)
+
+            except Exception as e:
+                print("❌ Lỗi đọc câu hỏi:", e)
+
+
+
+
+
+            stop_timer = [False]
+
+            def dem_nguoc(ngon_ngu_chon):  # truyền vào thay vì nonlocal
+                nonlocal ch
+                tg = 25  # thời gian đếm ngược
+                while tg > 0 and not stop_timer[0]:
+                    try:
+                        timer_label.config(text=f"⏳ {tg}s", fg="blue")
+                    except:
+                        return
+                    tg -= 1
+                    time.sleep(1)
+
+                if not stop_timer[0]:
+                    if current_channel and current_channel.get_busy():
+                        current_channel.stop()
+                    app_beep(1000, 200)
+                    app_beep(1000, 200)
+
+                    try:
+                        if ch:
+                            thong_bao_sai(game, "⏰ Hết giờ!", dap_an_dung,
+                                          f"{ch.get('Câu hỏi', '')}\n{ch.get('Câu rút gọn', '')}",
+                                          tiep_cau_tiep, ch, ngonngu=ngon_ngu_chon)
+                        else:
+                            print("⚠️ Không có câu hỏi hiện tại để thông báo sai.")
+                    except Exception as e:
+                        print("❌ Lỗi khi thông báo hết giờ:", e)
+
+
+
+
+            def tiep_cau_tiep():
+                nonlocal idx
+                idx += 1
+                hien_cau_hoi()
+
+            timer_label = tk.Label(game, text="", font=("Arial", 68, "bold"), fg="red", bg="white", bd=2, relief="solid")
+            timer_label.place(relx=1.0, rely=0.0, anchor="ne")  # Góc phải trên
+           
+            timer_thread = threading.Thread(target=lambda: dem_nguoc(ngonngu))
+
+            timer_thread.daemon = True
+            timer_thread.start()
+
+            def xu_ly_chon(ans):
+                nonlocal idx, diem
+                stop_timer[0] = True
+
+                if current_channel and current_channel.get_busy():
+                    current_channel.stop()
+
+                if ans == dap_an_dung:
+                    play_sound(TRUE_SOUND)
+                    diem += 1
+                    label_thong_tin.config(text=f"{ten} – Lv{level} – {diem * 10}đ")
+                    thong_bao_dung(game, dap_an_dung, f"{ch['Câu hỏi']}\n{ch['Câu rút gọn']}", tiep_cau_tiep, ch, ngonngu)
+                else:
+                    play_sound(FALSE_SOUND)
+                    thong_bao_sai(game, "Sai rồi!", dap_an_dung, f"{ch['Câu hỏi']}\n{ch['Câu rút gọn']}", tiep_cau_tiep, ch, ngonngu)
+
+
+
+
+
+
+            #=========
+            # Vùng hiển thị ảnh và nút đáp án
+            # 🧹 Xoá vùng đáp án cũ (nếu có)
+            for widget in game.winfo_children():
+                if widget not in [label_thong_tin, label_cau, timer_label, result_label]:
+                    widget.destroy()
+
+            # 🧱 Frame chứa các đáp án
+            frame_btn = tk.Frame(game)
+            frame_btn.pack(pady=10)
+
+            for i, da in enumerate(cac_dap_an):
+                frame_cot = tk.Frame(frame_btn)
+                frame_cot.grid(row=0, column=i, padx=10, pady=10)
+
+                ten_dap_an_goc = da.split(" (")[0].strip()
+                dong_anh = df[df["Đáp án"].str.strip() == ten_dap_an_goc]
+
+                duong_dan_anh = ""
+                if not dong_anh.empty:
+                    ten_file_anh = dong_anh.iloc[0].get("images", "")
+                    duong_dan_anh = ""
+                    if ten_file_anh:
+                        # Nếu là đa ngôn ngữ => dò trong 3 thư mục
+                        if ngonngu == "Dnn":
+                            for subfolder in ["Ja", "Cn", "En"]:
+                                path = os.path.join(IMAGE_FOLDER, subfolder, ten_file_anh)
+                                if os.path.exists(path):
+                                    duong_dan_anh = path
+                                    break
+                        else:
+                            thu_muc_anh = os.path.join(IMAGE_FOLDER, ngonngu)
+                            path = os.path.join(thu_muc_anh, ten_file_anh)
+                            if os.path.exists(path):
+                                duong_dan_anh = path
+
+
+
+                print(f"🔍 Đang tìm ảnh cho đáp án: {ten_dap_an_goc}")
+                print("📂 Ảnh tìm được:", duong_dan_anh)
+
+                if duong_dan_anh and os.path.exists(duong_dan_anh):
+                    try:
+                        img = Image.open(duong_dan_anh).resize((180, 180))
+                        tk_img = ImageTk.PhotoImage(img)
+                        label_img = tk.Label(frame_cot, image=tk_img)
+                        label_img.image = tk_img  # giữ tham chiếu
+                        label_img.pack()
+                    except Exception as e:
+                        print("❌ Không thể hiển thị ảnh đáp án:", e)
+
+                btn = tk.Button(frame_cot, text=da, width=30, font=("Arial", 13), bg="#f0f8ff", fg="darkblue",
+                                command=lambda a=da: xu_ly_chon(a))
+                btn.pack(pady=4)
+
+                
+        #===
+        hien_cau_hoi()
+        
+        # Khi người dùng đóng cửa sổ, dừng đọc
+        def on_close():
+            try:
+                if current_channel and current_channel.get_busy():
+                    current_channel.stop()
+            except:
+                pass
+            game.destroy()
+
+        game.protocol("WM_DELETE_WINDOW", on_close)
+        
+
+            
+#===Cửa sổ bắt đầu chọn chơi game đa ngôn ngữ
+        
+    def bat_dau_game_popup():
+        # DEAD CODE - remove later. Entry point game đã bị ẩn khỏi UI.
+        print("Disabled: Game Đoán Chữ removed in audio-tool version.")
+        try:
+            messagebox.showinfo("Đã tắt", "Game Đoán Chữ đã được tắt.", parent=popup)
+        except Exception:
+            pass
+        return
+
+        from datetime import datetime
+
+        popup_game_start = tk.Toplevel(popup)
+        popup_game_start.title("Bắt đầu Game Đoán Chữ")
+        popup_game_start.attributes("-fullscreen", True)
+        set_popup_icon(popup_game_start)
+        popup_game_start.grab_set()
+
+        tk.Button(popup_game_start, text="🗕", command=lambda: popup_game_start.iconify()).place(relx=0.95, rely=0.01)
+        tk.Button(popup_game_start, text="❌", fg="red", command=popup_game_start.destroy).place(relx=0.98, rely=0.01)
+
+        tk.Label(popup_game_start, text="Nhập tên của bạn:").pack(pady=5)
+        entry_ten = tk.Entry(popup_game_start, font=("Arial", 14))
+        entry_ten.insert(0, "Phương Anh")
+        entry_ten.pack(pady=5)
+
+        tk.Label(popup_game_start, text="Chọn ngôn ngữ:").pack(pady=5)
+        combo_ngon_ngu = ttk.Combobox(popup_game_start, font=("Arial", 14), state="readonly")
+        combo_ngon_ngu['values'] = ["Tiếng Nhật", "Tiếng Trung", "Tiếng Anh", "Đa ngôn ngữ"]
+        combo_ngon_ngu.set("Tiếng Nhật")
+        combo_ngon_ngu.pack(pady=5)
+
+        frame_level = tk.Frame(popup_game_start)
+        frame_level.pack(pady=5)
+        tk.Label(frame_level, text="Chọn level (1 = 5 câu, 2 = 10 câu,...): 10 điểm mỗi câu").pack()
+        entry_level = tk.Entry(frame_level, font=("Arial", 14))
+        entry_level.insert(0, "1")
+        entry_level.pack()
+
+        def hien_level_combobox(level_max):
+            for widget in frame_level.winfo_children():
+                widget.destroy()
+            tk.Label(frame_level, text=f"Chọn level (tối đa Lv{level_max}):").pack()
+            combo = ttk.Combobox(frame_level, font=("Arial", 14), state="readonly")
+            combo['values'] = list(range(1, level_max + 1))
+            combo.set(level_max)
+            combo.pack()
+            return combo
+
+        try:
+            lich_su_daydu = tai_lich_su()
+            lich_su = lich_su_daydu[-100:][::-1]
+
+            def loc_top(lst, ma_ngon_ngu):
+                return max([r for r in lst if r.get("ngonngu") == ma_ngon_ngu], key=lambda r: (r["level"], r["diem"]), default=None)
+
+            top_ja = loc_top(lich_su_daydu, "Ja")
+            top_cn = loc_top(lich_su_daydu, "Cn")
+            top_en = loc_top(lich_su_daydu, "En")
+            top_dnn = loc_top(lich_su_daydu, "Dnn")
+            top_recent = max(lich_su, key=lambda r: (r["level"], r["diem"]), default=None)
+
+            def to_text_top(top, label):
+                if not top: return None
+                ma = top.get("ngonngu", "?")
+                tg = top.get("thoigian", "")
+                return f"🏆 Top 1 {label}: {top['ten']} ({ma}: {top['diem']}đ Lv{top['level']} {tg})"
+
+            frame_top4 = tk.Frame(popup_game_start)
+            frame_top4.pack(pady=5)
+
+            top_ngon_ngu = [
+                (top_ja, "Tiếng Nhật"),
+                (top_cn, "Tiếng Trung"),
+                (top_en, "Tiếng Anh"),
+                (top_dnn, "Đa ngôn ngữ")
+            ]
+
+            for i, (top, label) in enumerate(top_ngon_ngu):
+                text = to_text_top(top, label)
+                if text:
+                    row, col = i // 2, i % 2
+                    tk.Label(frame_top4, text=text, font=("Arial", 11, "bold"), fg="red", anchor="w", justify="left").grid(row=row, column=col, sticky="w", padx=10, pady=2)
+
+            if top_recent:
+                ma = top_recent.get("ngonngu", "?")
+                tg = top_recent.get("thoigian", "")
+                tk.Label(popup_game_start,
+                         text=f"📈 Top 1 gần nhất: {top_recent['ten']} ({ma}: {top_recent['diem']}đ Lv{top_recent['level']} {tg})",
+                         font=("Arial", 10), fg="blue").pack()
+
+            btn_bat_dau = tk.Button(popup_game_start, text="Bắt đầu chơi", font=("Arial", 12),
+                                    bg="lightgreen", command=lambda: start_game(entry_ten.get(), entry_level.get(), combo_ngon_ngu.get()))
+            btn_bat_dau.pack(pady=10)
+
+            khung_luoi = tk.Frame(popup_game_start)
+            khung_luoi.pack(pady=10)
+
+            nut_rong_pixel = 200
+            man_hinh_rong = popup_game_start.winfo_screenwidth()
+            so_cot = max(1, man_hinh_rong // nut_rong_pixel)
+
+            for i, ng in enumerate(lich_su):
+                tg = ng.get("thoigian", "")
+                ma = ng.get("ngonngu", "?")
+                text = f"{ng['ten']} ({ma}: {ng['diem']}đ Lv{ng['level']} {tg})"
+                fg = "blue" if ng == top_recent else "red" if ng in [top_ja, top_cn, top_en, top_dnn] else "black"
+
+                def gan_thong_tin(ng=ng):
+                    entry_ten.delete(0, tk.END)
+                    entry_ten.insert(0, ng["ten"])
+                    ten_day_du = {"Ja": "Tiếng Nhật", "Cn": "Tiếng Trung", "En": "Tiếng Anh", "Dnn": "Đa ngôn ngữ"}.get(ng.get("ngonngu", ""), "Đa ngôn ngữ")
+                    combo_ngon_ngu.set(ten_day_du)
+                    nonlocal entry_level
+                    entry_level = hien_level_combobox(ng["level"] + 1)
+
+                row, col = i // so_cot, i % so_cot
+                tk.Button(khung_luoi, text=text, font=("Arial", 8), width=30, fg=fg, command=gan_thong_tin).grid(row=row, column=col, padx=2, pady=2)
+
+        except Exception as e:
+            print("❌ Lỗi hiển thị người chơi gần đây:", e)
+
+        def start_game(ten=None, level_raw=None, ngon_ngu_chon=None):
+            ten = ten or entry_ten.get().strip()
+            if not ten:
+                messagebox.showerror("Lỗi", "Vui lòng nhập tên.")
+                return
+            try:
+                level = int(level_raw)
+            except:
+                messagebox.showerror("Lỗi", "Level phải là số.")
+                return
+
+            ma_hoa = {
+                "Tiếng Nhật": "Ja",
+                "Tiếng Trung": "Cn",
+                "Tiếng Anh": "En",
+                "Đa ngôn ngữ": "Dnn"
+            }
+            ngonngu_ma = ma_hoa.get(ngon_ngu_chon, ngon_ngu_chon)
+
+            # 🧠 Kiểm tra người chơi cũ
+            lich_su = tai_lich_su()
+            muc_gan_dung = [u for u in lich_su if u["ten"] == ten and u.get("ngonngu") == ngonngu_ma]
+            nguoi_cu = max(muc_gan_dung, key=lambda u: u["level"], default=None)
+
+            if nguoi_cu:
+                level_max = nguoi_cu["level"] + 1
+                if level > level_max:
+                    messagebox.showwarning("Giới hạn", f"Bạn chỉ có thể chọn level ≤ {level_max}.")
+                    return
+            else:
+                if level != 1:
+                    messagebox.showwarning("Người mới", "Người mới phải bắt đầu từ level 1.")
+                    return
+
+            try:
+                df = doc_du_lieu_game(ngonngu_ma)
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Lỗi khi đọc dữ liệu:\n{e}")
+                return
+
+            if df.empty:
+                messagebox.showerror("Lỗi", "File Game_doan_chu.xlsx trống hoặc lỗi")
+                return
+
+            popup_game_start.destroy()
+            choi_game_ngay_trong_popup(df, ten, level, ngonngu_ma)
+
+
+#====
+    #==Gọi từ ngoài
+    if mo_tu_ben_ngoai:
+        popup.after(300, bat_dau_game_popup)
+#====
+    def tao_video_game_popup():
+        # DEAD CODE - remove later. Video game đã bị ẩn khỏi UI.
+        print("Disabled: game video export removed in audio-tool version.")
+        try:
+            messagebox.showinfo("Đã tắt", "Tính năng tạo video game đã được tắt.", parent=popup)
+        except Exception:
+            pass
+        return
+
+        popup_video = tk.Toplevel(popup)
+        set_popup_icon(popup_video)
+        popup_video.title("Tạo Video Game Đoán Chữ")
+        popup_video.geometry("850x600")
+        popup_video.grab_set()
+
+        tk.Label(popup_video, text="Chọn ngôn ngữ:").pack()
+        combo_ngon_ngu = ttk.Combobox(popup_video, font=("Arial", 14), state="readonly")
+        combo_ngon_ngu['values'] = ["Tiếng Nhật", "Tiếng Trung", "Tiếng Anh", "Đa ngôn ngữ"]
+        combo_ngon_ngu.set("Tiếng Nhật")
+        combo_ngon_ngu.pack(pady=5)
+
+        tk.Label(popup_video, text="Chọn hình nền:").pack()
+        bg_path_var = tk.StringVar()
+        tk.Entry(popup_video, textvariable=bg_path_var, width=50).pack()
+        tk.Button(popup_video, text="Chọn...", command=lambda: bg_path_var.set(filedialog.askopenfilename(title="Chọn hình nền", filetypes=[("Image files", "*.png;*.jpg")]))).pack()
+
+        tk.Label(popup_video, text="Chọn từ câu số:").pack()
+        entry_start = tk.Entry(popup_video)
+        entry_start.insert(0, "1")
+        entry_start.pack()
+
+        tk.Label(popup_video, text="Đến câu số:").pack()
+        entry_end = tk.Entry(popup_video)
+        entry_end.insert(0, "10")
+        entry_end.pack()
+
+        def run_video_game():
+            try:
+                # Lấy ngôn ngữ được chọn
+                ngonngu_raw = combo_ngon_ngu.get()
+                ma_hoa = {
+                    "Tiếng Nhật": "Ja",
+                    "Tiếng Trung": "Cn",
+                    "Tiếng Anh": "En",
+                    "Đa ngôn ngữ": "Dnn"
+                }
+                ngonngu = ma_hoa.get(ngonngu_raw, ngonngu_raw)
+
+                # Đọc dữ liệu
+                df = doc_du_lieu_game(ngonngu)
+
+                start = int(entry_start.get()) - 1
+                end = int(entry_end.get())
+                bg = bg_path_var.get()
+                if not os.path.exists(bg):
+                    messagebox.showerror("Lỗi", "Hình nền không tồn tại!")
+                    return
+                sub_df = df.iloc[start:end]
+                if sub_df.empty:
+                    messagebox.showerror("Lỗi", "Không có câu nào trong khoảng đã chọn.")
+                    return
+
+                popup_video.destroy()
+                tao_video_game_doan_chu(sub_df, bg)
+            except Exception as e:
+                messagebox.showerror("Lỗi", str(e))
+
+        tk.Button(popup_video, text="Tạo video", command=lambda: threading.Thread(target=run_video_game).start(), bg="lightgreen").pack(pady=10)
+
+# ===== END DEAD CODE: GAME UI / GAME AUDIO / GAME IMAGE =====
+#=====
+
+
+    # Buttons (2 cột cho gọn hơn)
+    tk.Label(option_frame, text="Thao tác nhanh", font=("Arial", 10, "bold"), bg="#f8fff8").pack(anchor="w", padx=10, pady=(10, 4))
+
+    button_grid = tk.Frame(option_frame, bg="#f8fff8")
+    button_grid.pack(fill="x", padx=10, pady=(0, 8))
+
+    action_buttons = [
+        # Disabled: game/video/background/subtitle features removed in audio-tool version.
+        # ("🎮 Game Đoán Chữ", "#ccffcc", bat_dau_game_popup),
+        ("▶️ Đọc nội dung", "lightgreen", doc_popup),
+        ("🎯 Ép về ngôn ngữ đã chọn", "#ffe6cc", lambda: ep_toan_bo_dong_ve_lang()),
+        ("⏸ Dừng đọc", "orange", dung_doc),
+        ("🔁 Đọc lại", "lightblue", doc_lai_popup),
+        ("🎧 Xuất MP3", "lightyellow", xuat_popup_mp3),
+        ("🎧 Xuất M4A", "lightyellow", xuat_popup_m4a),
+        # ("📄 Tạo phụ đề + MP3", "lightblue", run_xuat_srt_thread),
+        # ("🖼️ Chọn background", "lightgray", chon_bg),
+        # ("🎥 Tạo Video", "lightpink", run_xuat_video_thread),
+        ("🎧 Xuất M4A MultiFiles", "#ffcccc", xuat_popup_m4a_multifiles),
+        ("⬅ Trang trước", "#f0f0f0", prev_page),
+        ("Trang tiếp ➡", "#f0f0f0", next_page),
+    ]
+
+    for idx, (label_text, bg_color, callback) in enumerate(action_buttons):
+        row = idx // 2
+        col = idx % 2
+        tk.Button(
+            button_grid,
+            text=label_text,
+            bg=bg_color,
+            command=callback,
+        ).grid(row=row, column=col, padx=3, pady=4, sticky="ew", ipady=2)
+
+    button_grid.columnconfigure(0, weight=1)
+    button_grid.columnconfigure(1, weight=1)
+
+
+    
+    tk.Label(frame, text="", height=2).pack() # Thêm label trống để tránh bị cut cuối
+    frame.update_idletasks()
+    canvas.config(scrollregion=canvas.bbox("all"))
+
+    def on_frame_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    frame.bind("<Configure>", on_frame_configure)
+
+    def on_close():
+        global popup_lang_open
+        popup_lang_open = False
+        popup.destroy()
+
+    popup.protocol("WM_DELETE_WINDOW", on_close)
+
+#===============
+#=====phát đa ngôn ngữ
+
+def phat_da_ngon_ngu(danh_sach_cau, giong="Nam", toc_do="Bình thường", close_popup=None):
+    import threading, tempfile, os, time
+    import pygame
+    from gtts import gTTS
+    from pydub import AudioSegment
+    global dung_doc_ngay, dang_doc
+
+    if 'dang_doc' not in globals():
+        dang_doc = False
+    if dang_doc:
+        print("⛔ Đang đọc, không thể đọc mới.")
+        return
+
+    dung_doc_ngay = False
+    dang_doc = True
+
+    def run():
+        global dung_doc_ngay, dang_doc
+        count = 0
+
+        for dong, lang in danh_sach_cau:
+            if dung_doc_ngay:
+                print("⛔ Dừng đọc ngay.")
+                break
+
+            try:
+                dong_sach = lam_sach_van_ban(dong)
+                if lang not in ["vi", "en", "ja", "zh"]:
+                    lang = "vi"
+
+                # Nếu hội thoại thì xen kẽ giọng nam/nữ
+                if giong == "Hội thoại 1 câu nam - 1 câu nữ":
+                    voice = "Nam" if count % 2 == 0 else "Nữ"
+                    count += 1
+                else:
+                    voice = giong
+
+                # ⚡ Ghi log giọng, sau này dùng engine khác có thể đổi file hoặc style
+                print(f"📢 Đọc ({lang}) [{voice}]: {dong_sach}")
+
+                slow = True if toc_do == "Chậm" else False
+
+                file_mp3 = tempfile.mktemp(suffix=".mp3")
+                gTTS(text=dong_sach, lang=lang, slow=slow).save(file_mp3)
+
+                pygame.mixer.init()
+                sound = pygame.mixer.Sound(file_mp3)
+                channel = pygame.mixer.find_channel()
+                if channel:
+                    channel.play(sound)
+                    while channel.get_busy():
+                        if dung_doc_ngay:
+                            print("⛔ Dừng đọc giữa dòng.")
+                            channel.stop()
+                            break
+                        time.sleep(0.05)
+                os.remove(file_mp3)
+
+            except Exception as e:
+                print(f"❌ Lỗi đọc: {e}")
+
+        dang_doc = False
+        print("✅ Kết thúc đọc nội dung.")
+        if close_popup:
+            try:
+                close_popup()
+            except Exception as e:
+                print("Không thể đóng popup:", e)
+
+    threading.Thread(target=run).start()
+#=====
+
+#======= Xuất mp3/wav giao diện chính
+
+
+def xuat_file_mp3():
+    from tkinter import messagebox
+
+    print("Disabled: main-window audio export was removed. Use the language selection popup instead.")
+    try:
+        messagebox.showinfo(
+            "Đã tắt xuất audio ở màn hình chính",
+            "Vui lòng dùng popup chọn ngôn ngữ để xuất MP3/M4A.",
+        )
+    except Exception as e:
+        print("Không thể hiển thị thông báo tắt xuất audio main UI:", e)
+    return
+
+    import os
+    from tkinter import filedialog, messagebox
+    import pygame
+
+    def export_thread():
+        print("🔄 Bắt đầu xuất file MP3...")
+        btn_xuat_mp3.config(text="⏳ Đang chuẩn bị...", state="disabled")
+        progress_var.set(0)
+        progress_bar.pack()
+
+        danh_sach = tach_de_thanh_danh_sach_da_ngon_ngu()
+        if not danh_sach:
+            messagebox.showwarning("Trống", "Không có nội dung để xuất.")
+            btn_xuat_mp3.config(text="🎧 Xuất file MP3", state="normal")
+            progress_bar.pack_forget()
+            pygame.mixer.init()
+            pygame.mixer.music.load(WARNING_SOUND)
+            pygame.mixer.music.play()
+            return
+
+        # === Hỏi chọn định dạng ===
+        res = messagebox.askquestion("Chọn định dạng", "Bạn muốn xuất file MP3 (Yes) hay WAV (No)?", icon="question")
+        if res == "yes":
+            ext = ".mp3"
+            filetypes = [("MP3 files", "*.mp3")]
+            fmt = "mp3"
+        elif res == "no":
+            ext = ".wav"
+            filetypes = [("WAV files", "*.wav")]
+            fmt = "wav"
+        else:
+            btn_xuat_mp3.config(text="🎧 Xuất file MP3", state="normal")
+            progress_bar.pack_forget()
+            return
+
+        file_path = filedialog.asksaveasfilename(defaultextension=ext,
+                                                 filetypes=filetypes,
+                                                 title=f"Lưu file {fmt.upper()}")
+        if not file_path:
+            btn_xuat_mp3.config(text="🎧 Xuất file MP3", state="normal")
+            progress_bar.pack_forget()
+            return
+
+        if not FFMPEG_PATH or not os.path.isfile(FFMPEG_PATH):
+            messagebox.showerror("Lỗi", "Không tìm thấy ffmpeg trên máy và cũng không có bản đi kèm trong portable.")
+            btn_xuat_mp3.config(text="🎧 Xuất file MP3", state="normal")
+            progress_bar.pack_forget()
+            pygame.mixer.init()
+            pygame.mixer.music.load(WARNING_SOUND)
+            pygame.mixer.music.play()
+            return
+
+        try:
+            full_audio = AudioSegment.silent(duration=500)
+            temp_dir = tempfile.gettempdir()
+            tong_dong = len(danh_sach)
+
+            for i, (dong, lang_raw) in enumerate(danh_sach):
+                try:
+                    cleaned = lam_sach_van_ban(dong)
+                    toc_do = combo_toc_do.get()
+                    slow = True if toc_do == "Chậm" else False
+
+                    lang = doan_ngon_ngu_theo_ky_tu(cleaned)
+                    if lang in ["zh-cn", "zh-tw", "zh-hk"]:
+                        lang = "zh"
+                    if lang not in ["vi", "en", "ja", "zh"]:
+                        lang = "vi"
+
+                    btn_xuat_mp3.config(text=f"⏳ Dòng {i + 1}/{tong_dong}...")
+
+                    tts = gTTS(text=cleaned, lang=lang, slow=slow)
+                    temp_mp3 = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex}.mp3")
+                    tts.save(temp_mp3)
+
+                    segment = AudioSegment.from_mp3(temp_mp3)
+                    full_audio += segment + AudioSegment.silent(duration=300)
+                    os.remove(temp_mp3)
+
+                    progress = int((i + 1) / tong_dong * 100)
+                    progress_var.set(progress)
+                    print(f"✅ {i + 1}/{tong_dong}: ({lang}) {cleaned[:40]}...")
+
+                except Exception as e:
+                    print(f"❌ Lỗi dòng {i}: ({lang_raw}) {dong} → {e}")
+                    continue
+
+            # === Xuất file với định dạng đã chọn ===
+            full_audio.export(file_path, format=fmt, bitrate="192k")
+
+            pygame.mixer.init()
+            pygame.mixer.music.load(SUCCESS_SOUND)
+            pygame.mixer.music.play()
+            gui_discord_thong_bao(f"🎙️ [TextToMp3] Đã xuất xong: {file_path}") #báo tới điện thoại discor
+
+            print("✅ Xuất xong:", file_path)
+
+            btn_xuat_mp3.config(text="✅ Đã xuất xong!")
+            btn_xuat_mp3.after(3000, lambda: btn_xuat_mp3.config(text="🎧 Xuất file MP3", state="normal"))
+            progress_bar.pack_forget()
+
+            # ==== Thông báo popup mở file ====
+            def open_file():
+                try: open_path_cross_platform(file_path)
+                except Exception as e: messagebox.showerror("Lỗi", f"Không mở được file:\n{e}")
+
+            def open_folder():
+                try: open_path_cross_platform(os.path.dirname(file_path))
+                except Exception as e: messagebox.showerror("Lỗi", f"Không mở được thư mục:\n{e}")
+
+            def play_now():
+                top = tk.Toplevel()
+                set_popup_icon(top)
+                top.title("🔊 Đang phát: " + os.path.basename(file_path))
+                top.geometry("300x120")
+                is_playing = [True]
+                def stop_play():
+                    is_playing[0] = False
+                    top.destroy()
+                def run():
+                    try:
+                        pygame.mixer.init()
+                        pygame.mixer.music.load(file_path)
+                        pygame.mixer.music.play()
+                        while pygame.mixer.music.get_busy() and is_playing[0]:
+                            time.sleep(0.1)
+                    except Exception as e:
+                        print("Lỗi phát:", e)
+                threading.Thread(target=run, daemon=True).start()
+                tk.Button(top, text="Dừng phát", command=stop_play, fg="red", font=("Arial", 11)).pack(pady=16)
+
+            popup = tk.Toplevel(root)
+            set_popup_icon(popup)
+            popup.title("Hoàn tất xuất MP3")
+            popup.geometry("390x180+{}+{}".format(
+                root.winfo_x() + root.winfo_width() // 2 - 195,
+                root.winfo_y() + root.winfo_height() // 2 - 90
+            ))
+            popup.grab_set()
+            popup.transient(root)
+            tk.Label(popup, text=f"🎉 Đã xuất file {fmt.upper()}:\n" + file_path, font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+            frm = tk.Frame(popup)
+            frm.pack(pady=3)
+            tk.Button(frm, text="Mở file", width=10, command=lambda: [popup.destroy(), open_file()]).pack(side="left", padx=8)
+            tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup.destroy(), open_folder()]).pack(side="left", padx=8)
+            tk.Button(frm, text="Phát ngay", width=10, command=lambda: [popup.destroy(), play_now()]).pack(side="left", padx=8)
+            tk.Button(popup, text="Đóng", command=popup.destroy).pack(pady=7)
+
+        except Exception as e:
+            print("❌ Xuất MP3 lỗi:", e)
+            pygame.mixer.init()
+            pygame.mixer.music.load(WARNING_SOUND)
+            pygame.mixer.music.play()
+            messagebox.showerror("Lỗi", f"Xuất {fmt.upper()} bị lỗi:\n{e}")
+            btn_xuat_mp3.config(text="🎧 Xuất file MP3", state="normal")
+            progress_bar.pack_forget()
+
+    threading.Thread(target=export_thread, daemon=True).start()
+
+#===ĐỌC LẠI
+def doc_lai():
+    if not noi_dung_cuoi:
+        messagebox.showinfo("Chưa có nội dung", "Không có nội dung nào để đọc lại.")
+        return
+    txt_de.delete("1.0", tk.END)
+    txt_de.insert(tk.END, noi_dung_cuoi)
+    doc_noi_dung_de()
+
+def xu_ly_doc_noi_dung():
+    if che_do_doc.get() == "Tự động":
+        doc_noi_dung_de()
+    else:
+        danh_sach = tach_de_thanh_danh_sach_da_ngon_ngu()
+        phat_da_ngon_ngu(danh_sach)
+#================
+
+
+# Hàm import tài liệu
+def import_tai_lieu():
+    from tkinter import filedialog
+    import docx
+    import PyPDF2
+    import openpyxl
+
+    file_path = filedialog.askopenfilename(
+        title="Chọn file tài liệu",
+        filetypes=[("All files", "*.*"), ("Word", "*.docx"), ("Excel", "*.xlsx"), ("PDF", "*.pdf"), ("PowerPoint", "*.pptx"), ("Text", "*.txt")]
+
+    )
+    if not file_path:
+        return
+
+    noi_dung = ""
+    try:
+        ext = os.path.splitext(file_path)[-1].lower()
+
+        if ext == ".txt":
+            with open(file_path, "r", encoding="utf-8") as f:
+                noi_dung = f.read()
+
+        elif ext == ".docx":
+            doc = docx.Document(file_path)
+            for para in doc.paragraphs:
+                noi_dung += para.text + "\n"
+
+        elif ext == ".pdf":
+            with open(file_path, "rb") as f:
+                reader = PyPDF2.PdfReader(f)
+                for page in reader.pages:
+                    noi_dung += page.extract_text() + "\n"
+
+        elif ext == ".xlsx":
+            wb = openpyxl.load_workbook(file_path)
+            sheet = wb.active
+            for row in sheet.iter_rows(values_only=True):
+                for cell in row:
+                    if cell:
+                        noi_dung += str(cell) + " "
+                noi_dung += "\n"
+
+        elif ext == ".pptx":
+            try:
+                from pptx import Presentation
+            except ImportError:
+                tk.messagebox.showerror("Lỗi", "Chưa cài đặt python-pptx. Vui lòng cài đặt: pip install python-pptx")
+                return
+            
+            prs = Presentation(file_path)
+            for slide_idx, slide in enumerate(prs.slides, 1):
+                noi_dung += f"[Slide {slide_idx}]\n"
+                for shape in slide.shapes:
+                    if hasattr(shape, "text") and shape.text.strip():
+                        for line in shape.text.split('\n'):
+                            if line.strip():
+                                noi_dung += line.strip() + "\n"
+                noi_dung += "\n"
+
+        else:
+            tk.messagebox.showwarning("Không hỗ trợ", f"Định dạng file {ext} chưa được hỗ trợ.")
+
+    except Exception as e:
+        tk.messagebox.showerror("Lỗi", f"Không đọc được file:\n{e}")
+        return
+
+    if noi_dung.strip():
+        txt_de.delete("1.0", tk.END)
+        txt_de.insert(tk.END, noi_dung.strip())
+    else:
+        tk.messagebox.showinfo("Trống", "Không có nội dung hợp lệ trong tài liệu.")
+
+
+#hàm chuyển đổi định dạng âm thanh
+
+def convert_mp3_wav():
+    import os
+    from tkinter import filedialog, messagebox
+    import pygame
+
+    file_path = filedialog.askopenfilename(title="Chọn file MP3 hoặc WAV",
+                                           filetypes=[("Audio files", "*.mp3 *.wav")])
+    if not file_path:
+        return
+
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in [".mp3", ".wav"]:
+        messagebox.showerror("Lỗi", "Chỉ hỗ trợ MP3 và WAV!")
+        if os.path.exists(WARNING_SOUND):
+            pygame.mixer.init()
+            pygame.mixer.music.load(WARNING_SOUND)
+            pygame.mixer.music.play()
+        return
+
+    # Xác định định dạng đích
+    if ext == ".mp3":
+        fmt_out = "wav"
+        new_ext = ".wav"
+    else:
+        fmt_out = "mp3"
+        new_ext = ".mp3"
+
+    save_path = filedialog.asksaveasfilename(defaultextension=new_ext,
+                                             filetypes=[(f"{fmt_out.upper()} files", f"*{new_ext}")],
+                                             title=f"Lưu file {fmt_out.upper()}")
+    if not save_path:
+        return
+
+    def thread_convert():
+        try:
+            progress_var.set(0)
+            progress_bar.pack()
+            progress_bar.update()
+
+            audio = AudioSegment.from_file(file_path)
+            # Mô phỏng tiến trình (giả lập % để nhìn thấy)
+            for i in range(1, 101):
+                progress_var.set(i)
+                progress_bar.update()
+                time.sleep(0.01)
+
+            audio.export(save_path, format=fmt_out, bitrate="192k")
+
+            pygame.mixer.init()
+            pygame.mixer.music.load(SUCCESS_SOUND)
+            pygame.mixer.music.play()
+
+            progress_bar.pack_forget()
+
+            # === Popup hoàn tất ===
+            popup = tk.Toplevel(root)
+            set_popup_icon(popup)
+            popup.title("Hoàn tất chuyển đổi")
+            popup.geometry("390x180+{}+{}".format(
+                root.winfo_x() + root.winfo_width() // 2 - 195,
+                root.winfo_y() + root.winfo_height() // 2 - 90
+            ))
+            popup.grab_set()
+            popup.transient(root)
+            tk.Label(popup, text=f"🎉 Đã chuyển xong:\n{save_path}", font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+            frm = tk.Frame(popup)
+            frm.pack(pady=3)
+            tk.Button(frm, text="Mở file", width=10, command=lambda: [popup.destroy(), open_path_cross_platform(save_path)]).pack(side="left", padx=8)
+            tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup.destroy(), open_path_cross_platform(os.path.dirname(save_path))]).pack(side="left", padx=8)
+            tk.Button(popup, text="Đóng", command=popup.destroy).pack(pady=7)
+
+        except Exception as e:
+            print("❌ Lỗi convert:", e)
+            progress_bar.pack_forget()
+            pygame.mixer.init()
+            pygame.mixer.music.load(WARNING_SOUND)
+            pygame.mixer.music.play()
+            messagebox.showerror("Lỗi", f"Chuyển đổi bị lỗi:\n{e}")
+            progress_var.set(0)
+
+    threading.Thread(target=thread_convert, daemon=True).start()
+
+#=================
+# cắt âm thanh
+
+def cutter_sound():
+    import os
+    from tkinter import filedialog, messagebox
+    import pygame
+    import numpy as np
+
+    win = tk.Toplevel()
+    win.title("Waveform Cutter")
+    win.geometry("650x400")
+    set_popup_icon(win)
+    win.lift()
+    win.grab_set()
+
+    file_path = filedialog.askopenfilename(title="Chọn file MP3 hoặc WAV",
+                                           filetypes=[("Audio files", "*.mp3 *.wav")],
+                                           parent=win)  # ✅ Thêm parent
+    if not file_path:
+        win.destroy()
+        return
+
+    audio = AudioSegment.from_file(file_path)
+    data = np.array(audio.get_array_of_samples())
+    if audio.channels == 2:
+        data = data.reshape((-1, 2))
+        data = data.sum(axis=1) / 2
+
+    block_size = max(int(len(data) / 500), 1)
+    data_r = [np.mean(data[i:i+block_size]) for i in range(0, len(data), block_size)]
+
+    canvas = tk.Canvas(win, bg="white", width=600, height=150)
+    canvas.pack(pady=10)
+
+    mid = 75
+    scale = max(max(data_r), abs(min(data_r))) or 1
+
+    prev_x = 0
+    prev_y = mid
+    for i, val in enumerate(data_r):
+        x = int(i * (600 / len(data_r)))
+        y = int(mid - (val / scale * 70))
+        canvas.create_line(prev_x, prev_y, x, y, fill="blue")
+        prev_x = x
+        prev_y = y
+
+    frm_entry = tk.Frame(win)
+    frm_entry.pack(pady=5)
+
+    tk.Label(frm_entry, text="Start (s):").grid(row=0, column=0, padx=5)
+    entry_start = tk.Entry(frm_entry, width=10)
+    entry_start.insert(0, "0")
+    entry_start.grid(row=0, column=1)
+
+    tk.Label(frm_entry, text="End (s):").grid(row=0, column=2, padx=5)
+    entry_end = tk.Entry(frm_entry, width=10)
+    entry_end.insert(0, str(len(audio) // 1000))
+    entry_end.grid(row=0, column=3)
+
+    progress_play = ttk.Progressbar(win, orient="horizontal", length=600, mode="determinate")
+    progress_play.pack(pady=5)
+
+    label_time = tk.Label(win, text="0:00 / 0:00")
+    label_time.pack()
+
+    is_playing = [False]
+    is_paused = [False]
+    start_time_ref = [0]
+    duration_ref = [0]
+
+    def update_progress():
+        if is_playing[0] and not is_paused[0]:
+            elapsed = time.time() - start_time_ref[0]
+            progress = int(min((elapsed / duration_ref[0]) * 100, 100))
+            progress_play["value"] = progress
+            m = int(elapsed // 60)
+            s = int(elapsed % 60)
+            label_time.config(text=f"{m}:{s:02} / {int(duration_ref[0] // 60)}:{int(duration_ref[0] % 60):02}")
+            if elapsed < duration_ref[0]:
+                win.after(100, update_progress)
+            else:
+                progress_play["value"] = 0
+                label_time.config(text=f"0:00 / {int(duration_ref[0] // 60)}:{int(duration_ref[0] % 60):02}")
+                is_playing[0] = False
+        else:
+            progress_play["value"] = 0
+
+    def play_audio():
+        try:
+            stop_audio()
+            start_sec = int(entry_start.get())
+            end_sec = int(entry_end.get())
+            start_ms = start_sec * 1000
+            end_ms = end_sec * 1000
+            seg = audio[start_ms:end_ms]
+            temp_file = os.path.join(tempfile.gettempdir(), f"temp_play_{uuid.uuid4().hex}.wav")
+            seg.export(temp_file, format="wav")
+
+            pygame.mixer.quit()
+            pygame.mixer.init()
+            pygame.mixer.music.load(temp_file)
+            pygame.mixer.music.set_volume(1.0)
+            pygame.mixer.music.play()
+
+            is_playing[0] = True
+            is_paused[0] = False
+            duration_ref[0] = (end_ms - start_ms) / 1000
+            start_time_ref[0] = time.time()
+
+            label_time.config(text=f"0:00 / {int(duration_ref[0] // 60)}:{int(duration_ref[0] % 60):02}")
+            win.after(100, update_progress)
+        except Exception as e:
+            print("Lỗi play:", e)
+            messagebox.showerror("Lỗi", f"Lỗi play:\n{e}")
+
+    def pause_audio():
+        if is_playing[0] and not is_paused[0]:
+            pygame.mixer.music.pause()
+            is_paused[0] = True
+        elif is_playing[0] and is_paused[0]:
+            pygame.mixer.music.unpause()
+            is_paused[0] = False
+            start_time_ref[0] = time.time() - (progress_play["value"] / 100) * duration_ref[0]
+            win.after(100, update_progress)
+
+    def stop_audio():
+        is_playing[0] = False
+        is_paused[0] = False
+        pygame.mixer.music.stop()
+        progress_play["value"] = 0
+        label_time.config(text="0:00 / 0:00")
+
+    def cut_and_save():
+        try:
+            start_sec = int(entry_start.get())
+            end_sec = int(entry_end.get())
+            start_ms = start_sec * 1000
+            end_ms = end_sec * 1000
+            if start_ms >= end_ms:
+                messagebox.showerror("Lỗi", "Start phải nhỏ hơn End.")
+                return
+
+            save_path = filedialog.asksaveasfilename(defaultextension=".wav",
+                                                     filetypes=[("WAV files", "*.wav"), ("MP3 files", "*.mp3")],
+                                                     title="Lưu file cắt",
+                                                     parent=win)  # ✅ Thêm parent
+
+            if not save_path:
+                return
+
+            fmt_out = os.path.splitext(save_path)[1][1:].lower()
+
+            def thread_cut():
+                try:
+                    progress_var.set(0)
+                    progress_bar.pack()
+                    progress_bar.update()
+
+                    segment = audio[start_ms:end_ms]
+                    for i in range(1, 101):
+                        progress_var.set(i)
+                        progress_bar.update()
+                        time.sleep(0.01)
+
+                    segment.export(save_path, format=fmt_out, bitrate="192k")
+
+                    pygame.mixer.quit()
+                    pygame.mixer.init()
+                    pygame.mixer.music.load(SUCCESS_SOUND)
+                    pygame.mixer.music.play()
+
+                    progress_bar.pack_forget()
+
+                    popup = tk.Toplevel(root)
+                    set_popup_icon(popup)
+                    popup.title("Hoàn tất cắt")
+                    popup.geometry("390x180+{}+{}".format(
+                        root.winfo_x() + root.winfo_width() // 2 - 195,
+                        root.winfo_y() + root.winfo_height() // 2 - 90
+                    ))
+                    popup.grab_set()
+                    popup.transient(root)
+                    tk.Label(popup, text=f"🎉 Đã cắt xong:\n{save_path}", font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+                    frm = tk.Frame(popup)
+                    frm.pack(pady=3)
+                    tk.Button(frm, text="Mở file", width=10, command=lambda: [popup.destroy(), open_path_cross_platform(save_path)]).pack(side="left", padx=8)
+                    tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup.destroy(), open_path_cross_platform(os.path.dirname(save_path))]).pack(side="left", padx=8)
+                    tk.Button(popup, text="Đóng", command=popup.destroy).pack(pady=7)
+
+                except Exception as e:
+                    print("❌ Lỗi cắt:", e)
+                    progress_bar.pack_forget()
+                    pygame.mixer.quit()
+                    pygame.mixer.init()
+                    pygame.mixer.music.load(WARNING_SOUND)
+                    pygame.mixer.music.play()
+                    messagebox.showerror("Lỗi", f"Cắt bị lỗi:\n{e}")
+                    progress_var.set(0)
+
+            threading.Thread(target=thread_cut, daemon=True).start()
+
+        except Exception as e:
+            print("Lỗi cắt & lưu:", e)
+            messagebox.showerror("Lỗi", f"Lỗi cắt & lưu:\n{e}")
+
+    frm_btn = tk.Frame(win)
+    frm_btn.pack(pady=5)
+
+    tk.Button(frm_btn, text="▶ Play", width=8, command=play_audio).pack(side="left", padx=5)
+    tk.Button(frm_btn, text="⏸ Pause", width=8, command=pause_audio).pack(side="left", padx=5)
+    tk.Button(frm_btn, text="⏹ Stop", width=8, command=stop_audio).pack(side="left", padx=5)
+    tk.Button(frm_btn, text="✂ Cut & Save", width=12, command=cut_and_save).pack(side="left", padx=5)
+
+    tk.Button(win, text="Đóng", command=lambda: [stop_audio(), win.destroy()]).pack(pady=5)
+
+
+
+#===
+#====Dán âm thanh
+def joiner_sound():
+    import os
+    from tkinter import filedialog, messagebox
+    import pygame
+
+    files = filedialog.askopenfilenames(title="Chọn nhiều file âm thanh để nối",
+                                        filetypes=[("Audio files", "*.mp3 *.wav")])
+    if not files or len(files) < 2:
+        messagebox.showwarning("Ít file", "Cần chọn ít nhất 2 file để nối!")
+        return
+
+    first_ext = os.path.splitext(files[0])[1].lower()
+    fmt_out = first_ext.replace(".", "")
+
+    save_path = filedialog.asksaveasfilename(defaultextension=first_ext,
+                                             filetypes=[("Audio files", "*.mp3 *.wav")],
+                                             title="Lưu file nối")
+    if not save_path:
+        return
+
+    def thread_join():
+        try:
+            progress_var.set(0)
+            progress_bar.pack()
+            progress_bar.update()
+
+            combined = AudioSegment.empty()
+            total = len(files)
+
+            for i, f in enumerate(files):
+                audio = AudioSegment.from_file(f)
+                combined += audio
+
+                progress = int(((i + 1) / total) * 100)
+                progress_var.set(progress)
+                progress_bar.update()
+                time.sleep(0.05)
+
+            combined.export(save_path, format=fmt_out, bitrate="192k")
+
+            pygame.mixer.init()
+            pygame.mixer.music.load(SUCCESS_SOUND)
+            pygame.mixer.music.play()
+
+            progress_bar.pack_forget()
+
+            popup = tk.Toplevel(root)
+            set_popup_icon(popup)
+            popup.title("Hoàn tất nối")
+            popup.geometry("390x180+{}+{}".format(
+                root.winfo_x() + root.winfo_width() // 2 - 195,
+                root.winfo_y() + root.winfo_height() // 2 - 90
+            ))
+            popup.grab_set()
+            popup.transient(root)
+            tk.Label(popup, text=f"🎉 Đã nối xong:\n{save_path}", font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+            frm = tk.Frame(popup)
+            frm.pack(pady=3)
+            tk.Button(frm, text="Mở file", width=10, command=lambda: [popup.destroy(), open_path_cross_platform(save_path)]).pack(side="left", padx=8)
+            tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup.destroy(), open_path_cross_platform(os.path.dirname(save_path))]).pack(side="left", padx=8)
+            tk.Button(popup, text="Đóng", command=popup.destroy).pack(pady=7)
+
+        except Exception as e:
+            print("❌ Lỗi nối:", e)
+            progress_bar.pack_forget()
+            pygame.mixer.init()
+            pygame.mixer.music.load(WARNING_SOUND)
+            pygame.mixer.music.play()
+            messagebox.showerror("Lỗi", f"Nối bị lỗi:\n{e}")
+            progress_var.set(0)
+
+    threading.Thread(target=thread_join, daemon=True).start()
+
+#====================
+# ===== DEAD CODE: SUBTITLE VIDEO EXPORT =====
+# DEAD CODE - remove later. Feature disabled in audio-tool version.
+
+def mo_popup_tao_video_phu_de():
+    print("Disabled: subtitle video export removed in audio-tool version.")
+    try:
+        messagebox.showinfo("Đã tắt", "Tính năng tạo video phụ đề đã được tắt.")
+    except Exception:
+        pass
+    return
+
+    popup = tk.Toplevel(root)
+    set_popup_icon(popup)
+    popup.title("Tạo video có hình nền (chuẩn YouTube)")
+    popup.geometry("520x420")
+    popup.grab_set()
+    popup.transient(root)
+
+    tk.Label(popup, text="Chọn file MP3:", font=("Arial", 11)).pack(pady=(10, 0))
+    entry_mp3 = tk.Entry(popup, width=60)
+    entry_mp3.pack(pady=2)
+
+    def browse_mp3():
+        path = filedialog.askopenfilename(filetypes=[("MP3 files", "*.mp3")])
+        if path:
+            entry_mp3.delete(0, tk.END)
+            entry_mp3.insert(0, path)
+
+    tk.Button(popup, text="Browse", command=browse_mp3).pack()
+
+    tk.Label(popup, text="Chọn hình nền (JPG/PNG):", font=("Arial", 11)).pack(pady=(10, 0))
+    entry_bg = tk.Entry(popup, width=60)
+    entry_bg.pack(pady=2)
+
+    def browse_bg():
+        path = filedialog.askopenfilename(filetypes=[("Image files", "*.png;*.jpg;*.jpeg")])
+        if path:
+            entry_bg.delete(0, tk.END)
+            entry_bg.insert(0, path)
+
+    tk.Button(popup, text="Browse", command=browse_bg).pack()
+
+    tk.Label(popup, text="Độ phân giải (ví dụ: 1280x720):", font=("Arial", 11)).pack(pady=(10, 0))
+    entry_resolution = tk.Entry(popup, width=20)
+    entry_resolution.insert(0, "1280x720")
+    entry_resolution.pack(pady=2)
+
+    def xuat_video():
+        mp3_path = entry_mp3.get().strip()
+        bg_path = entry_bg.get().strip()
+        resolution = entry_resolution.get().strip()
+
+        if not mp3_path or not bg_path or not resolution:
+            messagebox.showwarning("Thiếu thông tin", "Vui lòng chọn MP3, hình nền và độ phân giải.", parent=popup)
+            return
+
+        mp3_name = os.path.splitext(os.path.basename(mp3_path))[0]
+        suggest_name = mp3_name + ".mp4"
+
+        output_path = filedialog.asksaveasfilename(defaultextension=".mp4", initialfile=suggest_name,
+                                                   filetypes=[("MP4 files", "*.mp4")], title="Lưu video")
+        if not output_path:
+            return
+
+        progress_popup = tk.Toplevel(popup)
+        set_popup_icon(progress_popup)
+        progress_popup.title("Đang xuất video")
+        progress_popup.geometry("420x160")
+        progress_popup.grab_set()
+        progress_popup.transient(popup)
+
+        label_status = tk.Label(progress_popup, text="Đang xử lý, vui lòng chờ...", font=("Arial", 11))
+        label_status.pack(pady=5)
+        progress = ttk.Progressbar(progress_popup, orient="horizontal", length=300, mode="determinate")
+        progress.pack(pady=5)
+
+        btn_cancel = tk.Button(progress_popup, text="❌ Huỷ xuất video", fg="red")
+        btn_cancel.pack(pady=5)
+
+        def run_export():
+            nonlocal ffmpeg_process
+            try:
+                mp3_fixed = mp3_path.replace("\\", "/")
+                bg_fixed = bg_path.replace("\\", "/")
+                output_fixed = output_path.replace("\\", "/")
+
+                cmd = [
+                    FFMPEG_PATH, "-y",
+                    "-loop", "1",
+                    "-i", bg_fixed,
+                    "-i", mp3_fixed,
+                    "-vf", f"scale={resolution},format=yuv420p",
+                    "-c:v", "libx264",
+                    "-c:a", "aac",
+                    "-shortest",
+                    output_fixed
+                ]
+
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+                ffmpeg_process = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",         # ✅ Fix chính ở đây
+                    errors="ignore",          # ✅ Bỏ qua ký tự không hợp lệ
+                    startupinfo=startupinfo
+                )
+
+                #ffmpeg_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, startupinfo=startupinfo)
+                stdout, stderr = ffmpeg_process.communicate()
+
+                if ffmpeg_process.returncode != 0:
+                    print("⚠️ FFmpeg stderr:\n", stderr)
+                    raise Exception(f"❌ Lỗi ffmpeg: {stderr}")
+
+                progress["value"] = 100
+                label_status.config(text="✅ Hoàn tất!")
+
+                if not os.path.exists(output_path):
+                    progress_popup.destroy()
+                    messagebox.showerror("Lỗi", "Không tìm thấy file xuất ra!")
+                    return
+
+                def open_file_fix():
+                    if os.path.exists(output_path):
+                        open_path_cross_platform(os.path.normpath(output_path))
+                    else:
+                        messagebox.showerror("Lỗi", "Không tìm thấy file!")
+
+                def open_folder_fix():
+                    folder = os.path.dirname(output_path)
+                    if os.path.exists(folder):
+                        open_path_cross_platform(folder)
+                    else:
+                        messagebox.showerror("Lỗi", "Không tìm thấy thư mục!")
+
+                def upload_yt():
+                    try:
+                        popup_google_login(output_path)
+                    except Exception as e:
+                        messagebox.showerror("Lỗi upload", f"{e}")
+
+                popup_done = tk.Toplevel(popup)
+                set_popup_icon(popup_done)
+                pygame.mixer.init()
+                pygame.mixer.music.load(SUCCESS_SOUND)
+                pygame.mixer.music.play()                
+                popup_done.title("Hoàn tất")
+                popup_done.geometry("450x160")
+                popup_done.grab_set()
+                popup_done.transient(popup)
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] 🎉 Đã xuất video: {output_path}")
+                tk.Label(popup_done, text="🎉 Đã xuất video:\n" + output_path, font=("Arial", 11, "bold"), fg="green").pack(pady=13)
+                frm = tk.Frame(popup_done)
+                frm.pack(pady=3)
+                tk.Button(frm, text="Mở file", width=10, command=lambda: [popup_done.destroy(), open_file_fix()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Mở thư mục", width=12, command=lambda: [popup_done.destroy(), open_folder_fix()]).pack(side="left", padx=6)
+                tk.Button(frm, text="Đăng YouTube", width=12, command=lambda: [popup_done.destroy(), upload_yt()]).pack(side="left", padx=6)
+                tk.Button(popup_done, text="Đóng", command=popup_done.destroy).pack(pady=8)
+
+                progress_popup.destroy()
+
+            except Exception as e:
+                progress_popup.destroy()
+
+                pygame.mixer.init()
+                pygame.mixer.music.load(WARNING_SOUND)
+                pygame.mixer.music.play()                
+                messagebox.showerror("Lỗi", f"Xuất video bị lỗi:\n{e}")
+                gui_discord_thong_bao(f"🎙️ [TextToMp3] 🎉 Xuất video bị lỗi:\n{e}")
+
+        def cancel_export():
+            try:
+                if ffmpeg_process and ffmpeg_process.poll() is None:
+                    ffmpeg_process.terminate()
+                    label_status.config(text="⚠️ Đã huỷ!")
+                    progress_popup.destroy()
+                    messagebox.showinfo("Huỷ", "Đã huỷ xuất video.")
+            except Exception as ex:
+                messagebox.showerror("Lỗi", f"Không thể huỷ: {ex}")
+
+        btn_cancel.config(command=cancel_export)
+
+        ffmpeg_process = None
+        threading.Thread(target=run_export, daemon=True).start()
+
+    tk.Button(popup, text="🎬 Xuất Video", bg="green", fg="white", command=xuat_video).pack(pady=15)
+
+# ===== END DEAD CODE: SUBTITLE VIDEO EXPORT =====
+
+
+#=======================
+#gọi game từ ngoài
+def goi_popup_game_tu_ben_ngoai():
+    # DEAD CODE - remove later. Entry point game đã bị ẩn khỏi UI.
+    print("Disabled: Game Đoán Chữ removed in audio-tool version.")
+    try:
+        messagebox.showinfo("Đã tắt", "Game Đoán Chữ đã được tắt.")
+    except Exception:
+        pass
+    return
+
+    # Gọi popup chọn ngôn ngữ
+    try:
+        mo_popup_chon_lang(mo_tu_ben_ngoai=True)
+    except Exception as e:
+        print("❌ Lỗi khi gọi popup chơi game:", e)
+    
+    # Sau khi mở popup xong, tự động gọi nút Bắt đầu Game sau 500ms
+    def mo_game_tiep():
+        try:
+            for w in tk._default_root.winfo_children():
+                if isinstance(w, tk.Toplevel) and "Chọn ngôn ngữ" in str(w.title()):
+                    for child in w.winfo_children():
+                        if isinstance(child, tk.Button) and "Chơi Game Đoán Chữ" in child.cget("text"):
+                            child.invoke()  # ấn nút "Chơi Game Đoán Chữ" trong popup chọn lang
+                            return
+        except Exception as e:
+            print("⚠ Lỗi gọi game từ ngoài:", e)
+
+    # Trì hoãn chút để popup ngôn ngữ kịp mở xong
+    tk._default_root.after(500, mo_game_tiep)
+        
+#tạo nút - KHUNG HIỂN THỊ NỘI DUNG
+def create_frame_noi_dung(parent):
+    frame_noi_dung = tk.LabelFrame(parent, text="📋 Phần mềm xuất mp3 hội thoại đa ngôn ngữ - Máy Học Tập", font=("Arial", 11, "bold"), bg="#f8fff8", fg="green")
+    frame_noi_dung.place(x=10, y=42, width=1360, height=700)
+
+    # Vùng soạn đề/to ra đề + thanh cuộn
+    global txt_de
+    frame_text = tk.Frame(frame_noi_dung)
+    frame_text.place(x=10, y=8, width=1000, height=540)
+
+    scrollbar = tk.Scrollbar(frame_text)
+    scrollbar.pack(side="right", fill="y")
+
+    txt_de = tk.Text(frame_text, font=("Arial", 16), wrap="word", yscrollcommand=scrollbar.set)
+    txt_de.pack(side="left", fill="both", expand=True)
+    attach_mouse_text_menu(txt_de)
+
+    scrollbar.config(command=txt_de.yview)
+
+    # Khung hỏi GPT/Gemini sát mép dưới trái (dưới txt_de)
+    frame_hoi_gpt = tk.LabelFrame(frame_noi_dung, text="🧠 Gửi Câu Hỏi Cho Hỏi Bố Mẹ", font=("Arial", 10, "bold"), bg="#f0fff0", fg="darkgreen")
+    frame_hoi_gpt.place(x=10, y=560, width=620, height=105)
+
+    entry_cau_hoi = tk.Entry(frame_hoi_gpt, font=("Arial", 9))
+    entry_cau_hoi.place(x=8, y=8, width=395, height=28)
+    attach_mouse_text_menu(entry_cau_hoi)
+    
+    tk.Button(frame_hoi_gpt, text="Hỏi Bố", bg="#ffe6e6", fg="red", font=("Arial", 10, "bold"),
+              command=gui_hoi_gpt).place(x=410, y=8, width=65, height=28)
+    tk.Button(frame_hoi_gpt, text="Hỏi Mẹ", bg="#e6ffe6", fg="green", font=("Arial", 10, "bold"),
+              command=gui_hoi_gemini).place(x=480, y=8, width=65, height=28)
+    tk.Button(frame_hoi_gpt, text="🎙Nói", font=("Arial", 8),
+              command=lambda: nhap_giong_noi_advanced(entry_cau_hoi, root=root)).place(x=550, y=8, width=50, height=28)
+
+    lbl_mic_effect = tk.Label(frame_hoi_gpt, textvariable=mic_effect_var, font=("Arial", 14), fg="green")
+    lbl_mic_effect.place(x=575, y=42)
+
+
+    # Khung đọc đề sát mép phải (xuất MP3/M4A nằm trong popup chọn ngôn ngữ)
+    frame_doc = tk.LabelFrame(frame_noi_dung, text="🎧 Đọc Nội Dung & Chọn Ngôn Ngữ", font=("Arial", 8, "bold"), bg="#f8fff8")
+    frame_doc.place(x=1030, y=8, width=320, height=660)
+
+    btn_doc = tk.Button(frame_doc, text="Đọc / Chọn ngôn ngữ", font=("Arial", 14, "bold"),
+                        command=lambda: doc_noi_dung_de() if che_do_doc.get() == "Tự động" else mo_popup_chon_lang(), bg="lightyellow")
+    btn_doc.place(x=35, y=10, width=250, height=34)
+    btn_tam_dung = tk.Button(frame_doc, text="⏸ Dừng", font=("Arial", 8), command=toggle_tam_dung, bg="lightyellow")
+    btn_tam_dung.place(x=55, y=58, width=210, height=30)
+    btn_doc_lai = tk.Button(frame_doc, text="🔁 Đọc lại", font=("Arial", 8), command=doc_lai, bg="lightyellow")
+    btn_doc_lai.place(x=55, y=96, width=210, height=30)
+    # Disabled: xuất MP3/WAV trực tiếp từ main UI.
+    # Giữ object để các biến global cũ không bị vỡ, nhưng không place lên UI.
+    # Xuất MP3/M4A chính thức nằm trong popup chọn ngôn ngữ.
+    btn_xuat_mp3 = tk.Button(frame_doc, text="🎧 Xuất file MP3", font=("Arial", 8), command=xuat_file_mp3, bg="lightblue", state="disabled")
+    # btn_xuat_mp3.place(x=55, y=134, width=210, height=30)
+    
+    
+
+
+    progress_var = tk.DoubleVar()
+    progress_bar = ttk.Progressbar(frame_doc, variable=progress_var, maximum=100, length=280, mode='determinate')
+    progress_bar.place(x=20, y=174, width=280)
+    progress_bar.place_forget()
+
+   # Chế độ đọc (dòng trên)
+    frame_che_do = tk.Frame(frame_doc, bg="#f8fff8")
+    frame_che_do.place(x=35, y=180, width=260, height=30)
+
+    che_do_doc = tk.StringVar(value="Chọn tay")
+    tk.Label(frame_che_do, text="Chế độ:").pack(side=tk.LEFT, padx=(0,2))
+    tk.Radiobutton(frame_che_do, text="Tự động", variable=che_do_doc, value="Tự động", font=("Arial", 9)).pack(side=tk.LEFT)
+    tk.Radiobutton(frame_che_do, text="Chọn tay", variable=che_do_doc, value="Chọn tay", font=("Arial", 9)).pack(side=tk.LEFT)
+
+    # Hai combobox nằm ngang nhau (dòng dưới)
+    combo_ngon_ngu = ttk.Combobox(frame_doc, values=["Việt", "Anh", "Nhật", "Trung"], font=("Arial", 10))
+    combo_ngon_ngu.set("")
+    combo_ngon_ngu.place(x=55, y=216, width=95)
+
+    combo_toc_do = ttk.Combobox(frame_doc, values=["Chậm", "Bình thường"], font=("Arial", 10))
+    combo_toc_do.set("Bình thường")
+    combo_toc_do.place(x=160, y=216, width=105)
+    
+    # Disabled: Game Đoán Chữ removed in audio-tool version.
+    # btn_game = tk.Button(frame_doc, text="🎮 Game Đoán Chữ", font=("Arial", 11, "bold"),
+    #                  bg="yellow", fg="red", command=goi_popup_game_tu_ben_ngoai)
+    # btn_game.place(x=55, y=258, width=210, height=35)
+
+    # Nút import tài liệu
+    tk.Button(frame_doc, text="📥 Import tài liệu", font=("Arial", 9, "bold"),
+              command=import_tai_lieu, bg="lightgreen").place(x=55, y=448, width=210, height=30)
+
+    # Nút Convert MP3/WAV
+    tk.Button(frame_doc, text="Convert Mp3 🎹 Wav", font=("Arial", 9, "bold"),
+              command=convert_mp3_wav, bg="#f0f0f0").place(x=55, y=306, width=210, height=30)
+    
+    tk.Button(frame_doc, text="✂️ Cutter Sound", font=("Arial", 9, "bold"),
+          command=cutter_sound, bg="#f0f0f0").place(x=55, y=342, width=210, height=30)
+
+    tk.Button(frame_doc, text="➕ Joiner Sound", font=("Arial", 9, "bold"),
+          command=joiner_sound, bg="#f0f0f0").place(x=55, y=378, width=210, height=30)
+    # Disabled: video/subtitle export removed in audio-tool version.
+    # tk.Button(frame_doc, text="🎞 Tạo Video Phụ Đề", font=("Arial", 9, "bold"),
+    #       command=mo_popup_tao_video_phu_de, bg="#f0f0f0").place(x=55, y=414, width=210, height=30)
+
+    
+    
+
+
+
+        # Trả về các biến cần dùng ở ngoài hàm
+    return (frame_noi_dung, txt_de, entry_cau_hoi, btn_doc, btn_tam_dung, btn_doc_lai,
+            btn_xuat_mp3, progress_var, progress_bar, che_do_doc, combo_ngon_ngu, combo_toc_do)
+
+#====================================================================
+#=====Tải ảnh tự động cho game theo cột Nghĩa TV
+# ===== DEAD CODE: GAME IMAGE DOWNLOADER =====
+# DEAD CODE - remove later. Game/image feature disabled in audio-tool version.
+def tai_anh_con_thieu_game():
+    print("Disabled: game image downloader removed in audio-tool version.")
+    try:
+        messagebox.showinfo("Đã tắt", "Tính năng tải ảnh game đã được tắt.")
+    except Exception:
+        pass
+    return
+
+    from urllib.parse import quote
+    import requests
+    from bs4 import BeautifulSoup
+    from openpyxl import load_workbook
+    from tkinter import messagebox
+    import os, time
+
+    try:
+        wb = load_workbook(EXCEL_GAME_PATH)
+        so_tai_duoc = 0
+
+        SHEETS = ["Ja", "Cn", "En"]
+
+        def get_first_image(keyword):
+            q = quote(keyword)
+            url = f"https://www.google.com/search?tbm=isch&q={q}"
+            try:
+                res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                soup = BeautifulSoup(res.text, "html.parser")
+                img_tags = soup.find_all("img")
+                for img in img_tags[1:]:
+                    src = img.get("src", "")
+                    if src.startswith("http"):
+                        return src
+            except Exception:
+                return None
+            return None
+
+        for sheet_name in SHEETS:
+            if sheet_name not in wb.sheetnames:
+                continue
+
+            ws = wb[sheet_name]
+            folder_lang = os.path.join(IMAGE_FOLDER, sheet_name)
+            os.makedirs(folder_lang, exist_ok=True)
+
+            header_row = [cell.value for cell in ws[1]]
+            if "Nghĩa TV" not in header_row:
+                continue
+
+            col_idx_keyword = header_row.index("Nghĩa TV") + 1
+            if "images" not in header_row:
+                ws.cell(row=1, column=len(header_row) + 1).value = "images"
+                col_idx_image = len(header_row) + 1
+            else:
+                col_idx_image = header_row.index("images") + 1
+
+            # Dọn lại dữ liệu cột ảnh
+            total_rows = ws.max_row - 1
+            current_row = 0
+
+            for row in range(2, ws.max_row + 1):
+                keyword = str(ws.cell(row=row, column=col_idx_keyword).value or "").strip()
+                ten_anh = str(ws.cell(row=row, column=col_idx_image).value or "").strip()
+
+                current_row += 1
+                print(f"📥 [{sheet_name}] Đang xử lý {current_row}/{total_rows}: {keyword}")
+
+                if not keyword or ten_anh.lower() == "none.jpg" or ten_anh:
+                    continue
+
+                print(f"🔍 Tìm ảnh: {keyword} – sheet: {sheet_name}")
+                img_url = get_first_image(keyword)
+                if not img_url:
+                    print("❌ Không tìm thấy ảnh.")
+                    continue
+
+
+                ext = ".jpg"
+                file_name = f"{quote(keyword)}{ext}"
+                img_path = os.path.join(folder_lang, file_name)
+
+                try:
+                    r = requests.get(img_url, timeout=10)
+                    with open(img_path, "wb") as f:
+                        f.write(r.content)
+
+                    ws.cell(row=row, column=col_idx_image).value = file_name
+                    print(f"✅ Đã lưu ảnh: {img_path}")
+                    so_tai_duoc += 1
+                except Exception as e:
+                    print(f"⚠️ Lỗi tải ảnh {keyword}: {e}")
+
+                time.sleep(2)
+        unprotect_file(EXCEL_GAME_PATH)
+        wb.save(EXCEL_GAME_PATH)
+        messagebox.showinfo("Hoàn tất", f"🎉 Đã cập nhật ảnh cho game.\nTải được {so_tai_duoc} ảnh.")
+    except Exception as e:
+        messagebox.showerror("Lỗi", f"❌ Lỗi tải ảnh: {e}")
+
+
+def tai_anh_con_thieu_game_thread():
+    import threading
+    print("Disabled: game image downloader removed in audio-tool version.")
+    try:
+        messagebox.showinfo("Đã tắt", "Tính năng tải ảnh game đã được tắt.")
+    except Exception:
+        pass
+    return
+
+    from tkinter import Toplevel, Label
+    import tkinter as tk
+    from urllib.parse import quote
+    import requests
+    from bs4 import BeautifulSoup
+    from openpyxl import load_workbook
+    import os, time
+    from tkinter import messagebox
+
+    popup = Toplevel()
+    set_popup_icon(popup)
+    popup.title("Đang tải ảnh thiếu...")
+    popup.geometry("520x320")
+    popup.resizable(False, False)
+    popup.configure(bg="white")
+    Label(popup, text="🔄 Đang tải ảnh thiếu từ Google...", font=("Arial", 22), bg="white").pack(pady=20)
+    progress_label = Label(popup, text="Vui lòng đợi...", font=("Arial", 16), bg="white", fg="gray")
+    progress_label.pack()
+
+    def run_download():
+        SHEETS = ["Ja", "Cn", "En"]
+        COLUMN_KEYWORD = "Nghĩa TV"
+        COLUMN_IMAGE = "images"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        so_tai_duoc = 0
+        so_dong_can_tai = 0
+
+        try:
+            wb = load_workbook(EXCEL_GAME_PATH)
+
+            def get_first_image(keyword):
+                q = quote(keyword)
+                url = f"https://www.google.com/search?tbm=isch&q={q}"
+                try:
+                    res = requests.get(url, headers=headers, timeout=10)
+                    soup = BeautifulSoup(res.text, "html.parser")
+                    img_tags = soup.find_all("img")
+                    for img in img_tags[1:]:
+                        src = img.get("src", "")
+                        if src.startswith("http"):
+                            return src
+                except Exception:
+                    return None
+                return None
+
+            # Đếm tổng số dòng cần tải
+            for sheet_name in SHEETS:
+                if sheet_name not in wb.sheetnames:
+                    continue
+
+                ws = wb[sheet_name]
+                header_row = [cell.value for cell in ws[1]]
+                if COLUMN_KEYWORD not in header_row:
+                    continue
+
+                col_idx_keyword = header_row.index(COLUMN_KEYWORD) + 1
+                col_idx_image = header_row.index(COLUMN_IMAGE) + 1 if COLUMN_IMAGE in header_row else len(header_row) + 1
+
+                for row in range(2, ws.max_row + 1):
+                    keyword = str(ws.cell(row=row, column=col_idx_keyword).value or "").strip()
+                    ten_anh = str(ws.cell(row=row, column=col_idx_image).value or "").strip()
+                    if keyword and not ten_anh and ten_anh.lower() != "none.jpg":
+                        so_dong_can_tai += 1
+
+            # Tiến hành tải
+            for sheet_name in SHEETS:
+                if sheet_name not in wb.sheetnames:
+                    continue
+
+                ws = wb[sheet_name]
+                header_row = [cell.value for cell in ws[1]]
+                if COLUMN_KEYWORD not in header_row:
+                    continue
+
+                col_idx_keyword = header_row.index(COLUMN_KEYWORD) + 1
+                if COLUMN_IMAGE not in header_row:
+                    ws.cell(row=1, column=len(header_row) + 1).value = COLUMN_IMAGE
+                    col_idx_image = len(header_row) + 1
+                else:
+                    col_idx_image = header_row.index(COLUMN_IMAGE) + 1
+
+                folder_sub = os.path.join(APPDATA_IMAGE_FOLDER, sheet_name)
+                os.makedirs(folder_sub, exist_ok=True)
+
+                for row in range(2, ws.max_row + 1):
+                    keyword = str(ws.cell(row=row, column=col_idx_keyword).value or "").strip()
+                    ten_anh = str(ws.cell(row=row, column=col_idx_image).value or "").strip()
+                    if not keyword or ten_anh or ten_anh.lower() == "none.jpg":
+                        continue
+
+                    progress_label.config(text=f"[{sheet_name}] 🔍 Đang tìm: {keyword}\nĐã tải {so_tai_duoc}/{so_dong_can_tai} ảnh")
+                    popup.update()
+
+                    img_url = get_first_image(keyword)
+                    if not img_url:
+                        continue
+
+                    ext = ".jpg"
+                    file_name = f"{quote(keyword)}{ext}"
+                    img_path = os.path.join(folder_sub, file_name)
+
+                    try:
+                        r = requests.get(img_url, timeout=10)
+                        with open(img_path, "wb") as f:
+                            f.write(r.content)
+                        ws.cell(row=row, column=col_idx_image).value = file_name
+                        so_tai_duoc += 1
+                        progress_label.config(text=f"[{sheet_name}] ✅ {keyword} – {so_tai_duoc}/{so_dong_can_tai} ảnh")
+                        popup.update()
+                    except Exception as e:
+                        print(f"⚠️ Lỗi tải ảnh {keyword}: {e}")
+
+                    time.sleep(2)
+
+            unprotect_file(EXCEL_GAME_PATH)
+            wb.save(EXCEL_GAME_PATH)
+            popup.destroy()
+            messagebox.showinfo("Hoàn tất", f"🎉 Đã tải {so_tai_duoc}/{so_dong_can_tai} ảnh cho 3 sheet.")
+        except Exception as e:
+            popup.destroy()
+            messagebox.showerror("Lỗi", f"❌ Lỗi tải ảnh: {e}")
+
+    threading.Thread(target=run_download).start()
+
+#=== đếm ảnh
+def dem_so_anh_thieu():
+    print("Disabled: game image missing check removed in audio-tool version.")
+    return 0
+
+    from openpyxl import load_workbook
+    import os
+    from urllib.parse import quote
+
+    try:
+        wb = load_workbook(EXCEL_GAME_PATH)
+        sheets = ["Ja", "Cn", "En"]
+        dem = 0
+
+        for sheet in sheets:
+            if sheet not in wb.sheetnames:
+                continue
+
+            ws = wb[sheet]
+            header = [cell.value for cell in ws[1]]
+            if "Nghĩa TV" not in header or "images" not in header:
+                continue
+
+            col_keyword = header.index("Nghĩa TV") + 1
+            col_image = header.index("images") + 1
+            folder_lang = os.path.join(IMAGE_FOLDER, sheet)
+            os.makedirs(folder_lang, exist_ok=True)
+
+            for row in range(2, ws.max_row + 1):
+                keyword = str(ws.cell(row=row, column=col_keyword).value or "").strip()
+                image_name = str(ws.cell(row=row, column=col_image).value or "").strip()
+
+                # Nếu chưa có ảnh hoặc ảnh không tồn tại thật sự
+                if keyword:
+                    if not image_name or image_name.lower() == "none.jpg":
+                        dem += 1
+                    else:
+                        image_path = os.path.join(folder_lang, image_name)
+                        if not os.path.exists(image_path):
+                            dem += 1
+
+        return dem
+    except Exception as e:
+        print("❌ Lỗi kiểm tra ảnh thiếu:", e)
+        return 0
+
+
+# ===== END DEAD CODE: GAME IMAGE DOWNLOADER =====
+
+  
+#======tẠO CỬA SỔ gui
+
+root = tk.Tk()
+#root.state("zoomed")  # Tự full màn hình khi mở
+
+#LOGO APP
+logo_path = os.path.join(IMAGES_DIR, "logo.png")
+
+try:
+    root.iconphoto(False, tk.PhotoImage(file=logo_path))
+except Exception as e:
+    print(f"Không tìm thấy logo: {e}")
+root.title("Text To MP3/M4A ĐA NGÔN NGỮ - Audio Tool - VCJ International School")
+root.configure(bg="#eef3ee")
+
+
+def bung_man_hinh():
+    root.deiconify()
+    root.lift()
+    root.focus_force()
+    try:
+        root.attributes("-fullscreen", True)
+    except Exception:
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        root.geometry(f"{screen_width}x{screen_height}+0+0")
+
+
+btn_bung_man_hinh = tk.Button(
+    root,
+    text="🖥 Ra màn hình",
+    font=("Arial", 10, "bold"),
+    bg="#fff2cc",
+    fg="#8a4b00",
+    command=bung_man_hinh,
+)
+btn_bung_man_hinh.place(x=10, y=8, width=120, height=28)
+
+# Cố định kích thước và canh giữa màn hình
+root.update_idletasks()
+width, height = 1380, 760
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+x = (screen_width // 2) - (width // 2)
+y = (screen_height // 2) - (height // 2)
+root.geometry(f"{width}x{height}+{x}+{y}")
+root.resizable(False, False)  # Không cho phóng to
+#=======================
+#GỌI FRAME
+mic_effect_var = tk.StringVar(value="🎙️")
+(frame_noi_dung, txt_de, entry_cau_hoi, btn_doc, btn_tam_dung, btn_doc_lai,
+ btn_xuat_mp3, progress_var, progress_bar, che_do_doc, combo_ngon_ngu, combo_toc_do
+) = create_frame_noi_dung(root)
+#==================
+
+# === Tạo frame riêng dưới nút MP3 ===
+frame_logo = tk.Frame(root, bg="#f5f7e8")  # hoặc bg khác nếu muốn
+# Gắn frame_logo lên root hoặc frame chứa nút
+frame_logo.place(x=1120, y=565, width=150, height=150)
+# Disabled PIL-based image resize. Use Tk native PhotoImage if logo exists.
+try:
+    logo_img = tk.PhotoImage(file=LOGO_PATH)
+    lbl_logo = tk.Label(frame_logo, image=logo_img, bg="#f5f7e8")
+    lbl_logo.image = logo_img  # giữ tham chiếu
+except Exception as e:
+    print(f"Không tải được logo bằng Tk PhotoImage: {e}")
+    lbl_logo = tk.Label(frame_logo, text="Audio Tool", bg="#f5f7e8", fg="green", font=("Arial", 14, "bold"))
+
+lbl_logo.pack(fill="both", expand=True)
+
+#============
+def cau_hinh_khoi_dong_cung_win():
+    import winreg
+    import sys, os
+    from tkinter import messagebox
+
+    key = r"Software\Microsoft\Windows\CurrentVersion\Run"
+    app_name = "AppSmartLearning"
+
+    # ✅ Chỉ dùng được khi chạy file EXE đã build
+    if not getattr(sys, 'frozen', False):
+        messagebox.showwarning("Không hỗ trợ", "Tính năng này chỉ hoạt động với file .EXE đã đóng gói.")
+        return
+
+    exe_path = os.path.abspath(sys.executable)
+
+    def luu():
+        try:
+            if var_bat.get():
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_SET_VALUE) as reg_key:
+                    winreg.SetValueEx(reg_key, app_name, 0, winreg.REG_SZ, f'"{exe_path}"')
+            else:
+                with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_SET_VALUE) as reg_key:
+                    try:
+                        winreg.DeleteValue(reg_key, app_name)
+                    except FileNotFoundError:
+                        pass
+            messagebox.showinfo("✅ Thành công", "Đã cập nhật khởi động cùng Windows.")
+            top.destroy()
+        except Exception as e:
+            messagebox.showerror("Lỗi", str(e))
+
+    # Kiểm tra trạng thái hiện tại
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key) as reg_key:
+            current_val, _ = winreg.QueryValueEx(reg_key, app_name)
+            bat_dau = True
+    except:
+        bat_dau = False
+
+    # Giao diện
+    top = tk.Toplevel(root)
+    set_popup_icon(top)
+    top.title("🖥️ Khởi động cùng Windows")
+    top.geometry("350x160")
+    top.resizable(False, False)
+    top.grab_set()
+
+    var_bat = tk.BooleanVar(value=bat_dau)
+    tk.Checkbutton(top, text="Tự động khởi động ứng dụng khi bật máy tính",
+                   variable=var_bat, font=("Arial", 10)).pack(pady=20)
+    tk.Button(top, text="💾 Áp dụng", font=("Arial", 11, "bold"),
+              bg="green", fg="white", command=luu).pack(pady=10)
+
+
+#===========================
+# Disabled: không kiểm tra/tải ảnh game khi khởi động audio-tool version.
+# try:
+#     so_thieu = dem_so_anh_thieu()
+#     if so_thieu > 0:
+#         if messagebox.askyesno("Thiếu ảnh", f"Phát hiện {so_thieu} ảnh còn thiếu.\nBạn có muốn tải từ Google không?"):
+#             tai_anh_con_thieu_game_thread()
+# except Exception as e:
+#     print("❌ Lỗi kiểm tra ảnh thiếu:", e)
+
+#=========Sửa từng phần key=================
+
+def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
+    def thuc_hien(ok):
+        if not ok:
+            return
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            old_value = config.get(key_field, "")
+
+            top = tk.Toplevel(root)
+            top.protocol("WM_DELETE_WINDOW", top.destroy)
+            set_popup_icon(top)
+            top.title(f"Sửa {loai}")
+            top.geometry("560x260")
+            top.grab_set()
+            top.resizable(False, False)
+
+            tk.Label(top, text=label_hientai, font=("Arial", 10, "bold")).pack(pady=(10, 0))
+            ent_old = tk.Entry(top, font=("Arial", 10), width=60)
+            ent_old.insert(0, old_value)
+            ent_old.configure(state='readonly')
+            ent_old.pack(pady=2)
+
+            tk.Label(top, text=label_moi, font=("Arial", 10)).pack()
+            ent_new = tk.Entry(top, font=("Arial", 11), width=60, show="*" if show_pw else None)
+            ent_new.pack(pady=2)
+
+            def luu():
+                new_value = ent_new.get().strip()
+                if not new_value:
+                    messagebox.showwarning("Thiếu", f"Chưa nhập {loai}", parent=top)
+                    return
+
+                config[key_field] = new_value
+
+                try:
+                    unprotect_file(CONFIG_FILE)  # Gỡ bảo vệ
+                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                        json.dump(config, f, indent=2, ensure_ascii=False)
+                    messagebox.showinfo("OK", f"Đã cập nhật {loai}!", parent=top)
+                    top.destroy()
+
+                except Exception as e:
+                    try:
+                        if top.winfo_exists():
+                            messagebox.showerror("Lỗi", f"Không ghi được file:\n{e}", parent=top)
+                        else:
+                            messagebox.showerror("Lỗi", f"Không ghi được file:\n{e}")
+                    except:
+                        messagebox.showerror("Lỗi", f"Không ghi được file:\n{e}")
+
+            def kiem_tra():
+                import threading
+                def run():
+                    new_value = ent_new.get().strip()
+                    if not new_value:
+                        messagebox.showwarning("Thiếu", f"Chưa nhập {loai}", parent=top)
+                        return
+                    try:
+                        import requests
+                        if key_field == "GPT_API_KEY":
+                            from openai import OpenAI
+                            if not new_value.startswith("sk-"):
+                                raise Exception("❌ GPT Key không đúng định dạng. Phải bắt đầu bằng 'sk-'")
+                            try:
+                                temp_client = OpenAI(api_key=new_value)
+                                temp_client.chat.completions.create(
+                                    model="gpt-3.5-turbo",
+                                    messages=[{"role": "user", "content": "Hi"}],
+                                    timeout=10
+                                )
+                                messagebox.showinfo("OK", "✅ GPT Key hoạt động tốt!", parent=top)
+                            except Exception as e:
+                                msg = str(e)
+                                if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
+                                    raise Exception("❌ GPT Key hợp lệ nhưng đã hết quota.\nVui lòng kiểm tra và nạp tiền tại:\nhttps://platform.openai.com/account/billing")
+                                elif "invalid_api_key" in msg or "Incorrect API key" in msg:
+                                    raise Exception("❌ GPT Key không hợp lệ hoặc đã bị thu hồi.")
+                                else:
+                                    raise Exception(f"❌ Lỗi GPT: {e}")
+
+                        elif key_field == "GEMINI_API_KEY":
+                            if not new_value.startswith("AIza"):
+                                raise Exception("❌ Gemini Key không đúng định dạng. Phải bắt đầu bằng 'AIza'")
+                            try:
+                                client = genai.Client(api_key=new_value)
+                                response = client.models.generate_content(
+                                    model="gemini-1.5-flash",
+                                    contents="Hi",
+                                )
+                                if response.text:
+                                    messagebox.showinfo("OK", "✅ Gemini Key hoạt động tốt!", parent=top)
+                                else:
+                                    raise Exception("Không có phản hồi từ Gemini")
+                            except Exception as e:
+                                msg = str(e)
+                                if "API_KEY_INVALID" in msg or "invalid API key" in msg:
+                                    raise Exception("❌ Gemini Key không hợp lệ hoặc đã bị thu hồi.")
+                                elif "quota" in msg or "exceeded" in msg:
+                                    raise Exception("❌ Gemini Key đã vượt quá quota. Hãy kiểm tra tài khoản Google AI Studio.")
+                                else:
+                                    raise Exception(f"❌ Lỗi Gemini: {e}")
+
+                        elif key_field == "DISCORD_WEBHOOK_URL":
+                            if new_value.startswith("ps://"):
+                                new_value = new_value.replace("ps://", "https://", 1)
+                            if "api/webhooks/" not in new_value:
+                                raise Exception("⚠ Webhook không đúng định dạng.\nURL phải chứa /api/webhooks/")
+                            r = requests.post(new_value, json={"content": "🔔 Kiểm tra Webhook từ Máy Học Tập"})
+                            if r.status_code in [200, 204] or r.ok:
+                                messagebox.showinfo("OK", "✅ Webhook Discord hoạt động!", parent=top)
+                            elif r.status_code == 401:
+                                raise Exception("❌ Webhook sai hoặc đã bị xoá (401 Unauthorized).")
+                            elif r.status_code == 404:
+                                raise Exception("❌ Webhook không tồn tại (404 Not Found).")
+                            else:
+                                raise Exception(f"Lỗi HTTP {r.status_code}\nPhản hồi: {r.text}")
+
+                        else:
+                            messagebox.showinfo("Thông báo", f"⚠ Chưa hỗ trợ kiểm tra loại '{loai}'.", parent=top)
+
+                    except Exception as e:
+                        messagebox.showerror("Lỗi kiểm tra", f"❌ Không kiểm tra được:\n{e}")
+
+
+                threading.Thread(target=run, daemon=True).start()
+
+            frame = tk.Frame(top)
+            frame.pack(pady=10)
+            tk.Button(frame, text="💾 Lưu", command=luu, bg="green", fg="white", width=10).pack(side="left", padx=10)
+            tk.Button(frame, text="✅ Kiểm tra", command=kiem_tra, bg="#0066cc", fg="white", width=12).pack(side="left", padx=10)
+
+        except Exception as e:
+            print("Lỗi tạo popup:", e)
+
+    ask_password_with_keyboard(thuc_hien)
+
+ 
+#==============
+def gioi_thieu_ung_dung():
+    top = tk.Toplevel(root)
+    set_popup_icon(top)
+    top.title("ℹ️ Giới thiệu Ứng dụng")
+    top.geometry("1000x500")
+    top.attributes('-topmost', True)
+    thong_tin = """
+    🌟 Ứng dụng Text to mp3 - Đa NGÔN NGỮ🌟 thuộc dự án  Smart Learning SmL - Học Tập Đa NGÔN NGỮ
+
+    🎯 Chức năng chính Ứng dụng Smart Learning SmL - Học Tập Đa NGÔN NGỮ:
+     Link tải exe : https://tuadenu.github.io/smartlearning/latest.html
+    - Hẹn giờ tự động thông minh file nghe, bài đọc cho từng học viên các khung giờ khác nhau, có chuông thông báo và gọi đúng tên học viên
+    - Tạo đề thông minh luyện tập: Toán, Ngoại ngữ, Tự luận, Trắc nghiệm...Đa ngôn ngữ các trình độ , phạm vi tuỳ chọn
+    - Tích hợp AI GPT & Gemini Tương tác thông minh với học viên, có thể in ra trực tiếp 1 click
+    - Hẹn giờ phát nhạc - kết hợp camera gửi ảnh
+    - Điều khiển thiết bị Broadlink ,nhà thông minh, học lệnh điều khiển với 1 nút nhấn
+    - Gửi ảnh ở bàn học 3 phút/lần (hoặc tuỳ chọn với 3 camera) qua Telegram, Discord cho giáo viên, phụ huynh học viên hoặc chính học viên thông minh
+    - Giám sát chặt chẽ quá trình học hoặc làm bài thi
+    - Đọc bất kỳ nội dung gì trong khung hiển thị đề kể cả tài liệu đa ngôn ngữ, như Anh, Trung, Nhật, việt... thông minh tự động hoặc thủ công chọn dòng
+    - Xuất nội dung bất  ra MP3 bằng đa ngôn ngữ, như Anh, Trung, Nhật, việt...
+    - Kết nối trực tiếp máy in và lưu lịch sử in, thư mục chứ ảnh người in và tài liệu PDF tương ứng, gửi 1 bản tới nhiều email tuỳ chọn
+    - Hỗ trợ bàn phím mini, giao diện fullscreen thân thiện dễ dùng
+    - Tích hợp máy tính mini ngay trên giao diện
+    - Trình chiếu ảnh hoặc file ảnh học thuật tự động
+    - Tích hợp trình phát nhạc mini để luyện nghe
+    - Bảng thông tin thời tiết địa phương
+    - Tích hợp 4camera rtps/onvif xem trực tiếp trên App
+    - Tự động tải cài đặt update khi có bản mới, có thể call sdt để lấy link khi bị lỗi update nhé!
+    💡 Phát triển bởi: Linh Dương - Cty TNHH DU LỊCH VÀ THƯƠNG MẠI QUỐC TẾ VIỆT TRUNG NHẬT 
+    📧 Liên hệ: halamchuc@gmail.com 0986183806
+"""
+    tk.Label(top, text=thong_tin, font=("Arial", 10),fg="green", justify="left").pack(padx=15, pady=10)
+
+# sủa key email, âmazzon
+def sua_key_nhom(loai, key_fields, labels, show_pws=None):
+    def thuc_hien(ok):
+        if not ok:
+            return
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                config = json.load(f)
+
+            top = tk.Toplevel(root)
+            top.protocol("WM_DELETE_WINDOW", top.destroy)
+            set_popup_icon(top)
+            top.title(f"Sửa {loai}")
+            top.geometry("640x{}".format(220 + 60 * len(key_fields)))
+            top.grab_set()
+            top.resizable(False, False)
+
+            entries = {}
+
+            for idx, key in enumerate(key_fields):
+                old_value = config.get(key) or config_default.get(key, "")
+
+                tk.Label(top, text=labels[idx] + " (hiện tại):", font=("Arial", 10, "bold")).pack(pady=(5, 0))
+                ent_old = tk.Entry(top, font=("Arial", 10), width=60)
+                ent_old.insert(0, old_value)
+                ent_old.pack(pady=2)
+
+                tk.Label(top, text=labels[idx] + " (mới):", font=("Arial", 10)).pack()
+                show_pw = show_pws[idx] if show_pws else False
+                ent_new = tk.Entry(top, font=("Arial", 11), width=60, show="*" if show_pw else None)
+                ent_new.pack(pady=2)
+
+                entries[key] = ent_new
+
+            # Progress & status
+            status_var = tk.StringVar()
+            tk.Label(top, textvariable=status_var, font=("Arial", 9), fg="green").pack(pady=(4, 2))
+            progress = ttk.Progressbar(top, orient="horizontal", length=280, mode="determinate")
+            progress.pack(pady=(2, 4))
+
+            def luu():
+                updated = False
+                for key, ent in entries.items():
+                    new_value = ent.get().strip()
+                    if new_value:
+                        config[key] = new_value
+                        updated = True
+                if not updated:
+                    messagebox.showwarning("Thiếu", "Chưa nhập giá trị mới.", parent=top)
+                    return
+
+                try:
+                    unprotect_file(CONFIG_FILE)
+                    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                        json.dump(config, f, indent=2, ensure_ascii=False)
+                    messagebox.showinfo("OK", f"Đã cập nhật {loai}!", parent=top)
+                    top.destroy()
+                except Exception as e:
+                    messagebox.showerror("Lỗi", f"Không ghi được file:\n{e}", parent=top)
+
+            def co_mang_internet():
+                try:
+                    import socket
+                    socket.create_connection(("8.8.8.8", 53), timeout=3)
+                    return True
+                except:
+                    return False
+
+            def kiem_tra():
+                if not co_mang_internet():
+                    status_var.set("")
+                    progress["value"] = 0
+                    messagebox.showerror("Mất kết nối", "Không có kết nối Internet.")
+                    return
+
+                # ==== Kiểm tra Email + App Password ====
+                if "SENDER_EMAIL" in entries and "APP_PASSWORD" in entries:
+                    email = entries["SENDER_EMAIL"].get().strip()
+                    pw = entries["APP_PASSWORD"].get().strip()
+                    status_var.set("🔄 Đang kiểm tra email, vui lòng đợi...")
+                    progress["value"] = 0
+                    top.update()
+
+                    try:
+                        import smtplib
+                        from email.message import EmailMessage
+
+                        msg = EmailMessage()
+                        msg['Subject'] = "✅ Kiểm tra cấu hình Gmail gửi thành công"
+                        msg['From'] = email
+                        msg['To'] = email
+                        msg.set_content("Bạn đã cấu hình đúng email gửi + mật khẩu ứng dụng.")
+
+                        progress["value"] = 20
+                        top.update()
+
+                        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+                            progress["value"] = 50
+                            top.update()
+                            smtp.login(email, pw)
+                            progress["value"] = 80
+                            top.update()
+                            smtp.send_message(msg)
+                            progress["value"] = 100
+                            top.update()
+
+                        status_var.set("✅ Kiểm tra thành công!")
+                        messagebox.showinfo("✅ OK", "Đã gửi email test thành công đến chính bạn!")
+                        gui_email_bao_admin("📧 Kiểm tra email gửi thành công", f"Đã kiểm tra thành công email gửi: {email}")
+
+                    except Exception as e:
+                        status_var.set("")
+                        progress["value"] = 0
+                        messagebox.showerror("❌ Lỗi", f"Không gửi được email test:\n{e}")
+
+                # ==== Kiểm tra AWS ====
+                elif "AWS_ACCESS_KEY_ID" in entries and "AWS_SECRET_ACCESS_KEY" in entries and "AWS_REGION" in entries:
+                    key_id = entries["AWS_ACCESS_KEY_ID"].get().strip()
+                    secret = entries["AWS_SECRET_ACCESS_KEY"].get().strip()
+                    region = entries["AWS_REGION"].get().strip()
+                    status_var.set("🔄 Đang kiểm tra AWS, vui lòng đợi...")
+                    progress["value"] = 0
+                    top.update()
+
+                    try:
+                        import boto3
+                        progress["value"] = 20
+                        top.update()
+
+                        polly_client = boto3.Session(
+                            aws_access_key_id=key_id,
+                            aws_secret_access_key=secret,
+                            region_name=region
+                        ).client("polly")
+
+                        progress["value"] = 60
+                        top.update()
+
+                        polly_client.describe_voices()
+
+                        progress["value"] = 100
+                        top.update()
+
+                        status_var.set("✅ AWS Polly hoạt động tốt!")
+                        messagebox.showinfo("✅ OK", "AWS Polly hoạt động tốt, key & region hợp lệ.")
+
+                    except Exception as e:
+                        status_var.set("")
+                        progress["value"] = 0
+                        messagebox.showerror("❌ Lỗi", f"Không kiểm tra được AWS Polly:\n{e}")
+
+                else:
+                    messagebox.showinfo("Thông báo", f"⚡ Chưa hỗ trợ kiểm tra online cho nhóm {loai}.", parent=top)
+
+            frame = tk.Frame(top)
+            frame.pack(pady=10)
+            tk.Button(frame, text="💾 Lưu", command=luu, bg="green", fg="white", width=10).pack(side="left", padx=10)
+            tk.Button(frame, text="✅ Kiểm tra", command=kiem_tra, bg="#0066cc", fg="white", width=12).pack(side="left", padx=10)
+
+        except Exception as e:
+            print("Lỗi tạo popup:", e)
+
+    ask_password_with_keyboard(thuc_hien)
+#==============
+# các ứng dụng khác
+def mo_popup_ung_dung_khac():
+    danh_sach_app = [
+        ("Máy học tập các phiên bản ", "https://1drv.ms/f/c/86031e0f977fa7e6/Elmiqga_boFIjz7MQ_6GmvcBt96I2nle_UhpLYdn7GAZmg?e=4yFG3R"),
+        ("Smart Learning  bản mới nhất", "https://tuadenu.github.io/smartlearning/latest.html"),
+        ("Youtube", "https://www.youtube.com/@tiengtrunglinhduong"),
+        ("Gọi điện thoại", "https://sites.google.com/view/tiengtrunglinhduong?fbclid=IwY2xjawLduOFleHRuA2FlbQIxMABicmlkETE4WE9ZM1Njdm1zckZobnBuAR7U7401p0yATuofu5gjqB5M1QR37Ait5AHquytcY9uq5nx1MjF7K4djnRmK-Q_aem_E05MPn-wzny_zd1XiUIKvw"),
+        ("Facebook", "https://www.facebook.com/tiengtrunglinhduong")
+    ]
+
+    popup = tk.Toplevel(root)
+    set_popup_icon(popup)
+    popup.title("📦 Tải các ứng dụng khác")
+    popup.geometry("400x300")
+    popup.grab_set()
+
+    tk.Label(popup, text="Danh sách ứng dụng:", font=("Arial", 12, "bold")).pack(pady=10)
+
+    for ten_app, link in danh_sach_app:
+        frame = tk.Frame(popup)
+        frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(frame, text=ten_app, anchor="w").pack(side="left", expand=True)
+        tk.Button(frame, text="Truy cập link", fg="blue", command=lambda l=link: open_path_cross_platform(l)).pack(side="right")
+
+    tk.Button(popup, text="Đóng", command=popup.destroy).pack(pady=10)
+
+#===============
+
+
+# MENU CẤU HÌNH ===
+
+menu_cai_dat = tk.Menu(root, tearoff=0)
+menu_cai_dat.add_command(label="🖥️ Khởi động cùng Windows", command=cau_hinh_khoi_dong_cung_win)
+menu_cai_dat.add_separator()
+menu_cai_dat.add_command(label="ℹ️ Giới thiệu Ứng dụng", command=gioi_thieu_ung_dung)
+menu_cai_dat.add_separator()
+menu_cai_dat.add_separator()
+menu_cai_dat.add_command(label="🔑 Đổi mật khẩu toàn ứng dụng", command=doi_mat_khau)
+menu_cai_dat.add_command(label="🔧 Sửa GPT API Key", command=lambda: sua_key_don("GPT API Key", "GPT_API_KEY", "GPT Key hiện tại:", "Nhập GPT Key mới:"))
+menu_cai_dat.add_command(label="🔧 Sửa Gemini API Key", command=lambda: sua_key_don("Gemini API Key", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:"))
+menu_cai_dat.add_command(label="🔧 Sửa Discord Webhook", command=lambda: sua_key_don("Discord Webhook", "DISCORD_WEBHOOK_URL", "Webhook Discord hiện tại:", "Nhập Webhook Discord mới:"))
+menu_cai_dat.add_separator()
+menu_cai_dat.add_command(label="📦 Tải các ứng dụng khác", command=mo_popup_ung_dung_khac)
+# Disabled: game image downloader menu removed in audio-tool version.
+# menu_cai_dat.add_command(label="📥 Tải ảnh còn thiếu cho Game Đoán Chữ", command=tai_anh_con_thieu_game_thread)
+
+
+
+menu_cai_dat.add_command(
+    label="🔧 Sửa Email & App Password",
+    command=lambda: sua_key_nhom(
+        "Email & App Password",
+        ["SENDER_EMAIL", "SENDER_NAME", "APP_PASSWORD"],
+        ["Email gửi", "Tên gửi", "App Password"],
+        show_pws=[False, False, True]
+    )
+)
+
+menu_cai_dat.add_command(
+    label="🔧 Sửa AWS Keys",
+    command=lambda: sua_key_nhom(
+        "AWS Keys",
+        ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+        ["Access Key ID", "Secret Access Key", "Region"],
+        show_pws=[False, True, False]
+    )
+)
+
+
+# Chỉ cần tạo 1 menubar, gắn menu_cai_dat:
+menubar = tk.Menu(root)
+menubar.add_cascade(label="Cài đặt", menu=menu_cai_dat)
+root.config(menu=menubar)
+
+
+# === Gắn vào menu chính ===
+try:
+    menu_bar.add_cascade(label="⚙️ Cài đặt", menu=menu_cai_dat)
+except:
+    menu_bar = tk.Menu(root)
+    menu_bar.add_cascade(label="⚙️ Cài đặt", menu=menu_cai_dat)
+    root.config(menu=menu_bar)
+
+#+++++++=====
+# PHÍM TẮT MÀN HÌNH TẠM THỜI
+#Tắt màn hàm
+
+def tat_man_hinh():
+    try:
+        if os.name == "nt":
+            import ctypes
+            HWND_BROADCAST = 0xFFFF
+            WM_SYSCOMMAND = 0x0112
+            SC_MONITORPOWER = 0xF170
+            ctypes.windll.user32.PostMessageW(HWND_BROADCAST, WM_SYSCOMMAND, SC_MONITORPOWER, 2)
+            return
+
+        if sys.platform == "darwin":
+            subprocess.run(["pmset", "displaysleepnow"], check=True)
+            return
+
+        raise RuntimeError("Chức năng tắt màn hình chưa hỗ trợ trên hệ điều hành này.")
+    except Exception as e:
+        messagebox.showerror("Lỗi", f"Không tắt được màn hình:\n{e}")
+
+
+# Tạo cửa sổ nổi nhỏ chỉ chứa nút tắt màn hình
+top_btn = tk.Toplevel(root)
+top_btn.overrideredirect(True)  # Ẩn khung cửa sổ
+top_btn.attributes("-topmost", True)  # Luôn trên cùng
+top_btn.geometry("+{}+{}".format(root.winfo_screenwidth()-250, root.winfo_screenheight()-80))  # Góc dưới phải
+
+btn_tatman = tk.Button(
+    top_btn,
+    text="🖥Ấn Để Tắt màn🖥",
+    width=15, height=1,
+    command=tat_man_hinh,
+    font=("Arial", 11),
+    fg="red", bg="#f0f8ff"
+)
+btn_tatman.pack()
+
+# Đảm bảo nút di chuyển theo cửa sổ cha (tùy chọn)
+def keep_on_top():
+    # Lấy tọa độ root
+    x = root.winfo_x() + root.winfo_width() - 150
+    y = root.winfo_y() + root.winfo_height() - 30
+    top_btn.geometry(f"+{x}+{y}")
+    root.after(300, keep_on_top)
+keep_on_top()
+
+#=====================
+
+
+root.mainloop()
