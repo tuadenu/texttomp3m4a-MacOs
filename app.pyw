@@ -143,32 +143,31 @@ def stop_all_doc():
 #===================
 
 # Xác định thư mục gốc app (chạy EXE hoặc chạy Python)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if getattr(sys, 'frozen', False):
-    BASE_FOLDER = os.path.dirname(os.path.abspath(sys.executable))
+    BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
-    BASE_FOLDER = BASE_DIR
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-ASSETS_DIR = os.path.join(BASE_FOLDER, "assets")
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 SOUNDS_DIR = os.path.join(ASSETS_DIR, "sounds")
 IMAGES_DIR = os.path.join(ASSETS_DIR, "images")
 FONTS_DIR = os.path.join(ASSETS_DIR, "fonts")
 
 # Thư mục dữ liệu app (AppData)
-APPDATA_ROOT = os.path.join(BASE_FOLDER, "AppData")
+APPDATA_ROOT = os.path.join(BASE_DIR, "AppData")
 os.makedirs(APPDATA_ROOT, exist_ok=True)
 
 # Đường dẫn logo mặc định
 LOGO_PATH = os.path.join(IMAGES_DIR, "logo.png")
 
 # Vault secret được mã hóa bằng mật khẩu dùng chung
-SECRET_VAULT_FILE = os.path.join(BASE_FOLDER, "secrets.enc")
+SECRET_VAULT_FILE = os.path.join(BASE_DIR, "secrets.enc")
 SECRET_VAULT_PASSWORD_ENV = "TEXTTOMP3_VAULT_PASSWORD"
 SECRET_VAULT_ITERATIONS = 390000
 
 # Disabled: Game/Image paths kept as constants only for legacy dead code.
 # Game - đường dẫn gốc (bản cài đặt)
-EXCEL_GAME_ORIGINAL = os.path.join(BASE_FOLDER, "Game_doan_chu.xlsx")
+EXCEL_GAME_ORIGINAL = os.path.join(BASE_DIR, "Game_doan_chu.xlsx")
 
 # Game - đường dẫn dùng trong AppData (sẽ thao tác thật)
 APPDATA_GAME_FILE = os.path.join(APPDATA_ROOT, "Game_doan_chu.xlsx")
@@ -230,7 +229,7 @@ def _prompt_vault_password():
 def _load_legacy_bundle():
     legacy_bundle = {}
 
-    legacy_config_path = os.path.join(BASE_FOLDER, "config_default.json")
+    legacy_config_path = os.path.join(BASE_DIR, "config_default.json")
     if os.path.exists(legacy_config_path):
         try:
             with open(legacy_config_path, "r", encoding="utf-8") as f:
@@ -238,7 +237,7 @@ def _load_legacy_bundle():
         except Exception:
             legacy_bundle["config_default"] = {}
 
-    legacy_client_secret_path = os.path.join(BASE_FOLDER, "client_secret.json")
+    legacy_client_secret_path = os.path.join(BASE_DIR, "client_secret.json")
     if os.path.exists(legacy_client_secret_path):
         try:
             with open(legacy_client_secret_path, "r", encoding="utf-8") as f:
@@ -570,15 +569,22 @@ def pick_existing_asset(*names):
         if os.path.exists(candidate):
             return candidate
     for name in names:
-        candidate = os.path.join(BASE_FOLDER, name)
+        candidate = os.path.join(BASE_DIR, name)
         if os.path.exists(candidate):
             return candidate
-    return os.path.join(SOUNDS_DIR, names[0])
+    # Fallback: check assets_legacy for legacy sound files
+    for name in names:
+        candidate = os.path.join(BASE_DIR, "assets_legacy", name)
+        if os.path.exists(candidate):
+            return candidate
+    # If not found, print warning and return None for graceful fallback
+    print(f"⚠️  Asset not found: {', '.join(names)}")
+    return None
 
 
 def pick_existing_executable(*names):
     for name in names:
-        candidate = os.path.join(BASE_FOLDER, name)
+        candidate = os.path.join(BASE_DIR, name)
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
     return None
@@ -1379,7 +1385,7 @@ def popup_google_login(file_path):
     from google.oauth2.credentials import Credentials
     import os
 
-    APPDATA_ROOT = os.path.join(BASE_FOLDER, "AppData")
+    APPDATA_ROOT = os.path.join(BASE_DIR, "AppData")
     TOKEN_JSON = os.path.join(APPDATA_ROOT, "token.json")
     CLIENT_SECRET_FILE = os.path.join(APPDATA_ROOT, "client_secret.json")
 
@@ -1442,7 +1448,7 @@ def popup_youtube_upload_v2(file_path):
     import shutil
     import tempfile
 
-    APPDATA_ROOT = os.path.join(BASE_FOLDER, "AppData")
+    APPDATA_ROOT = os.path.join(BASE_DIR, "AppData")
     TOKEN_JSON = os.path.join(APPDATA_ROOT, "token.json")
 
     popup = tk.Toplevel()
