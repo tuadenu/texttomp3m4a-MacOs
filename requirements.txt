@@ -9,6 +9,7 @@ cryptography
 pygame
 boto3
 pydub
+pypinyin
 pandas
 requests
 beautifulsoup4

@@ -6,8 +6,7 @@ __pycache__/
 *.pyo
 *.log
 ffmpeg_bin/
-!ffmpeg_bin/
-ffmpeg_bin/bin/ffmpeg
+ffmpeg_bin/bin/
 *.bak
 *.spec.bak
 venv/
@@ -31,3 +30,24 @@ TextToMp3Portable/.mypy_cache/
 TextToMp3Portable/.venv/
 TextToMp3Portable/venv/
 .vscode/
+.env
+.tools/
+# Node.js
+node_modules/
+package-lock.json
+
+# Python egg info
+*.egg-info/
+
+# Output
+output/
+
+# Secrets
+*.enc
+
+# Swap files
+*.swp
+*.swo
+
+# Legacy assets cache
+assets_legacy/TextToMp3Portable__pycache__/

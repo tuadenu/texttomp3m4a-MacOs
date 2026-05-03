@@ -1,0 +1,14 @@
+{
+  "name": "texttomp3m4a-supabase-import",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Upload HSK audio files to Supabase Storage and insert vocab into Supabase Postgres",
+  "scripts": {
+    "import:hsk1": "node scripts/import_hsk1_to_supabase.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.8",
+    "dotenv": "^16.4.7",
+    "pg": "^8.20.0"
+  }
+}
