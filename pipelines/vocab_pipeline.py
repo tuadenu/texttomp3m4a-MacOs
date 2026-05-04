@@ -46,25 +46,34 @@ def _normalize_columns(df):
         normalized = str(col).strip().lower()
         mapping[normalized] = col
 
-    required = {
-        "word": "中文",
-        "meaning": "nghĩa tiếng việt",
-        "example": "ví dụ (中文)",
-        "example_vi": "nghĩa ví dụ",
+    required_aliases = {
+        "word": ["中文", "từ vựng"],
+        "meaning": ["nghĩa tiếng việt", "nghĩa"],
+        "example": ["ví dụ (中文)", "ví dụ"],
+        "example_vi": ["nghĩa ví dụ"],
     }
 
-    missing = [vn_name for vn_name in required.values() if vn_name not in mapping]
+    resolved = {}
+    missing = []
+    for key, aliases in required_aliases.items():
+        found = None
+        for alias in aliases:
+            normalized_alias = alias.strip().lower()
+            if normalized_alias in mapping:
+                found = mapping[normalized_alias]
+                break
+
+        if found is None:
+            missing.append(aliases[0])
+        else:
+            resolved[key] = found
+
     if missing:
         raise ValueError(
             "Missing required columns in sheet: " + ", ".join(missing)
         )
 
-    return {
-        "word": mapping[required["word"]],
-        "meaning": mapping[required["meaning"]],
-        "example": mapping[required["example"]],
-        "example_vi": mapping[required["example_vi"]],
-    }
+    return resolved
 
 
 def _to_pinyin_slug(text):
