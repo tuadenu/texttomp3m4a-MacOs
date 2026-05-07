@@ -19,6 +19,10 @@ TARGET_CHANNELS = 1
 TARGET_BITRATE = "32k"
 
 
+def _log(message):
+    print(message, flush=True)
+
+
 def _resolve_node_executable():
     system_node = shutil.which("node")
     if system_node:
@@ -121,8 +125,14 @@ def _export_m4a(audio, file_path):
 
 
 def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
+    overwrite_local_audio = str(os.environ.get("OVERWRITE_LOCAL_AUDIO", "false")).lower() == "true"
+    _log(f"[Pipeline] Start: excel={file_path}")
+    _log(f"[Pipeline] Sheet: {sheet_name}")
     df = pd.read_excel(file_path, sheet_name=sheet_name)
     col = _normalize_columns(df)
+
+    total_rows = len(df)
+    _log(f"[Pipeline] Rows loaded: {total_rows}")
 
     output_dir = os.path.join("output", sheet_name)
     os.makedirs(output_dir, exist_ok=True)
@@ -130,8 +140,12 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
     audio_dir = os.path.join(output_dir, "audio")
     os.makedirs(audio_dir, exist_ok=True)
 
-    output_items = []
-    row_index = 0
+    _log(f"[Pipeline] Output dir: {output_dir}")
+    _log(f"[Pipeline] Audio dir: {audio_dir}")
+    _log(f"[Pipeline] Overwrite local audio: {overwrite_local_audio}")
+
+    valid_rows = []
+    skipped_rows = 0
 
     for _, row in df.iterrows():
         word = _clean_cell(row[col["word"]])
@@ -140,15 +154,48 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
         example_vi = _clean_cell(row[col["example_vi"]])
 
         if not word or not meaning:
+            skipped_rows += 1
             continue
 
-        row_index += 1
+        valid_rows.append(
+            {
+                "word": word,
+                "meaning": meaning,
+                "example": example,
+                "example_vi": example_vi,
+            }
+        )
+
+    total_valid = len(valid_rows)
+    _log(f"[Pipeline] Valid rows: {total_valid}")
+    _log(f"[Pipeline] Skipped empty rows: {skipped_rows}")
+
+    output_items = []
+    generated_count = 0
+    skipped_existing_count = 0
+
+    for row_index, item in enumerate(valid_rows, start=1):
+        word = item["word"]
+        meaning = item["meaning"]
+        example = item["example"]
+        example_vi = item["example_vi"]
+
         pinyin_slug = _to_pinyin_slug(word)
         file_name = f"{sheet_name}_{row_index:03d}_{pinyin_slug}.m4a"
         file_path_out = os.path.join(audio_dir, file_name)
 
-        audio = _build_word_audio(word, meaning)
-        _export_m4a(audio, file_path_out)
+        if os.path.isfile(file_path_out) and os.path.getsize(file_path_out) > 0 and not overwrite_local_audio:
+            skipped_existing_count += 1
+            _log(f"[Pipeline] Skip existing M4A {row_index}/{total_valid}: {file_name}")
+        else:
+            if overwrite_local_audio and os.path.isfile(file_path_out):
+                _log(f"[Pipeline] Overwrite existing M4A {row_index}/{total_valid}: {file_name}")
+            _log(f"[Pipeline] Generate {row_index}/{total_valid}: word={word} -> {file_name}")
+            audio = _build_word_audio(word, meaning)
+            _export_m4a(audio, file_path_out)
+            generated_count += 1
+
+        _log(f"[Pipeline] Progress: processed {row_index}/{total_valid} items")
 
         output_items.append(
             {
@@ -161,10 +208,32 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
         )
 
     json_path = os.path.join(output_dir, "output_vocab.json")
+    _log(f"[Pipeline] Writing JSON: {json_path}")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(output_items, f, ensure_ascii=False, indent=2)
 
+    _log(f"[Pipeline] JSON written: {len(output_items)} items")
+    _log(f"[Pipeline] Generated new M4A: {generated_count}")
+    _log(f"[Pipeline] Skipped existing M4A: {skipped_existing_count}")
+    _log(f"[Pipeline] Skipped rows: {skipped_rows}")
+
+    metadata_path = os.path.join(output_dir, "output_vocab_metadata.json")
+    metadata = {
+        "sheet_name": sheet_name,
+        "excel_file": os.path.abspath(file_path),
+        "expected_count": len(output_items),
+        "generated_count": generated_count,
+        "skipped_existing_count": skipped_existing_count,
+        "skipped_empty_count": skipped_rows,
+        "total_rows": total_rows,
+        "overwrite_local_audio": overwrite_local_audio,
+    }
+    _log(f"[Pipeline] Writing metadata: {metadata_path}")
+    with open(metadata_path, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
     if skip_validate:
+        _log("[Pipeline] Validation skipped by flag")
         print("STATUS: SKIPPED")
         print("Validation skipped by --skip-validate")
     else:
@@ -177,6 +246,7 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
                 "Node.js not found. Install Node.js or place it at .tools/node/bin/node."
             )
 
+        _log("[Pipeline] Running validator...")
         validate_cmd = [
             node_executable,
             validator_script,
@@ -190,8 +260,12 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
         validate_result = subprocess.run(validate_cmd, check=False)
 
         if validate_result.returncode != 0:
+            _log("[Pipeline] Validator failed")
             raise RuntimeError("Validation failed. See STATUS: FAIL above.")
 
+        _log("[Pipeline] Validator passed")
+
+    _log("[Pipeline] Finished successfully")
     print(f"Done: {len(output_items)} items")
     print(f"Audio dir: {audio_dir}")
     print(f"JSON: {json_path}")

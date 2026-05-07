@@ -3066,6 +3066,994 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         threading.Thread(target=thread_video, daemon=True).start()
 
+    def lay_sheet_names_tu_excel(excel_path):
+        from openpyxl import load_workbook
+        wb = load_workbook(excel_path, read_only=True, data_only=True)
+        try:
+            return list(wb.sheetnames)
+        finally:
+            wb.close()
+
+    def tim_node_executable():
+        system_node = shutil.which("node")
+        if system_node:
+            return system_node
+
+        candidates = [
+            os.path.join(BASE_DIR, ".tools", "node", "bin", "node"),
+            os.path.join(BASE_DIR, ".tools", "node-v20.20.2-darwin-x64", "bin", "node"),
+        ]
+        for cand in candidates:
+            if os.path.isfile(cand):
+                return cand
+        return None
+
+    def import_excel_va_deploy_supabase():
+        env_path = os.path.join(BASE_DIR, ".env")
+        profile_state_path = os.path.join(APPDATA_ROOT, "supabase_import_profiles.json")
+
+        profile_keys = [
+            "SUPABASE_URL",
+            "SUPABASE_SERVICE_ROLE_KEY",
+            "SUPABASE_BUCKET",
+            "SUPABASE_TABLE",
+            "SUPABASE_STORAGE_FOLDER",
+            "INSERT_BATCH_SIZE",
+            "SKIP_EXISTING_UPLOAD",
+            "CREATE_BUCKET_IF_MISSING",
+            "ALLOW_INSERT_WHEN_UPLOAD_FAILED",
+        ]
+
+        def doc_env_dict():
+            data = {}
+            lines = []
+            if os.path.exists(env_path):
+                with open(env_path, "r", encoding="utf-8") as f:
+                    lines = f.read().splitlines()
+
+            for line in lines:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, value = stripped.split("=", 1)
+                data[key.strip()] = value.strip()
+            return data, lines
+
+        def ghi_env_values(updates):
+            _, lines = doc_env_dict()
+            key_pos = {}
+            for idx, line in enumerate(lines):
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key = stripped.split("=", 1)[0].strip()
+                if key not in key_pos:
+                    key_pos[key] = idx
+
+            for key, value in updates.items():
+                new_line = f"{key}={value}"
+                if key in key_pos:
+                    lines[key_pos[key]] = new_line
+                else:
+                    lines.append(new_line)
+
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines).rstrip() + "\n")
+
+        def tao_profile_mac_dinh(env_values):
+            return {
+                "SUPABASE_URL": env_values.get("SUPABASE_URL", ""),
+                "SUPABASE_SERVICE_ROLE_KEY": env_values.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+                "SUPABASE_BUCKET": env_values.get("SUPABASE_BUCKET", "audio"),
+                "SUPABASE_TABLE": env_values.get("SUPABASE_TABLE", "vocab"),
+                "SUPABASE_STORAGE_FOLDER": env_values.get("SUPABASE_STORAGE_FOLDER", ""),
+                "INSERT_BATCH_SIZE": env_values.get("INSERT_BATCH_SIZE", "100"),
+                "SKIP_EXISTING_UPLOAD": env_values.get("SKIP_EXISTING_UPLOAD", "true"),
+                "CREATE_BUCKET_IF_MISSING": env_values.get("CREATE_BUCKET_IF_MISSING", "true"),
+                "ALLOW_INSERT_WHEN_UPLOAD_FAILED": env_values.get("ALLOW_INSERT_WHEN_UPLOAD_FAILED", "false"),
+            }
+
+        def doc_profile_state(default_profile):
+            if not os.path.exists(profile_state_path):
+                return {
+                    "active_profile": "dev",
+                    "profiles": {
+                        "dev": dict(default_profile),
+                        "prod": dict(default_profile),
+                    },
+                    "last_excel": "",
+                    "last_sheet": "",
+                }
+
+            try:
+                with open(profile_state_path, "r", encoding="utf-8") as f:
+                    raw = json.load(f)
+            except Exception:
+                raw = {}
+
+            profiles = raw.get("profiles") if isinstance(raw, dict) else {}
+            if not isinstance(profiles, dict):
+                profiles = {}
+
+            for pname in ["dev", "prod"]:
+                if pname not in profiles or not isinstance(profiles[pname], dict):
+                    profiles[pname] = dict(default_profile)
+
+            for pname, cfg in list(profiles.items()):
+                if not isinstance(cfg, dict):
+                    profiles[pname] = dict(default_profile)
+                    cfg = profiles[pname]
+                for k in profile_keys:
+                    if k not in cfg:
+                        cfg[k] = default_profile.get(k, "")
+
+            active_profile = raw.get("active_profile", "dev") if isinstance(raw, dict) else "dev"
+            if active_profile not in profiles:
+                active_profile = "dev"
+
+            return {
+                "active_profile": active_profile,
+                "profiles": profiles,
+                "last_excel": raw.get("last_excel", "") if isinstance(raw, dict) else "",
+                "last_sheet": raw.get("last_sheet", "") if isinstance(raw, dict) else "",
+            }
+
+        def ghi_profile_state(state):
+            try:
+                with open(profile_state_path, "w", encoding="utf-8") as f:
+                    json.dump(state, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không lưu được profile state:\n{e}", parent=cfg_win)
+
+        env_data, _ = doc_env_dict()
+        default_profile = tao_profile_mac_dinh(env_data)
+        profile_state = doc_profile_state(default_profile)
+
+        cfg_win = tk.Toplevel(popup)
+        set_popup_icon(cfg_win)
+        cfg_win.title("Import Excel + Deploy Supabase")
+        cfg_win.geometry("760x560")
+        cfg_win.transient(popup)
+        cfg_win.grab_set()
+
+        main_frame = tk.Frame(cfg_win)
+        main_frame.pack(fill="both", expand=True, padx=12, pady=10)
+
+        excel_var = tk.StringVar()
+        sheet_var = tk.StringVar()
+        profile_var = tk.StringVar(value=profile_state["active_profile"])
+        show_key_var = tk.BooleanVar(value=False)
+
+        active_profile_cfg = profile_state["profiles"].get(profile_var.get(), default_profile)
+
+        supabase_url_var = tk.StringVar(value=active_profile_cfg.get("SUPABASE_URL", ""))
+        supabase_key_var = tk.StringVar(value=active_profile_cfg.get("SUPABASE_SERVICE_ROLE_KEY", ""))
+        supabase_bucket_var = tk.StringVar(value=active_profile_cfg.get("SUPABASE_BUCKET", "audio"))
+        supabase_table_var = tk.StringVar(value=active_profile_cfg.get("SUPABASE_TABLE", "vocab"))
+        supabase_storage_folder_var = tk.StringVar(value=active_profile_cfg.get("SUPABASE_STORAGE_FOLDER", ""))
+        insert_batch_var = tk.StringVar(value=active_profile_cfg.get("INSERT_BATCH_SIZE", "100"))
+
+        skip_existing_var = tk.BooleanVar(value=str(active_profile_cfg.get("SKIP_EXISTING_UPLOAD", "true")).lower() != "false")
+        create_bucket_var = tk.BooleanVar(value=str(active_profile_cfg.get("CREATE_BUCKET_IF_MISSING", "true")).lower() != "false")
+        allow_insert_failed_var = tk.BooleanVar(
+            value=str(active_profile_cfg.get("ALLOW_INSERT_WHEN_UPLOAD_FAILED", "false")).lower() == "true"
+        )
+
+        profile_row = tk.Frame(main_frame)
+        profile_row.pack(fill="x", pady=(0, 8))
+        tk.Label(profile_row, text="Profile project:", width=16, anchor="w", font=("Arial", 10, "bold")).pack(side="left")
+        profile_combo = ttk.Combobox(
+            profile_row,
+            textvariable=profile_var,
+            state="readonly",
+            values=sorted(profile_state["profiles"].keys()),
+            width=16,
+        )
+        profile_combo.pack(side="left")
+        tk.Label(
+            profile_row,
+            text="(dev: chỉ pipeline+validate | prod: deploy đầy đủ)",
+            fg="#666",
+        ).pack(side="left", padx=(8, 0))
+
+        tk.Label(main_frame, text="1) Chọn file Excel", font=("Arial", 11, "bold")).pack(anchor="w")
+        file_row = tk.Frame(main_frame)
+        file_row.pack(fill="x", pady=(4, 8))
+        tk.Entry(file_row, textvariable=excel_var).pack(side="left", fill="x", expand=True)
+
+        sheet_combo = ttk.Combobox(main_frame, textvariable=sheet_var, state="readonly")
+
+        def derive_level_from_sheet(sheet_name):
+            sheet_name = (sheet_name or "").strip().lower()
+            match = re.search(r"hsk\d+", sheet_name)
+            if match:
+                return match.group(0)
+            if "_" in sheet_name:
+                return sheet_name.split("_", 1)[0]
+            return sheet_name
+
+        def sync_auto_fields_from_sheet(sheet_name):
+            if advanced_mode_var.get():
+                return
+            level_name = derive_level_from_sheet(sheet_name)
+            if level_name:
+                supabase_storage_folder_var.set(level_name)
+
+        def cap_nhat_sheet_list(excel_path, preferred_sheet=None):
+            try:
+                sheet_names = lay_sheet_names_tu_excel(excel_path)
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không đọc được sheet từ Excel:\n{e}", parent=cfg_win)
+                return
+
+            if not sheet_names:
+                messagebox.showwarning("Không có sheet", "File Excel không có sheet nào.", parent=cfg_win)
+                return
+
+            sheet_combo["values"] = sheet_names
+            if preferred_sheet and preferred_sheet in sheet_names:
+                sheet_var.set(preferred_sheet)
+            else:
+                sheet_var.set(sheet_names[0])
+            sync_auto_fields_from_sheet(sheet_var.get())
+
+        def browse_excel_file():
+            selected_path = filedialog.askopenfilename(
+                parent=cfg_win,
+                title="Chọn file Excel",
+                filetypes=[("Excel files", "*.xlsx;*.xlsm;*.xls")],
+            )
+            if not selected_path:
+                return
+            excel_var.set(selected_path)
+            cap_nhat_sheet_list(selected_path)
+
+        def on_sheet_change(event=None):
+            sync_auto_fields_from_sheet(sheet_var.get())
+
+        sheet_combo.bind("<<ComboboxSelected>>", on_sheet_change)
+
+        tk.Button(file_row, text="Chọn Excel", width=12, command=browse_excel_file).pack(side="left", padx=(8, 0))
+
+        tk.Label(main_frame, text="Sheet:").pack(anchor="w")
+        sheet_combo.pack(fill="x", pady=(2, 10))
+
+        tk.Label(main_frame, text=f"2) Cấu hình Supabase (lưu tại {env_path})", font=("Arial", 11, "bold")).pack(
+            anchor="w"
+        )
+
+        form = tk.Frame(main_frame)
+        form.pack(fill="x", pady=(6, 6))
+
+        def add_field(label, var, show=None):
+            row = tk.Frame(form)
+            row.pack(fill="x", pady=2)
+            tk.Label(row, text=label, width=24, anchor="w").pack(side="left")
+            entry = tk.Entry(row, textvariable=var, show=show)
+            entry.pack(side="left", fill="x", expand=True)
+            return entry
+
+        add_field("SUPABASE_URL", supabase_url_var)
+
+        key_row = tk.Frame(form)
+        key_row.pack(fill="x", pady=2)
+        tk.Label(key_row, text="SERVICE_ROLE_KEY", width=24, anchor="w").pack(side="left")
+        key_entry = tk.Entry(key_row, textvariable=supabase_key_var, show="*")
+        key_entry.pack(side="left", fill="x", expand=True)
+
+        def toggle_key_visibility():
+            if show_key_var.get():
+                key_entry.config(show="")
+            else:
+                key_entry.config(show="*")
+
+        tk.Checkbutton(
+            key_row,
+            text="Hiện",
+            variable=show_key_var,
+            command=toggle_key_visibility,
+        ).pack(side="left", padx=(8, 0))
+
+        bucket_entry = add_field("SUPABASE_BUCKET", supabase_bucket_var)
+        table_entry = add_field("SUPABASE_TABLE", supabase_table_var)
+        storage_entry = add_field("STORAGE_FOLDER", supabase_storage_folder_var)
+        batch_entry = add_field("INSERT_BATCH_SIZE", insert_batch_var)
+
+        opt_row = tk.Frame(main_frame)
+        opt_row.pack(fill="x", pady=(4, 4))
+        cb_skip = tk.Checkbutton(opt_row, text="SKIP_EXISTING_UPLOAD", variable=skip_existing_var)
+        cb_skip.pack(side="left", padx=(0, 12))
+        cb_create_bucket = tk.Checkbutton(opt_row, text="CREATE_BUCKET_IF_MISSING", variable=create_bucket_var)
+        cb_create_bucket.pack(side="left", padx=(0, 12))
+        cb_allow_insert_failed = tk.Checkbutton(opt_row, text="ALLOW_INSERT_WHEN_UPLOAD_FAILED", variable=allow_insert_failed_var)
+        cb_allow_insert_failed.pack(side="left")
+
+        advanced_mode_var = tk.BooleanVar(value=False)
+
+        def apply_advanced_mode():
+            state = "normal" if advanced_mode_var.get() else "disabled"
+            for widget in [bucket_entry, table_entry, storage_entry, batch_entry]:
+                widget.config(state=state)
+            for widget in [cb_skip, cb_create_bucket, cb_allow_insert_failed]:
+                widget.config(state=state)
+
+        tk.Checkbutton(
+            main_frame,
+            text="Bật chỉnh sửa nâng cao (mặc định để tự động an toàn)",
+            variable=advanced_mode_var,
+            command=apply_advanced_mode,
+            fg="#444",
+        ).pack(anchor="w", pady=(0, 2))
+        apply_advanced_mode()
+
+        hint_lbl = tk.Label(
+            main_frame,
+            text="Mặc định app dùng cấu hình tự động an toàn. STORAGE_FOLDER là folder trên Supabase, không phải folder output local.",
+            fg="#666",
+            anchor="w",
+            justify="left",
+        )
+        hint_lbl.pack(fill="x", pady=(2, 8))
+
+        def collect_profile_config_from_ui():
+            return {
+                "SUPABASE_URL": supabase_url_var.get().strip(),
+                "SUPABASE_SERVICE_ROLE_KEY": supabase_key_var.get().strip(),
+                "SUPABASE_BUCKET": supabase_bucket_var.get().strip(),
+                "SUPABASE_TABLE": supabase_table_var.get().strip(),
+                "SUPABASE_STORAGE_FOLDER": supabase_storage_folder_var.get().strip(),
+                "INSERT_BATCH_SIZE": insert_batch_var.get().strip(),
+                "SKIP_EXISTING_UPLOAD": "true" if skip_existing_var.get() else "false",
+                "CREATE_BUCKET_IF_MISSING": "true" if create_bucket_var.get() else "false",
+                "ALLOW_INSERT_WHEN_UPLOAD_FAILED": "true" if allow_insert_failed_var.get() else "false",
+            }
+
+        def apply_profile_to_ui(profile_cfg):
+            supabase_url_var.set(profile_cfg.get("SUPABASE_URL", ""))
+            supabase_key_var.set(profile_cfg.get("SUPABASE_SERVICE_ROLE_KEY", ""))
+            supabase_bucket_var.set(profile_cfg.get("SUPABASE_BUCKET", "audio"))
+            supabase_table_var.set(profile_cfg.get("SUPABASE_TABLE", "vocab"))
+            supabase_storage_folder_var.set(profile_cfg.get("SUPABASE_STORAGE_FOLDER", ""))
+            insert_batch_var.set(str(profile_cfg.get("INSERT_BATCH_SIZE", "100")))
+            skip_existing_var.set(str(profile_cfg.get("SKIP_EXISTING_UPLOAD", "true")).lower() != "false")
+            create_bucket_var.set(str(profile_cfg.get("CREATE_BUCKET_IF_MISSING", "true")).lower() != "false")
+            allow_insert_failed_var.set(
+                str(profile_cfg.get("ALLOW_INSERT_WHEN_UPLOAD_FAILED", "false")).lower() == "true"
+            )
+            sync_auto_fields_from_sheet(sheet_var.get())
+
+        def luu_profile_hien_tai(show_ok=True):
+            profile_name = profile_var.get().strip()
+            if not profile_name:
+                messagebox.showwarning("Thiếu profile", "Vui lòng chọn profile.", parent=cfg_win)
+                return
+
+            profile_state["profiles"][profile_name] = collect_profile_config_from_ui()
+            profile_state["active_profile"] = profile_name
+            ghi_profile_state(profile_state)
+            if show_ok:
+                messagebox.showinfo("Đã lưu", f"Đã lưu profile {profile_name}", parent=cfg_win)
+
+        def on_profile_change(event=None):
+            pname = profile_var.get().strip()
+            cfg = profile_state["profiles"].get(pname)
+            if not cfg:
+                cfg = dict(default_profile)
+                profile_state["profiles"][pname] = cfg
+            apply_profile_to_ui(cfg)
+
+        profile_combo.bind("<<ComboboxSelected>>", on_profile_change)
+        tk.Button(profile_row, text="💾 Lưu profile", width=12, command=luu_profile_hien_tai).pack(side="left", padx=8)
+
+        def validate_config_only():
+            cfg = collect_profile_config_from_ui()
+            insert_batch = cfg["INSERT_BATCH_SIZE"]
+            if not insert_batch.isdigit() or int(insert_batch) <= 0:
+                messagebox.showwarning("Sai cấu hình", "INSERT_BATCH_SIZE phải là số nguyên dương.", parent=cfg_win)
+                return None
+
+            required = {
+                "SUPABASE_URL": cfg["SUPABASE_URL"],
+                "SUPABASE_SERVICE_ROLE_KEY": cfg["SUPABASE_SERVICE_ROLE_KEY"],
+                "SUPABASE_BUCKET": cfg["SUPABASE_BUCKET"],
+                "SUPABASE_TABLE": cfg["SUPABASE_TABLE"],
+            }
+            missing = [k for k, v in required.items() if not v]
+            if missing:
+                messagebox.showwarning("Thiếu cấu hình", "Thiếu giá trị: " + ", ".join(missing), parent=cfg_win)
+                return None
+            return cfg
+
+        def validate_and_collect():
+            cfg = validate_config_only()
+            if not cfg:
+                return None
+
+            excel_path = excel_var.get().strip()
+            sheet_name = sheet_var.get().strip()
+
+            if not excel_path or not os.path.isfile(excel_path):
+                messagebox.showwarning("Thiếu file", "Vui lòng chọn file Excel hợp lệ.", parent=cfg_win)
+                return None
+            if not sheet_name:
+                messagebox.showwarning("Thiếu sheet", "Vui lòng chọn sheet cần import.", parent=cfg_win)
+                return None
+
+            return {
+                "excel_path": excel_path,
+                "sheet_name": sheet_name,
+                "PROFILE_MODE": profile_var.get().strip().lower(),
+                **cfg,
+            }
+
+        def save_supabase_config(show_ok=True):
+            collected = validate_and_collect()
+            if not collected:
+                return None
+
+            updates = {
+                "SUPABASE_URL": collected["SUPABASE_URL"],
+                "SUPABASE_SERVICE_ROLE_KEY": collected["SUPABASE_SERVICE_ROLE_KEY"],
+                "SUPABASE_BUCKET": collected["SUPABASE_BUCKET"],
+                "SUPABASE_TABLE": collected["SUPABASE_TABLE"],
+                "SUPABASE_STORAGE_FOLDER": collected["SUPABASE_STORAGE_FOLDER"],
+                "INSERT_BATCH_SIZE": collected["INSERT_BATCH_SIZE"],
+                "SKIP_EXISTING_UPLOAD": collected["SKIP_EXISTING_UPLOAD"],
+                "CREATE_BUCKET_IF_MISSING": collected["CREATE_BUCKET_IF_MISSING"],
+                "ALLOW_INSERT_WHEN_UPLOAD_FAILED": collected["ALLOW_INSERT_WHEN_UPLOAD_FAILED"],
+            }
+
+            try:
+                ghi_env_values(updates)
+                profile_state["active_profile"] = profile_var.get().strip() or "dev"
+                profile_state["profiles"][profile_state["active_profile"]] = collect_profile_config_from_ui()
+                profile_state["last_excel"] = excel_var.get().strip()
+                profile_state["last_sheet"] = sheet_var.get().strip()
+                ghi_profile_state(profile_state)
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không lưu được file .env:\n{e}", parent=cfg_win)
+                return None
+
+            if show_ok:
+                messagebox.showinfo("Đã lưu", "Đã lưu cấu hình Supabase vào .env", parent=cfg_win)
+            return collected
+
+        def test_ket_noi_supabase():
+            cfg = validate_config_only()
+            if not cfg:
+                return
+
+            import ssl
+            from urllib import request as urlrequest
+            from urllib import error as urlerror
+
+            ssl_context = None
+            try:
+                import certifi
+
+                ssl_context = ssl.create_default_context(cafile=certifi.where())
+            except Exception:
+                ssl_context = ssl.create_default_context()
+
+            base_url = cfg["SUPABASE_URL"].rstrip("/")
+            table_name = cfg["SUPABASE_TABLE"]
+            test_url = f"{base_url}/rest/v1/{table_name}?select=*&limit=1"
+            headers = {
+                "apikey": cfg["SUPABASE_SERVICE_ROLE_KEY"],
+                "Authorization": f"Bearer {cfg['SUPABASE_SERVICE_ROLE_KEY']}",
+                "Accept": "application/json",
+            }
+
+            try:
+                req = urlrequest.Request(test_url, headers=headers, method="GET")
+                with urlrequest.urlopen(req, timeout=12, context=ssl_context) as resp:
+                    code = resp.getcode()
+                    if code in (200, 206):
+                        messagebox.showinfo("Kết nối OK", "✅ Kết nối Supabase thành công.", parent=cfg_win)
+                    else:
+                        messagebox.showwarning("Kết nối", f"Nhận mã phản hồi {code}", parent=cfg_win)
+            except urlerror.HTTPError as e:
+                try:
+                    body = e.read().decode("utf-8", errors="ignore")
+                except Exception:
+                    body = ""
+                messagebox.showerror(
+                    "Test kết nối thất bại",
+                    f"HTTP {e.code}: {e.reason}\n{body[:400]}",
+                    parent=cfg_win,
+                )
+            except Exception as e:
+                msg = str(e)
+                if "CERTIFICATE_VERIFY_FAILED" in msg or "certificate verify failed" in msg.lower():
+                    msg += "\n\nGợi ý: Lỗi SSL cục bộ trên máy (CA store), không phải do sai key Supabase."
+                messagebox.showerror("Test kết nối thất bại", msg, parent=cfg_win)
+
+        def hoi_che_do_deploy(parent):
+            selected = {"mode": None}
+
+            chooser = tk.Toplevel(parent)
+            set_popup_icon(chooser)
+            chooser.title("Chọn chế độ deploy")
+            chooser.geometry("520x210")
+            chooser.transient(parent)
+            chooser.grab_set()
+
+            tk.Label(
+                chooser,
+                text="Bản này đã giống bản cũ. Bạn muốn làm gì với những phần đã có?",
+                font=("Arial", 11, "bold"),
+                wraplength=470,
+                justify="center",
+            ).pack(pady=(18, 8), padx=16)
+            tk.Label(
+                chooser,
+                text="Ghi đè = tạo lại file local và upload lại storage.\nChỉ thêm phần chưa có = bỏ qua file/record đã tồn tại.",
+                fg="#555",
+                justify="center",
+            ).pack(pady=(0, 14), padx=16)
+
+            btn_row = tk.Frame(chooser)
+            btn_row.pack(pady=4)
+
+            def choose(mode):
+                selected["mode"] = mode
+                chooser.destroy()
+
+            tk.Button(btn_row, text="Chỉ thêm phần chưa có", width=22, command=lambda: choose("add_missing")).pack(
+                side="left", padx=6
+            )
+            tk.Button(btn_row, text="Ghi đè bản đã có", width=18, command=lambda: choose("overwrite")).pack(
+                side="left", padx=6
+            )
+            tk.Button(chooser, text="Huỷ", width=10, command=lambda: choose(None)).pack(pady=(12, 0))
+            chooser.protocol("WM_DELETE_WINDOW", lambda: choose(None))
+            chooser.wait_window()
+            return selected["mode"]
+
+        def mo_cua_so_log_va_chay(collected, deploy_mode):
+            sheet_name = collected["sheet_name"]
+            excel_path = collected["excel_path"]
+            level_match = re.search(r"hsk\d+", sheet_name.lower())
+            level_name = level_match.group(0) if level_match else sheet_name.split("_")[0].lower()
+            deck_name = sheet_name
+
+            output_dir = os.path.join(BASE_DIR, "output", sheet_name)
+            audio_dir = os.path.join(output_dir, "audio")
+            json_path = os.path.join(output_dir, "output_vocab.json")
+            storage_folder = collected["SUPABASE_STORAGE_FOLDER"] or level_name
+
+            log_win = tk.Toplevel(cfg_win)
+            set_popup_icon(log_win)
+            log_win.title(f"Import Excel + Deploy: {sheet_name}")
+            log_win.geometry("940x640")
+            log_win.transient(cfg_win)
+            log_win.grab_set()
+
+            status_frame = tk.Frame(log_win)
+            status_frame.pack(fill="x", padx=10, pady=(10, 6))
+
+            def make_status_row(label_text):
+                row = tk.Frame(status_frame)
+                row.pack(fill="x", pady=1)
+                tk.Label(row, text=label_text, width=28, anchor="w", font=("Arial", 10, "bold")).pack(side="left")
+                v = tk.StringVar(value="Chưa chạy")
+                lbl = tk.Label(row, textvariable=v, anchor="w", fg="#666")
+                lbl.pack(side="left", fill="x", expand=True)
+                return v, lbl
+
+            st_m4a, lb_m4a = make_status_row("M4A:")
+            st_json, lb_json = make_status_row("JSON:")
+            st_check, lb_check = make_status_row("Check:")
+            st_deploy, lb_deploy = make_status_row("Supabase Storage + DB:")
+
+            progress_row = tk.Frame(log_win)
+            progress_row.pack(fill="x", padx=10, pady=(0, 8))
+            progress_label_var = tk.StringVar(value="Tiến trình: 0%")
+            progress_count_var = tk.StringVar(value="Item: 0/0")
+            tk.Label(progress_row, textvariable=progress_label_var, width=18, anchor="w", font=("Arial", 10, "bold")).pack(side="left")
+            progress_bar = ttk.Progressbar(progress_row, orient="horizontal", length=650, mode="determinate", maximum=100)
+            progress_bar.pack(side="left", fill="x", expand=True, padx=(8, 0))
+            tk.Label(progress_row, textvariable=progress_count_var, width=14, anchor="e", font=("Arial", 10, "bold")).pack(side="right")
+
+            log_text = tk.Text(log_win, wrap="word", height=26)
+            log_text.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+            log_text.tag_configure("info", foreground="#0b4f8a")
+            log_text.tag_configure("success", foreground="#0b7a28")
+            log_text.tag_configure("warning", foreground="#b26a00")
+            log_text.tag_configure("error", foreground="#b00020")
+            log_text.tag_configure("header", foreground="#5b2c83", font=("Menlo", 12, "bold"))
+            log_text.tag_configure("plain", foreground="#000000")
+            log_text.tag_configure("phase_pipeline", foreground="#0b4f8a", background="#eaf4ff", font=("Menlo", 11, "bold"))
+            log_text.tag_configure("phase_validate", foreground="#7a4f00", background="#fff4db", font=("Menlo", 11, "bold"))
+            log_text.tag_configure("phase_deploy", foreground="#0b7a28", background="#e8f9ec", font=("Menlo", 11, "bold"))
+            log_text.tag_configure("phase_done", foreground="#5b2c83", background="#f0e8ff", font=("Menlo", 11, "bold"))
+
+            scroll = tk.Scrollbar(log_text, orient="vertical", command=log_text.yview)
+            log_text.configure(yscrollcommand=scroll.set)
+            scroll.pack(side="right", fill="y")
+
+            control_row = tk.Frame(log_win)
+            control_row.pack(fill="x", padx=10, pady=(0, 8))
+
+            def append_log(msg):
+                def _apply():
+                    line = msg.rstrip("\n")
+                    tag = "plain"
+                    if line.startswith("==="):
+                        tag = "header"
+                    elif line.startswith("--- RUN: vocab_pipeline.py ---"):
+                        tag = "phase_pipeline"
+                    elif line.startswith("--- RUN: import_hsk1_to_supabase.js ---"):
+                        tag = "phase_deploy"
+                    elif line.startswith("[Pipeline] Running validator") or line.startswith("[Pipeline] Validator"):
+                        tag = "phase_validate"
+                    elif line.startswith("[Pipeline] Finished successfully") or line.startswith("✅ Hoàn tất"):
+                        tag = "phase_done"
+                    elif line.startswith("---"):
+                        tag = "header"
+                    elif line.startswith("❌") or "FAIL" in line or "lỗi" in line.lower() or "error" in line.lower():
+                        tag = "error"
+                    elif line.startswith("⚠") or line.startswith("[WARN]"):
+                        tag = "warning"
+                    elif line.startswith("✅") or "PASS" in line or "đã tạo đủ" in line.lower() or "hoàn tất" in line.lower():
+                        tag = "success"
+                    elif line.startswith("ℹ️") or line.startswith("[Pipeline]"):
+                        tag = "info"
+
+                    log_text.insert("end", line + "\n", tag)
+                    log_text.see("end")
+
+                log_text.after(0, _apply)
+
+            def update_status(var, label_widget, text, color):
+                def _apply():
+                    var.set(text)
+                    label_widget.config(fg=color)
+                log_win.after(0, _apply)
+
+            progress_state = {"total": 0, "processed": 0}
+
+            def update_progress(percent, label=None):
+                percent = max(0, min(100, int(percent)))
+
+                def _apply():
+                    progress_bar["value"] = percent
+                    progress_label_var.set(label or f"Tiến trình: {percent}%")
+                    total = progress_state.get("total", 0)
+                    processed = progress_state.get("processed", 0)
+                    if total:
+                        progress_count_var.set(f"Item: {processed}/{total}")
+                    else:
+                        progress_count_var.set("Item: 0/0")
+
+                log_win.after(0, _apply)
+
+            def update_pipeline_progress_from_line(line):
+                total_match = re.search(r"\[Pipeline\] Valid rows:\s*(\d+)", line)
+                if total_match:
+                    progress_state["total"] = int(total_match.group(1))
+                    update_progress(2, f"Tiến trình: 2% - {progress_state['total']} dòng hợp lệ")
+                    return
+
+                gen_match = re.search(r"\[Pipeline\] Progress:\s*processed\s*(\d+)\/(\d+)\s*items", line)
+                if gen_match:
+                    progress_state["processed"] = int(gen_match.group(1))
+                    progress_state["total"] = max(progress_state["total"], int(gen_match.group(2)))
+                    pct = int(5 + (progress_state["processed"] / max(1, progress_state["total"])) * 80)
+                    update_progress(pct, f"Tiến trình: {pct}% - {progress_state['processed']}/{progress_state['total']} items")
+                    return
+
+                if "Writing JSON" in line:
+                    update_progress(88, "Tiến trình: 88% - đang ghi JSON")
+                elif "Running validator" in line:
+                    progress_count_var.set(f"Item: {progress_state.get('processed', 0)}/{progress_state.get('total', 0)}")
+                    update_progress(92, "Tiến trình: 92% - đang validate")
+                elif "Validator passed" in line:
+                    update_progress(95, "Tiến trình: 95% - validate PASS")
+                elif "Finished successfully" in line:
+                    update_progress(100, "Tiến trình: 100% - hoàn tất")
+
+            def update_phase_progress(percent, label):
+                update_progress(percent, label)
+
+            cancel_state = {"cancelled": False}
+            active_process = {"proc": None}
+
+            def request_cancel():
+                cancel_state["cancelled"] = True
+                proc = active_process["proc"]
+                if proc is not None:
+                    try:
+                        proc.terminate()
+                    except Exception:
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
+                update_status(st_deploy, lb_deploy, "Đã huỷ", "red")
+                append_log("\n⛔ Người dùng đã bấm Huỷ. Đang dừng tiến trình...")
+
+            tk.Button(control_row, text="❌ Huỷ", width=12, fg="white", bg="#cc4444", command=request_cancel).pack(
+                side="left"
+            )
+            tk.Label(control_row, text="Nút Huỷ sẽ dừng pipeline/deploy đang chạy.", fg="#666").pack(side="left", padx=8)
+
+            def run_cmd_and_stream(cmd, env=None):
+                output_lines = []
+                try:
+                    process = subprocess.Popen(
+                        cmd,
+                        cwd=BASE_DIR,
+                        env=env,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        text=True,
+                        bufsize=1,
+                        universal_newlines=True,
+                    )
+                    active_process["proc"] = process
+                except Exception as e:
+                    append_log(f"❌ Không chạy được lệnh: {e}")
+                    return 1, ""
+
+                if process.stdout is not None:
+                    for line in process.stdout:
+                        if cancel_state["cancelled"]:
+                            break
+                        clean = line.rstrip("\n")
+                        output_lines.append(clean)
+                        append_log(clean)
+                        update_pipeline_progress_from_line(clean)
+
+                code = process.wait()
+                active_process["proc"] = None
+                if cancel_state["cancelled"]:
+                    return -1, "\n".join(output_lines)
+                return code, "\n".join(output_lines)
+
+            def open_output_folder():
+                try:
+                    open_path_cross_platform(output_dir)
+                except Exception as e:
+                    messagebox.showerror("Lỗi", f"Không mở được folder kết quả:\n{e}", parent=log_win)
+
+            def run_deploy_phase(profile_mode, deploy_mode):
+                node_exe = tim_node_executable()
+                if not node_exe:
+                    update_status(st_deploy, lb_deploy, "FAIL (không tìm thấy Node.js)", "red")
+                    append_log("\n❌ Không tìm thấy Node.js để chạy script deploy Supabase.")
+                    return
+
+                env = os.environ.copy()
+                env.update(
+                    {
+                        "SUPABASE_URL": collected["SUPABASE_URL"],
+                        "SUPABASE_SERVICE_ROLE_KEY": collected["SUPABASE_SERVICE_ROLE_KEY"],
+                        "SUPABASE_BUCKET": collected["SUPABASE_BUCKET"],
+                        "SUPABASE_TABLE": collected["SUPABASE_TABLE"],
+                        "INSERT_BATCH_SIZE": collected["INSERT_BATCH_SIZE"],
+                        "OVERWRITE_EXISTING_UPLOAD": "true" if deploy_mode == "overwrite" else "false",
+                        "SKIP_EXISTING_UPLOAD": collected["SKIP_EXISTING_UPLOAD"],
+                        "CREATE_BUCKET_IF_MISSING": collected["CREATE_BUCKET_IF_MISSING"],
+                        "ALLOW_INSERT_WHEN_UPLOAD_FAILED": collected["ALLOW_INSERT_WHEN_UPLOAD_FAILED"],
+                        "JSON_PATH": json_path,
+                        "AUDIO_DIR": audio_dir,
+                        "LEVEL": level_name,
+                        "DECK": deck_name,
+                        "SUPABASE_STORAGE_FOLDER": storage_folder,
+                    }
+                )
+
+                import_script = os.path.join(BASE_DIR, "scripts", "import_hsk1_to_supabase.js")
+                import_cmd = [node_exe, import_script]
+
+                mode_label = "ghi đè" if deploy_mode == "overwrite" else "chỉ thêm phần chưa có"
+                update_status(st_deploy, lb_deploy, f"Đang deploy ({mode_label})...", "#cc8800")
+                append_log("\n--- RUN: import_hsk1_to_supabase.js ---")
+                deploy_code, deploy_output = run_cmd_and_stream(import_cmd, env=env)
+
+                if deploy_code == 0:
+                    if cancel_state["cancelled"]:
+                        update_status(st_deploy, lb_deploy, "Đã huỷ", "red")
+                        append_log("\n⛔ Deploy đã bị huỷ trước khi hoàn tất.")
+                        return
+
+                    no_new_records = deploy_mode != "overwrite" and "STATUS: NO_NEW_RECORDS" in deploy_output
+                    if no_new_records:
+                        update_status(st_deploy, lb_deploy, "Bản này đã deploy đủ rồi", "#b26a00")
+                        append_log("\nℹ️ Bản này đã deploy đủ rồi, không có gì mới để đẩy lên.")
+                    elif deploy_mode == "overwrite":
+                        update_status(st_deploy, lb_deploy, "Đã ghi đè xong", "green")
+                        append_log("\n✅ Đã ghi đè xong bản đã có.")
+                    else:
+                        update_status(st_deploy, lb_deploy, "đã deploy", "green")
+                        append_log("\n✅ Hoàn tất toàn bộ: M4A + JSON + PASS + Supabase deploy")
+
+                    done_popup = tk.Toplevel(log_win)
+                    set_popup_icon(done_popup)
+                    done_popup.title("Hoàn tất import")
+                    done_popup.geometry("460x190")
+                    done_popup.transient(log_win)
+                    done_popup.grab_set()
+
+                    if no_new_records:
+                        message = "Bản này đã deploy đủ rồi, không có gì mới để đẩy lên."
+                        message_color = "#b26a00"
+                    else:
+                        message = "✅ Đã deploy xong Supabase." if profile_mode == "prod" else "✅ Đã deploy xong sau khi kiểm tra."
+                        message_color = "green"
+
+                    tk.Label(done_popup, text=message, font=("Arial", 11, "bold"), fg=message_color).pack(pady=(16, 10))
+                    if profile_mode == "dev":
+                        if deploy_mode == "overwrite":
+                            hint_text = "Bạn đang ở chế độ ghi đè, có thể mở folder để kiểm tra lại kết quả."
+                        else:
+                            hint_text = "Bạn hãy mở folder để kiểm tra trước khi deploy." if not no_new_records else "Bạn có thể mở folder để đối chiếu lại kết quả."
+                        tk.Label(done_popup, text=hint_text, fg="#444").pack(pady=(0, 8))
+
+                    btn_frame = tk.Frame(done_popup)
+                    btn_frame.pack(pady=6)
+
+                    if profile_mode == "dev":
+                        tk.Button(btn_frame, text="Mở folder", width=12, command=open_output_folder).pack(side="left", padx=6)
+                        tk.Button(
+                            btn_frame,
+                            text="Đã kiểm tra xong- Deploy ngay",
+                            width=22,
+                            command=lambda: start_manual_deploy(done_popup),
+                        ).pack(side="left", padx=6)
+                        tk.Button(done_popup, text="Huỷ", width=10, command=done_popup.destroy).pack(pady=(8, 0))
+                    else:
+                        tk.Button(btn_frame, text="Mở folder", width=12, command=open_output_folder).pack(side="left", padx=6)
+                        tk.Button(done_popup, text="Đóng", width=10, command=done_popup.destroy).pack(pady=(8, 0))
+                else:
+                    if cancel_state["cancelled"]:
+                        update_status(st_deploy, lb_deploy, "Đã huỷ", "red")
+                        append_log("\n⛔ Đã huỷ bởi người dùng.")
+                        return
+                    update_status(st_deploy, lb_deploy, "deploy lỗi", "red")
+                    append_log("\n❌ Deploy Supabase bị lỗi.")
+
+            def worker():
+                profile_mode = (collected.get("PROFILE_MODE") or "dev").lower()
+                append_log("=== BẮT ĐẦU IMPORT EXCEL + DEPLOY SUPABASE ===")
+                append_log(f"Excel: {excel_path}")
+                append_log(f"Sheet: {sheet_name}")
+                append_log(f"Level: {level_name}")
+                append_log(f"Deck: {deck_name}")
+                append_log(f"Profile mode: {profile_mode}")
+                append_log(f"Storage folder: {storage_folder}")
+                append_log(f"Config file: {env_path}")
+
+                update_status(st_m4a, lb_m4a, "Đang chạy...", "#cc8800")
+                update_status(st_json, lb_json, "Đang chạy...", "#cc8800")
+                update_status(st_check, lb_check, "Đang chạy...", "#cc8800")
+                update_status(st_deploy, lb_deploy, "Đang chờ pipeline xong...", "#666")
+                update_progress(1, "Tiến trình: 1% - khởi động")
+
+                pipeline_cmd = [
+                    sys.executable,
+                    "-u",
+                    os.path.join(BASE_DIR, "pipelines", "vocab_pipeline.py"),
+                    excel_path,
+                    "--sheet",
+                    sheet_name,
+                ]
+
+                append_log("\n--- RUN: vocab_pipeline.py ---")
+                pipe_code, pipe_output = run_cmd_and_stream(pipeline_cmd)
+                if cancel_state["cancelled"]:
+                    update_status(st_m4a, lb_m4a, "Đã huỷ", "red")
+                    update_status(st_json, lb_json, "Đã huỷ", "red")
+                    update_status(st_check, lb_check, "Đã huỷ", "red")
+                    update_status(st_deploy, lb_deploy, "Đã huỷ", "red")
+                    append_log("\n⛔ Quy trình bị huỷ giữa chừng.")
+                    return
+                if pipe_code != 0:
+                    update_status(st_m4a, lb_m4a, "Lỗi tạo M4A", "red")
+                    update_status(st_json, lb_json, "Lỗi tạo JSON", "red")
+                    update_status(st_check, lb_check, "FAIL", "red")
+                    update_status(st_deploy, lb_deploy, "Chưa deploy do pipeline lỗi", "red")
+                    update_progress(100, "Tiến trình: lỗi")
+                    append_log("\n❌ Pipeline thất bại. Dừng quy trình.")
+                    return
+
+                m4a_count = 0
+                if os.path.isdir(audio_dir):
+                    try:
+                        m4a_count = len([f for f in os.listdir(audio_dir) if f.lower().endswith(".m4a")])
+                    except Exception:
+                        m4a_count = 0
+
+                if m4a_count > 0:
+                    update_status(st_m4a, lb_m4a, f"đã tạo đủ ({m4a_count} file)", "green")
+                else:
+                    update_status(st_m4a, lb_m4a, "không tìm thấy file m4a", "red")
+
+                if os.path.isfile(json_path):
+                    update_status(st_json, lb_json, "đã tạo đủ", "green")
+                else:
+                    update_status(st_json, lb_json, "không tìm thấy output_vocab.json", "red")
+
+                if "STATUS: PASS" in pipe_output:
+                    update_status(st_check, lb_check, "PASS", "green")
+                    update_progress(90, "Tiến trình: 90% - validate PASS")
+                else:
+                    update_status(st_check, lb_check, "FAIL (validator không PASS)", "red")
+                    update_status(st_deploy, lb_deploy, "Chưa deploy do validate FAIL", "red")
+                    update_progress(100, "Tiến trình: lỗi validate")
+                    append_log("\n❌ Validation không PASS. Dừng trước bước deploy.")
+                    return
+
+                if profile_mode == "dev":
+                    update_status(st_deploy, lb_deploy, "Chờ bạn kiểm tra folder", "#2a6")
+                    update_progress(95, "Tiến trình: 95% - chờ bạn kiểm tra")
+                    append_log("\nℹ️ Dev mode: chỉ chạy pipeline + validate, không deploy Supabase.")
+                    append_log("\n✅ Hoàn tất phần kiểm tra dev.")
+
+                    done_popup = tk.Toplevel(log_win)
+                    set_popup_icon(done_popup)
+                    done_popup.title("Đã kiểm tra xong")
+                    done_popup.geometry("480x190")
+                    done_popup.transient(log_win)
+                    done_popup.grab_set()
+
+                    tk.Label(done_popup, text="✅ Dev đã chạy xong pipeline + validate.", font=("Arial", 11, "bold"), fg="green").pack(pady=(16, 10))
+                    tk.Label(done_popup, text="Hãy mở folder để kiểm tra kết quả trước khi deploy.", fg="#444").pack(pady=(0, 8))
+
+                    btn_frame = tk.Frame(done_popup)
+                    btn_frame.pack(pady=6)
+                    tk.Button(btn_frame, text="Mở folder", width=12, command=open_output_folder).pack(side="left", padx=6)
+                    tk.Button(
+                        btn_frame,
+                        text="Đã kiểm tra xong- Deploy ngay",
+                        width=22,
+                            command=lambda: [done_popup.destroy(), run_deploy_phase("prod", deploy_mode)],
+                    ).pack(side="left", padx=6)
+                    tk.Button(done_popup, text="Huỷ", width=10, command=done_popup.destroy).pack(pady=(8, 0))
+                    return
+
+                run_deploy_phase(profile_mode, deploy_mode)
+
+            def start_manual_deploy(done_popup=None):
+                if done_popup is not None and done_popup.winfo_exists():
+                    done_popup.destroy()
+                update_status(st_deploy, lb_deploy, "Đang khởi động deploy...", "#cc8800")
+                append_log("\n🚀 Bấm Deploy ngay: bắt đầu deploy Supabase ở background.")
+                threading.Thread(target=lambda: run_deploy_phase("prod", deploy_mode), daemon=True).start()
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        def on_run():
+            deploy_mode = hoi_che_do_deploy(cfg_win)
+            if not deploy_mode:
+                return
+            collected = save_supabase_config(show_ok=False)
+            if not collected:
+                return
+            mo_cua_so_log_va_chay(collected, deploy_mode)
+
+        # Nạp lại lựa chọn Excel/sheet gần nhất
+        last_excel = profile_state.get("last_excel", "")
+        last_sheet = profile_state.get("last_sheet", "")
+        if last_excel and os.path.isfile(last_excel):
+            excel_var.set(last_excel)
+            cap_nhat_sheet_list(last_excel, preferred_sheet=last_sheet)
+
+        btn_row = tk.Frame(main_frame)
+        btn_row.pack(fill="x", pady=(8, 0))
+        tk.Button(btn_row, text="💾 Lưu cấu hình", width=14, bg="#e6ffe6", command=save_supabase_config).pack(
+            side="left"
+        )
+        tk.Button(btn_row, text="🔌 Test kết nối", width=14, bg="#fff2cc", command=test_ket_noi_supabase).pack(
+            side="left", padx=(8, 0)
+        )
+        tk.Button(btn_row, text="🚀 Chạy Import + Deploy", width=20, bg="#cce6ff", command=on_run).pack(
+            side="left", padx=8
+        )
+        tk.Button(btn_row, text="Đóng", width=10, command=cfg_win.destroy).pack(side="right")
+
 
             
     #===Ép ngôn ngữ đã chọn
@@ -4190,6 +5178,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     action_buttons = [
         # Disabled: game/video/background/subtitle features removed in audio-tool version.
         # ("🎮 Game Đoán Chữ", "#ccffcc", bat_dau_game_popup),
+        ("📥 Import Excel + Deploy Supabase", "#e8ffe8", import_excel_va_deploy_supabase),
         ("▶️ Đọc nội dung", "lightgreen", doc_popup),
         ("🎯 Ép về ngôn ngữ đã chọn", "#ffe6cc", lambda: ep_toan_bo_dong_ve_lang()),
         ("⏸ Dừng đọc", "orange", dung_doc),

@@ -2,42 +2,22 @@
 const fs = require("fs");
 const path = require("path");
 
-const HSK_EXPECTED_COUNTS = {
-  hsk1: 152,
-  hsk2: 150,
-  hsk3: 300,
-  hsk4: 600,
-  hsk5: 1300,
-  hsk6: 2500,
-};
-
 function toPosix(input) {
   return input.replace(/\\/g, "/");
 }
 
-function inferHskKey(excelFilePath, sheetName) {
-  const base = path.basename(excelFilePath, path.extname(excelFilePath)).toLowerCase();
-  const sheet = String(sheetName || "").toLowerCase();
-
-  const fromSheet = sheet.match(/hsk\s*([1-6])/i);
-  if (fromSheet) {
-    return `hsk${fromSheet[1]}`;
+function readMetadata(outputRoot) {
+  const metadataPath = path.join(outputRoot, "output_vocab_metadata.json");
+  if (!fs.existsSync(metadataPath)) {
+    return { metadataPath, metadata: null };
   }
 
-  const fromFile = base.match(/hsk\s*([1-6])/i);
-  if (fromFile) {
-    return `hsk${fromFile[1]}`;
+  try {
+    const raw = fs.readFileSync(metadataPath, "utf8");
+    return { metadataPath, metadata: JSON.parse(raw) };
+  } catch (err) {
+    return { metadataPath, metadata: { __error: err.message } };
   }
-
-  return null;
-}
-
-function inferExpectedCount(excelFilePath, sheetName) {
-  const key = inferHskKey(excelFilePath, sheetName);
-  if (!key) {
-    return null;
-  }
-  return HSK_EXPECTED_COUNTS[key] || null;
 }
 
 function validateVocabOutput({ excelFilePath, sheetName, outputRoot }) {
@@ -66,9 +46,21 @@ function validateVocabOutput({ excelFilePath, sheetName, outputRoot }) {
   }
 
   const total = items.length;
-  const expectedCount = inferExpectedCount(excelFilePath, sheetName);
-  if (expectedCount != null && total !== expectedCount) {
-    errors.push(`Invalid item count: got ${total}, expected ${expectedCount}.`);
+  const { metadataPath, metadata } = readMetadata(outputRoot);
+
+  if (!metadata) {
+    errors.push(`Missing metadata file: ${metadataPath}`);
+  } else if (metadata.__error) {
+    errors.push(`Invalid metadata JSON: ${metadata.__error}`);
+  }
+
+  const expectedCount = Number(metadata?.expected_count);
+  if (Number.isFinite(expectedCount)) {
+    if (total !== expectedCount) {
+      errors.push(`Invalid item count: got ${total}, expected ${expectedCount}.`);
+    }
+  } else if (metadata) {
+    errors.push(`Missing expected_count in metadata: ${metadataPath}`);
   }
 
   const wordSeen = new Map();
@@ -215,5 +207,4 @@ if (require.main === module) {
 
 module.exports = {
   validateVocabOutput,
-  inferExpectedCount,
 };

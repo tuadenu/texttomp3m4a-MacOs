@@ -17,6 +17,7 @@ const LEVEL = process.env.LEVEL || 'hsk1';
 const DECK = process.env.DECK || path.basename(path.dirname(JSON_PATH));
 const SHEET_NAME = DECK;
 const INSERT_BATCH_SIZE = Number(process.env.INSERT_BATCH_SIZE || 100);
+const OVERWRITE_EXISTING_UPLOAD = String(process.env.OVERWRITE_EXISTING_UPLOAD || 'false').toLowerCase() === 'true';
 const SKIP_EXISTING_UPLOAD = String(process.env.SKIP_EXISTING_UPLOAD || 'true').toLowerCase() !== 'false';
 const CREATE_BUCKET_IF_MISSING =
   String(process.env.CREATE_BUCKET_IF_MISSING || 'true').toLowerCase() !== 'false';
@@ -84,6 +85,42 @@ async function getAllExistingFileNames(supabase) {
     for (const item of data) {
       if (item && item.name) {
         existing.add(item.name);
+      }
+    }
+
+    if (data.length < limit) {
+      break;
+    }
+
+    offset += limit;
+  }
+
+  return existing;
+}
+
+async function getExistingAudioUrlsForDeck(supabase) {
+  const existing = new Set();
+  let offset = 0;
+  const limit = 1000;
+
+  while (true) {
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('audio_url')
+      .eq('deck', DECK)
+      .range(offset, offset + limit - 1);
+
+    if (error) {
+      throw new Error(`Không thể đọc audio_url đã có trong DB: ${error.message}`);
+    }
+
+    if (!data || data.length === 0) {
+      break;
+    }
+
+    for (const item of data) {
+      if (item && item.audio_url) {
+        existing.add(String(item.audio_url));
       }
     }
 
@@ -193,6 +230,7 @@ async function main() {
   console.log(`Table: ${TABLE_NAME}`);
   console.log(`Deck: ${DECK}`);
   console.log(`Version: ${getVersionFromSheet(SHEET_NAME)}`);
+  console.log(`Mode: ${OVERWRITE_EXISTING_UPLOAD ? 'overwrite' : 'add_missing'}`);
 
   await ensureBucketExists(supabase);
   await ensureTableAccessible(supabase);
@@ -214,13 +252,14 @@ async function main() {
     throw new Error('Không tìm thấy file audio nào trong thư mục audio.');
   }
 
-  const existingFiles = SKIP_EXISTING_UPLOAD ? await getAllExistingFileNames(supabase) : new Set();
+  const shouldSkipExistingUpload = !OVERWRITE_EXISTING_UPLOAD && SKIP_EXISTING_UPLOAD;
+  const existingFiles = shouldSkipExistingUpload ? await getAllExistingFileNames(supabase) : new Set();
   let uploadedCount = 0;
   let skippedCount = 0;
   let failedUploads = 0;
 
   console.log(`\n[Upload] Tổng file local: ${audioFiles.length}`);
-  if (SKIP_EXISTING_UPLOAD) {
+  if (shouldSkipExistingUpload) {
     console.log(`[Upload] File đã tồn tại trên storage: ${existingFiles.size}`);
   }
 
@@ -228,7 +267,7 @@ async function main() {
     const filename = audioFiles[i];
     const storagePath = `${STORAGE_FOLDER}/${filename}`;
 
-    if (SKIP_EXISTING_UPLOAD && existingFiles.has(filename)) {
+    if (shouldSkipExistingUpload && existingFiles.has(filename)) {
       skippedCount += 1;
       console.log(`[Upload ${i + 1}/${audioFiles.length}] Skip tồn tại: ${filename}`);
       continue;
@@ -240,7 +279,7 @@ async function main() {
       const fileBuffer = await fs.readFile(localPath);
       const { error } = await supabase.storage.from(BUCKET).upload(storagePath, fileBuffer, {
         contentType: getContentTypeByExt(filename),
-        upsert: false
+        upsert: OVERWRITE_EXISTING_UPLOAD
       });
 
       if (error) {
@@ -288,12 +327,44 @@ async function main() {
     console.log(`\n[Bonus] Public URL mẫu: ${sampleUrl}`);
   }
 
-  const batches = chunkArray(transformed, INSERT_BATCH_SIZE);
+  const existingAudioUrls = await getExistingAudioUrlsForDeck(supabase);
+  const recordsToInsert = [];
+  let skippedExistingDb = 0;
+  const seenAudioUrls = new Set(existingAudioUrls);
+
+  for (const record of transformed) {
+    const audioUrl = String(record.audio_url || '').trim();
+    if (audioUrl && seenAudioUrls.has(audioUrl)) {
+      skippedExistingDb += 1;
+      console.log(`[Insert] Skip trùng DB: ${record.word || audioUrl}`);
+      continue;
+    }
+
+    if (audioUrl) {
+      seenAudioUrls.add(audioUrl);
+    }
+
+    recordsToInsert.push(record);
+  }
+
+  const batches = chunkArray(recordsToInsert, INSERT_BATCH_SIZE);
   let insertedTotal = 0;
 
   console.log(`\n[Insert] Tổng record: ${transformed.length}`);
+  console.log(`[Insert] Đã có sẵn trong DB: ${existingAudioUrls.size}`);
+  console.log(`[Insert] Skip trùng DB: ${skippedExistingDb}`);
+  console.log(`[Insert] Record mới cần insert: ${recordsToInsert.length}`);
   console.log(`[Insert] Batch size: ${INSERT_BATCH_SIZE}`);
   console.log(`[Insert] Số batch: ${batches.length}`);
+
+  if (recordsToInsert.length === 0) {
+    console.log('\n[Insert] Không có record mới nào để insert.');
+    if (!OVERWRITE_EXISTING_UPLOAD) {
+      console.log('[Insert] STATUS: NO_NEW_RECORDS');
+    }
+    console.log('\n=== Hoàn thành toàn bộ quy trình ===');
+    return;
+  }
 
   for (let i = 0; i < batches.length; i += 1) {
     const batch = batches[i];
