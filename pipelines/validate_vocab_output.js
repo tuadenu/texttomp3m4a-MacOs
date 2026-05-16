@@ -66,7 +66,7 @@ function validateVocabOutput({ excelFilePath, sheetName, outputRoot }) {
   const wordSeen = new Map();
   const requiredFields = ["word", "meaning", "example", "audio"];
   const expectedAudioPrefix = `${sheetName}_`;
-  const filenameRegex = new RegExp(`^${sheetName}_(\\d{3})_.+\\.m4a$`);
+  const filenameRegex = new RegExp(`^${sheetName}_(\\d{3,})_.+\\.m4a$`);
   const foundIndexes = [];
 
   for (let i = 0; i < items.length; i += 1) {

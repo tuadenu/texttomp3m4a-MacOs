@@ -1,12 +1,12 @@
 {
-  "active_profile": "prod",
+  "active_profile": "dev",
   "profiles": {
     "dev": {
       "SUPABASE_URL": "https://bcyuovvlkfcvymjintpi.supabase.co",
       "SUPABASE_SERVICE_ROLE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjeXVvdnZsa2ZjdnltamludHBpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NjA0OTQwMywiZXhwIjoyMDkxNjI1NDAzfQ.i5y2jLN2TfKIZ6CvAiGJSochIhrOxxExcPaYlUu2WLM",
       "SUPABASE_BUCKET": "audio",
       "SUPABASE_TABLE": "vocab",
-      "SUPABASE_STORAGE_FOLDER": "hsk4",
+      "SUPABASE_STORAGE_FOLDER": "hsk5",
       "INSERT_BATCH_SIZE": "100",
       "SKIP_EXISTING_UPLOAD": "true",
       "CREATE_BUCKET_IF_MISSING": "true",
@@ -25,5 +25,5 @@
     }
   },
   "last_excel": "/Users/phuonganh/Desktop/Data_hsk/hsk_20.xlsx",
-  "last_sheet": "hsk4_20"
+  "last_sheet": "hsk5_20"
 }
