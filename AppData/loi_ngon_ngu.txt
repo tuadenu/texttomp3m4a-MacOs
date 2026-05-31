@@ -488,3 +488,1364 @@ Dòng 225: [Slide 27]
 Dòng 227: [Slide 28]
 Dòng 233: [Slide 29]
 Dòng 250: [Slide 30]
+Dòng 42: y tá	.
+Dòng 138: fax, máy fax	.
+Dòng 246: con dao	.
+Dòng 274: sofa	.
+Dòng 280: túi nilon	.
+Dòng 418: da	.
+Dòng 422: tennis	.
+Dòng 440: socola	.
+Dòng 456: cay	.
+Dòng 466: mát	.
+Dòng 664: kéo	.
+Dòng 666: gõ	.
+Dòng 670: ném	.
+Dòng 42: y tá	.
+Dòng 138: fax, máy fax	.
+Dòng 246: con dao	.
+Dòng 274: sofa	.
+Dòng 280: túi nilon	.
+Dòng 418: da	.
+Dòng 422: tennis	.
+Dòng 440: socola	.
+Dòng 456: cay	.
+Dòng 466: mát	.
+Dòng 664: kéo	.
+Dòng 666: gõ	.
+Dòng 670: ném	.
+Dòng 10: feel	.	How do you feel?   I feel really good.	.
+Dòng 12: like	.	Do you like Japanese food?   Yes, I really like it.	.
+Dòng 17: love	.	Do you love your family?   Yes, I do.	.
+Dòng 21: sad	.	Why are you sad?   I’m not sad. I’m just tired.	.
+Dòng 43: computer	.	Do you have a computer?   Yes, I do.	.
+Dòng 63: Beijing	.	Have you ever been to Beijing?   Yes, I’ve been there once.	.
+Dòng 74: egg	.	Do you want an egg for breakfast? Yes, I’d like one.	.
+Dòng 75: fruit	.	What kind of fruit do you like?   I like grapes.	.
+Dòng 83: umbrella	.	Did you bring an umbrella today?   No, I didn’t bring one.	.
+Dòng 85: pencil	.	Do you have a pencil?   Yes, I do.	.
+Dòng 88: drink	.	What do you want to drink? I want some water.	.
+Dòng 91: water	.	Do you drink water?   Yes, I do.	.
+Dòng 92: door	.	Can you open the door? Sure, I’ll open it.	.
+Dòng 98: dog	.	Do you like dogs? Yes, I like dogs.	.
+Dòng 113: daughter	.	Does your daughter like reading books?   Yes, she does.	.
+Dòng 129: ask, questions	.	Do you have any questions?   Yes, I have one.	.
+Dòng 150: quit, stop	.	Have you quit smoking?   Yes, I have.	.
+Dòng 155: bring	.	Did you bring your book?   Yes, I did.	.
+Dòng 156: get	.	Did you get my message?   No, I didn’t. When did you send it?	.
+Dòng 163: sing	.	Do you sing karaoke?   Yes, sometimes.	.
+Dòng 164: dance	.	Can you dance?   No, I can’t dance at all.	.
+Dòng 166: do, make	.	Do you drink alcohol?   No, I don’t.	.
+Dòng 197: call, phone	.	Can you call me later? Sure, I’ll call you later.	.
+Dòng 198: email	.	Did you get my email? Yes, I got your email.	.
+Dòng 200: send	.	Have you sent that email yet?   Yes, I just sent it.	.
+Dòng 214: quiet	.	Is this place quiet?   No, it isn’t very quiet.	.
+Dòng 219: dark	.	Is it dark outside?   Yes, it is.	.
+Dòng 227: quite, relatively	.	Is this restaurant good? Yes, it’s quite good.	.
+Dòng 244: understand	.	Do you understand?   Yes, I understand.	.
+Dòng 251: ahead	.	Can I go ahead? Yes, go ahead.	.
+Dòng 264: seven	.	Do you work seven days a week?   No, way! I get weekends off.	.
+Dòng 277: better	.	Are you feeling better?   Yes, I’m feeling better now. Thank you.	.
+Dòng 301: just	.	Have you eaten yet?   Yes, I just ate.	.
+Dòng 373: you all, y’all	.	Are you all ready? Yeah, we’re ready. Y’all ready too?	.
+Dòng 382: breakfast	.
+Dòng 383: drink	.
+Dòng 385: way, method	.
+Dòng 389: cry	.
+Dòng 390: feel	.
+Dòng 392: like	.
+Dòng 393: expect	.
+Dòng 394: miss	.
+Dòng 396: laugh, smile	.
+Dòng 397: love	.
+Dòng 398: disappointed	.
+Dòng 399: fun, interesting	.
+Dòng 400: happy	.
+Dòng 401: sad	.
+Dòng 406: hello	.
+Dòng 407: bye, goodbye	.
+Dòng 408: coming along	.
+Dòng 409: Why 	.
+Dòng 413: I	.
+Dòng 415: she	.
+Dòng 416: you	.
+Dòng 417: we	.
+Dòng 418: everyone, all	.
+Dòng 419: kid,  children	.
+Dòng 420: person, people	.
+Dòng 422: male, man	.
+Dòng 423: computer	.
+Dòng 424: machine	.
+Dòng 426: company	.
+Dòng 427: job, work	.
+Dòng 428: tasks	.
+Dòng 429: go to work	.
+Dòng 430: busy	.
+Dòng 432: wrong	.
+Dòng 433: arrive	.
+Dòng 434: come	.
+Dòng 435: go	.
+Dòng 436: leave, depart	.
+Dòng 437: move	.
+Dòng 438: stay	.
+Dòng 439: leave	.
+Dòng 440: go home	.
+Dòng 442: walk	.
+Dòng 443: Beijing	.
+Dòng 444: bank	.
+Dòng 445: convenience store	.
+Dòng 446: place	.
+Dòng 448: restroom	.
+Dòng 451: hospital	.
+Dòng 452: apple	.
+Dòng 453: cream	.
+Dòng 454: egg	.
+Dòng 455: fruit	.
+Dòng 456: rice	.
+Dòng 458: delicious	.
+Dòng 459: bag	.
+Dòng 460: chair	.
+Dòng 461: cup	.
+Dòng 462: table, desk	.
+Dòng 463: umbrella	.
+Dòng 464: wallet	.
+Dòng 465: pencil	.
+Dòng 466: watch	.
+Dòng 468: drink	.
+Dòng 469: milk	.
+Dòng 470: tea	.
+Dòng 471: water	.
+Dòng 472: door	.
+Dòng 473: live	.
+Dòng 474: situation	.
+Dòng 477: cat	.
+Dòng 478: dog	.
+Dòng 479: fish	.
+Dòng 480: lamb	.
+Dòng 481: hotel	.
+Dòng 482: luggage	.
+Dòng 483: travel, trips	.
+Dòng 484: dad	.
+Dòng 485: mom	.
+Dòng 486: wife	.
+Dòng 487: husband	.
+Dòng 489: older sister	.
+Dòng 491: younger sister	.
+Dòng 492: son	.
+Dòng 493: daughter	.
+Dòng 495: movie	.
+Dòng 496: TV, television	.
+Dòng 497: airport	.
+Dòng 498: bus	.
+Dòng 499: road, street	.
+Dòng 501: ticket	.
+Dòng 503: signal	.
+Dòng 504: Thank you	.
+Dòng 505: welcome	.
+Dòng 507: meet	.
+Dòng 508: help	.
+Dòng 509: ask, questions	.
+Dòng 512: listen, ask	.
+Dòng 513: say, speak	.
+Dòng 514: tell	.
+Dòng 515: refuse	.
+Dòng 517: sit	.
+Dòng 520: anything	.
+Dòng 521: start, begin	.
+Dòng 523: open	.
+Dòng 524: close	.
+Dòng 525: stand	.
+Dòng 526: Sure	.
+Dòng 527: give	.
+Dòng 528: receive, get	.
+Dòng 529: stop	.
+Dòng 530: quit, stop	.
+Dòng 532: split	.
+Dòng 533: spill	.
+Dòng 534: prepare	.
+Dòng 535: bring	.
+Dòng 536: get	.
+Dòng 538: see	.
+Dòng 539: wait	.
+Dòng 540: hang out	.
+Dòng 541: run	.
+Dòng 542: swim	.
+Dòng 543: sing	.
+Dòng 544: dance	.
+Dòng 545: do	.
+Dòng 546: do, make	.
+Dòng 548: hobby	.
+Dòng 550: look for	.
+Dòng 551: find	.
+Dòng 552: hide	.
+Dòng 554: answer	.
+Dòng 555: book	.
+Dòng 557: exam, test	.
+Dòng 558: grade	.
+Dòng 559: homework 	.
+Dòng 561: study	.
+Dòng 562: point, score	.
+Dòng 563: result	.
+Dòng 564: problem	.
+Dòng 566: can	.
+Dòng 568: far	.
+Dòng 569: big	.
+Dòng 570: short	.
+Dòng 571: low	.
+Dòng 572: small	.
+Dòng 573: long	.
+Dòng 577: call, phone	.
+Dòng 578: email	.
+Dòng 579: phone, mobile phone	.
+Dòng 580: send	.
+Dòng 581: hang up	.
+Dòng 583: black	.
+Dòng 584: blue	.
+Dòng 587: bad	.
+Dòng 588: good	.
+Dòng 591: new	.
+Dòng 592: old	.
+Dòng 593: noisy	.
+Dòng 594: quiet	.
+Dòng 597: beautiful, clean	.
+Dòng 598: dangerous	.
+Dòng 599: dark	.
+Dòng 600: difficult	.
+Dòng 601: expensive	.
+Dòng 603: sell	.
+Dòng 604: buy	.
+Dòng 605: customer	.
+Dòng 606: tall	.
+Dòng 607: quite, relatively	.
+Dòng 608: too	.
+Dòng 609: very	.
+Dòng 610: doctor	.
+Dòng 612: drawing	.
+Dòng 614: mean	.
+Dòng 615: Japanese	.
+Dòng 616: be + V-ing	.
+Dòng 620: floor	.
+Dòng 623: need	.
+Dòng 624: understand	.
+Dòng 625: want	.
+Dòng 627: feel	.
+Dòng 629: not	.
+Dòng 630: no	.
+Dòng 631: ahead	.
+Dòng 632: friend	.
+Dòng 633: China	.
+Dòng 634: oversleep	.
+Dòng 636: wake up	.
+Dòng 637: wash	.
+Dòng 638: one	.
+Dòng 639: two	.
+Dòng 642: five	.
+Dòng 643: six	.
+Dòng 644: seven	.
+Dòng 645: eight	.
+Dòng 646: nine	.
+Dòng 647: ten	.
+Dòng 649: Have	.
+Dòng 650: my	.
+Dòng 653: how many, how much	.
+Dòng 654: many, much	.
+Dòng 655: quite a few	.
+Dòng 657: better	.
+Dòng 661: accident	.
+Dòng 662: body	.
+Dòng 663: healthy, well	.
+Dòng 664: pain	.
+Dòng 665: sick, ill	.
+Dòng 668: twice	.
+Dòng 670: sky	.
+Dòng 671: afternoon	.
+Dòng 672: close	.
+Dòng 673: day	.
+Dòng 675: evening	.
+Dòng 676: ever	.
+Dòng 679: hour	.
+Dòng 680: How long	.
+Dòng 681: just	.
+Dòng 684: noon	.
+Dòng 685: now	.
+Dòng 688: still	.
+Dòng 689: time	.
+Dòng 690: today	.
+Dòng 692: week	.
+Dòng 693: weekend	.
+Dòng 694: year	.
+Dòng 695: yesterday	.
+Dòng 698: summer 	.
+Dòng 700: not, yet	.
+Dòng 701: late	.
+Dòng 702: rain	.
+Dòng 703: sunny	.
+Dòng 705: hot	.
+Dòng 707: last name, surname	.
+Dòng 708: name	.
+Dòng 709: spend 	.
+Dòng 710: yen	.
+Dòng 10: feel	.	How do you feel?   I feel really good.	.
+Dòng 12: like	.	Do you like Japanese food?   Yes, I really like it.	.
+Dòng 17: love	.	Do you love your family?   Yes, I do.	.
+Dòng 21: sad	.	Why are you sad?   I’m not sad. I’m just tired.	.
+Dòng 43: computer	.	Do you have a computer?   Yes, I do.	.
+Dòng 63: Beijing	.	Have you ever been to Beijing?   Yes, I’ve been there once.	.
+Dòng 74: egg	.	Do you want an egg for breakfast? Yes, I’d like one.	.
+Dòng 75: fruit	.	What kind of fruit do you like?   I like grapes.	.
+Dòng 83: umbrella	.	Did you bring an umbrella today?   No, I didn’t bring one.	.
+Dòng 85: pencil	.	Do you have a pencil?   Yes, I do.	.
+Dòng 88: drink	.	What do you want to drink? I want some water.	.
+Dòng 91: water	.	Do you drink water?   Yes, I do.	.
+Dòng 92: door	.	Can you open the door? Sure, I’ll open it.	.
+Dòng 98: dog	.	Do you like dogs? Yes, I like dogs.	.
+Dòng 113: daughter	.	Does your daughter like reading books?   Yes, she does.	.
+Dòng 129: ask, questions	.	Do you have any questions?   Yes, I have one.	.
+Dòng 150: quit, stop	.	Have you quit smoking?   Yes, I have.	.
+Dòng 155: bring	.	Did you bring your book?   Yes, I did.	.
+Dòng 156: get	.	Did you get my message?   No, I didn’t. When did you send it?	.
+Dòng 163: sing	.	Do you sing karaoke?   Yes, sometimes.	.
+Dòng 164: dance	.	Can you dance?   No, I can’t dance at all.	.
+Dòng 166: do, make	.	Do you drink alcohol?   No, I don’t.	.
+Dòng 197: call, phone	.	Can you call me later? Sure, I’ll call you later.	.
+Dòng 198: email	.	Did you get my email? Yes, I got your email.	.
+Dòng 200: send	.	Have you sent that email yet?   Yes, I just sent it.	.
+Dòng 214: quiet	.	Is this place quiet?   No, it isn’t very quiet.	.
+Dòng 219: dark	.	Is it dark outside?   Yes, it is.	.
+Dòng 227: quite, relatively	.	Is this restaurant good? Yes, it’s quite good.	.
+Dòng 244: understand	.	Do you understand?   Yes, I understand.	.
+Dòng 251: ahead	.	Can I go ahead? Yes, go ahead.	.
+Dòng 264: seven	.	Do you work seven days a week?   No, way! I get weekends off.	.
+Dòng 277: better	.	Are you feeling better?   Yes, I’m feeling better now. Thank you.	.
+Dòng 301: just	.	Have you eaten yet?   Yes, I just ate.	.
+Dòng 373: you all, y’all	.	Are you all ready? Yeah, we’re ready. Y’all ready too?	.
+Dòng 382: breakfast	.
+Dòng 383: drink	.
+Dòng 385: way, method	.
+Dòng 389: cry	.
+Dòng 390: feel	.
+Dòng 392: like	.
+Dòng 393: expect	.
+Dòng 394: miss	.
+Dòng 396: laugh, smile	.
+Dòng 397: love	.
+Dòng 398: disappointed	.
+Dòng 399: fun, interesting	.
+Dòng 400: happy	.
+Dòng 401: sad	.
+Dòng 406: hello	.
+Dòng 407: bye, goodbye	.
+Dòng 408: coming along	.
+Dòng 409: Why 	.
+Dòng 413: I	.
+Dòng 415: she	.
+Dòng 416: you	.
+Dòng 417: we	.
+Dòng 418: everyone, all	.
+Dòng 419: kid,  children	.
+Dòng 420: person, people	.
+Dòng 422: male, man	.
+Dòng 423: computer	.
+Dòng 424: machine	.
+Dòng 426: company	.
+Dòng 427: job, work	.
+Dòng 428: tasks	.
+Dòng 429: go to work	.
+Dòng 430: busy	.
+Dòng 432: wrong	.
+Dòng 433: arrive	.
+Dòng 434: come	.
+Dòng 435: go	.
+Dòng 436: leave, depart	.
+Dòng 437: move	.
+Dòng 438: stay	.
+Dòng 439: leave	.
+Dòng 440: go home	.
+Dòng 442: walk	.
+Dòng 443: Beijing	.
+Dòng 444: bank	.
+Dòng 445: convenience store	.
+Dòng 446: place	.
+Dòng 448: restroom	.
+Dòng 451: hospital	.
+Dòng 452: apple	.
+Dòng 453: cream	.
+Dòng 454: egg	.
+Dòng 455: fruit	.
+Dòng 456: rice	.
+Dòng 458: delicious	.
+Dòng 459: bag	.
+Dòng 460: chair	.
+Dòng 461: cup	.
+Dòng 462: table, desk	.
+Dòng 463: umbrella	.
+Dòng 464: wallet	.
+Dòng 465: pencil	.
+Dòng 466: watch	.
+Dòng 468: drink	.
+Dòng 469: milk	.
+Dòng 470: tea	.
+Dòng 471: water	.
+Dòng 472: door	.
+Dòng 473: live	.
+Dòng 474: situation	.
+Dòng 477: cat	.
+Dòng 478: dog	.
+Dòng 479: fish	.
+Dòng 480: lamb	.
+Dòng 481: hotel	.
+Dòng 482: luggage	.
+Dòng 483: travel, trips	.
+Dòng 484: dad	.
+Dòng 485: mom	.
+Dòng 486: wife	.
+Dòng 487: husband	.
+Dòng 489: older sister	.
+Dòng 491: younger sister	.
+Dòng 492: son	.
+Dòng 493: daughter	.
+Dòng 495: movie	.
+Dòng 496: TV, television	.
+Dòng 497: airport	.
+Dòng 498: bus	.
+Dòng 499: road, street	.
+Dòng 501: ticket	.
+Dòng 503: signal	.
+Dòng 504: Thank you	.
+Dòng 505: welcome	.
+Dòng 507: meet	.
+Dòng 508: help	.
+Dòng 509: ask, questions	.
+Dòng 512: listen, ask	.
+Dòng 513: say, speak	.
+Dòng 514: tell	.
+Dòng 515: refuse	.
+Dòng 517: sit	.
+Dòng 520: anything	.
+Dòng 521: start, begin	.
+Dòng 523: open	.
+Dòng 524: close	.
+Dòng 525: stand	.
+Dòng 526: Sure	.
+Dòng 527: give	.
+Dòng 528: receive, get	.
+Dòng 529: stop	.
+Dòng 530: quit, stop	.
+Dòng 532: split	.
+Dòng 533: spill	.
+Dòng 534: prepare	.
+Dòng 535: bring	.
+Dòng 536: get	.
+Dòng 538: see	.
+Dòng 539: wait	.
+Dòng 540: hang out	.
+Dòng 541: run	.
+Dòng 542: swim	.
+Dòng 543: sing	.
+Dòng 544: dance	.
+Dòng 545: do	.
+Dòng 546: do, make	.
+Dòng 548: hobby	.
+Dòng 550: look for	.
+Dòng 551: find	.
+Dòng 552: hide	.
+Dòng 554: answer	.
+Dòng 555: book	.
+Dòng 557: exam, test	.
+Dòng 558: grade	.
+Dòng 559: homework 	.
+Dòng 561: study	.
+Dòng 562: point, score	.
+Dòng 563: result	.
+Dòng 564: problem	.
+Dòng 566: can	.
+Dòng 568: far	.
+Dòng 569: big	.
+Dòng 570: short	.
+Dòng 571: low	.
+Dòng 572: small	.
+Dòng 573: long	.
+Dòng 577: call, phone	.
+Dòng 578: email	.
+Dòng 579: phone, mobile phone	.
+Dòng 580: send	.
+Dòng 581: hang up	.
+Dòng 583: black	.
+Dòng 584: blue	.
+Dòng 587: bad	.
+Dòng 588: good	.
+Dòng 591: new	.
+Dòng 592: old	.
+Dòng 593: noisy	.
+Dòng 594: quiet	.
+Dòng 597: beautiful, clean	.
+Dòng 598: dangerous	.
+Dòng 599: dark	.
+Dòng 600: difficult	.
+Dòng 601: expensive	.
+Dòng 603: sell	.
+Dòng 604: buy	.
+Dòng 605: customer	.
+Dòng 606: tall	.
+Dòng 607: quite, relatively	.
+Dòng 608: too	.
+Dòng 609: very	.
+Dòng 610: doctor	.
+Dòng 612: drawing	.
+Dòng 614: mean	.
+Dòng 615: Japanese	.
+Dòng 616: be + V-ing	.
+Dòng 620: floor	.
+Dòng 623: need	.
+Dòng 624: understand	.
+Dòng 625: want	.
+Dòng 627: feel	.
+Dòng 629: not	.
+Dòng 630: no	.
+Dòng 631: ahead	.
+Dòng 632: friend	.
+Dòng 633: China	.
+Dòng 634: oversleep	.
+Dòng 636: wake up	.
+Dòng 637: wash	.
+Dòng 638: one	.
+Dòng 639: two	.
+Dòng 642: five	.
+Dòng 643: six	.
+Dòng 644: seven	.
+Dòng 645: eight	.
+Dòng 646: nine	.
+Dòng 647: ten	.
+Dòng 649: Have	.
+Dòng 650: my	.
+Dòng 653: how many, how much	.
+Dòng 654: many, much	.
+Dòng 655: quite a few	.
+Dòng 657: better	.
+Dòng 661: accident	.
+Dòng 662: body	.
+Dòng 663: healthy, well	.
+Dòng 664: pain	.
+Dòng 665: sick, ill	.
+Dòng 668: twice	.
+Dòng 670: sky	.
+Dòng 671: afternoon	.
+Dòng 672: close	.
+Dòng 673: day	.
+Dòng 675: evening	.
+Dòng 676: ever	.
+Dòng 679: hour	.
+Dòng 680: How long	.
+Dòng 681: just	.
+Dòng 684: noon	.
+Dòng 685: now	.
+Dòng 688: still	.
+Dòng 689: time	.
+Dòng 690: today	.
+Dòng 692: week	.
+Dòng 693: weekend	.
+Dòng 694: year	.
+Dòng 695: yesterday	.
+Dòng 698: summer 	.
+Dòng 700: not, yet	.
+Dòng 701: late	.
+Dòng 702: rain	.
+Dòng 703: sunny	.
+Dòng 705: hot	.
+Dòng 707: last name, surname	.
+Dòng 708: name	.
+Dòng 709: spend 	.
+Dòng 710: yen	.
+Dòng 712: slow	.
+Dòng 714: coat	.
+Dòng 715: dress	.
+Dòng 716: shirt	.
+Dòng 717: wear	.
+Dòng 718: suit	.
+Dòng 719: classroom	.
+Dòng 720: school	.
+Dòng 721: student	.
+Dòng 724: Will 	.
+Dòng 726: behind	.
+Dòng 727: in	.
+Dòng 728: outside	.
+Dòng 729: inside	.
+Dòng 731: under, below	.
+Dòng 734: away	.
+Dòng 735: here	.
+Dòng 739: going to, gonna	.
+Dòng 740: want to, wanna	.
+Dòng 741: have got to, gotta	.
+Dòng 742: kind of, kinda	.
+Dòng 743: give me, gimme	.
+Dòng 745: got you, gotcha	.
+Dòng 746: yes, yeah	.
+Dòng 747: because, ’cause	.
+Dòng 750: has to, hasta	.
+Dòng 751: don’t you, doncha	.
+Dòng 753: you all, y’all	.
+Dòng 757: lots of, lotsa	.
+Dòng 19: feel	.	How do you feel?   I feel really good.	.
+Dòng 23: like	.	Do you like Japanese food?   Yes, I really like it.	.
+Dòng 33: love	.	Do you love your family?   Yes, I do.	.
+Dòng 41: sad	.	Why are you sad?   I’m not sad. I’m just tired.	.
+Dòng 85: computer	.	Do you have a computer?   Yes, I do.	.
+Dòng 125: Beijing	.	Have you ever been to Beijing?   Yes, I’ve been there once.	.
+Dòng 147: egg	.	Do you want an egg for breakfast? Yes, I’d like one.	.
+Dòng 149: fruit	.	What kind of fruit do you like?   I like grapes.	.
+Dòng 165: umbrella	.	Did you bring an umbrella today?   No, I didn’t bring one.	.
+Dòng 169: pencil	.	Do you have a pencil?   Yes, I do.	.
+Dòng 175: drink	.	What do you want to drink? I want some water.	.
+Dòng 181: water	.	Do you drink water?   Yes, I do.	.
+Dòng 183: door	.	Can you open the door? Sure, I’ll open it.	.
+Dòng 195: dog	.	Do you like dogs? Yes, I like dogs.	.
+Dòng 225: daughter	.	Does your daughter like reading books?   Yes, she does.	.
+Dòng 257: ask, questions	.	Do you have any questions?   Yes, I have one.	.
+Dòng 299: quit, stop	.	Have you quit smoking?   Yes, I have.	.
+Dòng 309: bring	.	Did you bring your book?   Yes, I did.	.
+Dòng 311: get	.	Did you get my message?   No, I didn’t. When did you send it?	.
+Dòng 325: sing	.	Do you sing karaoke?   Yes, sometimes.	.
+Dòng 327: dance	.	Can you dance?   No, I can’t dance at all.	.
+Dòng 331: do, make	.	Do you drink alcohol?   No, I don’t.	.
+Dòng 377: big	.	Is your house big?   No, it isn’t.	.
+Dòng 395: email	.	Did you get my email? Yes, I got your email.	.
+Dòng 397: phone, mobile phone	.	Do you have your phone?   No, I don’t have it on me.	.
+Dòng 399: send	.	Have you sent that email yet?   Yes, I just sent it.	.
+Dòng 413: bad	.	Is my drawing very bad?   No, it’s not bad.	.
+Dòng 427: quiet	.	Is this place quiet?   No, it isn’t very quiet.	.
+Dòng 437: dark	.	Is it dark outside?   Yes, it is.	.
+Dòng 453: quite, relatively	.	Is this restaurant good? Yes, it’s quite good.	.
+Dòng 487: understand	.	Do you understand?   Yes, I understand.	.
+Dòng 501: ahead	.	Can I go ahead? Yes, go ahead.	.
+Dòng 527: seven	.	Do you work seven days a week?   No, way! I get weekends off.	.
+Dòng 553: better	.	Are you feeling better?   Yes, I’m feeling better now. Thank you.	.
+Dòng 601: just	.	Have you eaten yet?   Yes, I just ate.	.
+Dòng 19: feel	.	How do you feel?   I feel really good.	.
+Dòng 23: like	.	Do you like Japanese food?   Yes, I really like it.	.
+Dòng 33: love	.	Do you love your family?   Yes, I do.	.
+Dòng 41: sad	.	Why are you sad?   I’m not sad. I’m just tired.	.
+Dòng 85: computer	.	Do you have a computer?   Yes, I do.	.
+Dòng 125: Beijing	.	Have you ever been to Beijing?   Yes, I’ve been there once.	.
+Dòng 147: egg	.	Do you want an egg for breakfast? Yes, I’d like one.	.
+Dòng 149: fruit	.	What kind of fruit do you like?   I like grapes.	.
+Dòng 165: umbrella	.	Did you bring an umbrella today?   No, I didn’t bring one.	.
+Dòng 169: pencil	.	Do you have a pencil?   Yes, I do.	.
+Dòng 175: drink	.	What do you want to drink? I want some water.	.
+Dòng 181: water	.	Do you drink water?   Yes, I do.	.
+Dòng 183: door	.	Can you open the door? Sure, I’ll open it.	.
+Dòng 195: dog	.	Do you like dogs? Yes, I like dogs.	.
+Dòng 225: daughter	.	Does your daughter like reading books?   Yes, she does.	.
+Dòng 257: ask, questions	.	Do you have any questions?   Yes, I have one.	.
+Dòng 299: quit, stop	.	Have you quit smoking?   Yes, I have.	.
+Dòng 309: bring	.	Did you bring your book?   Yes, I did.	.
+Dòng 311: get	.	Did you get my message?   No, I didn’t. When did you send it?	.
+Dòng 325: sing	.	Do you sing karaoke?   Yes, sometimes.	.
+Dòng 327: dance	.	Can you dance?   No, I can’t dance at all.	.
+Dòng 331: do, make	.	Do you drink alcohol?   No, I don’t.	.
+Dòng 377: big	.	Is your house big?   No, it isn’t.	.
+Dòng 395: email	.	Did you get my email? Yes, I got your email.	.
+Dòng 397: phone, mobile phone	.	Do you have your phone?   No, I don’t have it on me.	.
+Dòng 399: send	.	Have you sent that email yet?   Yes, I just sent it.	.
+Dòng 413: bad	.	Is my drawing very bad?   No, it’s not bad.	.
+Dòng 427: quiet	.	Is this place quiet?   No, it isn’t very quiet.	.
+Dòng 437: dark	.	Is it dark outside?   Yes, it is.	.
+Dòng 453: quite, relatively	.	Is this restaurant good? Yes, it’s quite good.	.
+Dòng 487: understand	.	Do you understand?   Yes, I understand.	.
+Dòng 501: ahead	.	Can I go ahead? Yes, go ahead.	.
+Dòng 527: seven	.	Do you work seven days a week?   No, way! I get weekends off.	.
+Dòng 553: better	.	Are you feeling better?   Yes, I’m feeling better now. Thank you.	.
+Dòng 601: just	.	Have you eaten yet?   Yes, I just ate.	.
+Dòng 19: feel	.	How do you feel?   I feel really good.	.
+Dòng 23: like	.	Do you like Japanese food?   Yes, I really like it.	.
+Dòng 33: love	.	Do you love your family?   Yes, I do.	.
+Dòng 41: sad	.	Why are you sad?   I’m not sad. I’m just tired.	.
+Dòng 85: computer	.	Do you have a computer?   Yes, I do.	.
+Dòng 125: Beijing	.	Have you ever been to Beijing?   Yes, I’ve been there once.	.
+Dòng 147: egg	.	Do you want an egg for breakfast? Yes, I’d like one.	.
+Dòng 149: fruit	.	What kind of fruit do you like?   I like grapes.	.
+Dòng 165: umbrella	.	Did you bring an umbrella today?   No, I didn’t bring one.	.
+Dòng 169: pencil	.	Do you have a pencil?   Yes, I do.	.
+Dòng 175: drink	.	What do you want to drink? I want some water.	.
+Dòng 181: water	.	Do you drink water?   Yes, I do.	.
+Dòng 183: door	.	Can you open the door? Sure, I’ll open it.	.
+Dòng 195: dog	.	Do you like dogs? Yes, I like dogs.	.
+Dòng 225: daughter	.	Does your daughter like reading books?   Yes, she does.	.
+Dòng 257: ask, questions	.	Do you have any questions?   Yes, I have one.	.
+Dòng 299: quit, stop	.	Have you quit smoking?   Yes, I have.	.
+Dòng 309: bring	.	Did you bring your book?   Yes, I did.	.
+Dòng 311: get	.	Did you get my message?   No, I didn’t. When did you send it?	.
+Dòng 325: sing	.	Do you sing karaoke?   Yes, sometimes.	.
+Dòng 327: dance	.	Can you dance?   No, I can’t dance at all.	.
+Dòng 331: do, make	.	Do you drink alcohol?   No, I don’t.	.
+Dòng 377: big	.	Is your house big?   No, it isn’t.	.
+Dòng 395: email	.	Did you get my email? Yes, I got your email.	.
+Dòng 397: phone, mobile phone	.	Do you have your phone?   No, I don’t have it on me.	.
+Dòng 399: send	.	Have you sent that email yet?   Yes, I just sent it.	.
+Dòng 413: bad	.	Is my drawing very bad?   No, it’s not bad.	.
+Dòng 427: quiet	.	Is this place quiet?   No, it isn’t very quiet.	.
+Dòng 437: dark	.	Is it dark outside?   Yes, it is.	.
+Dòng 453: quite, relatively	.	Is this restaurant good? Yes, it’s quite good.	.
+Dòng 487: understand	.	Do you understand?   Yes, I understand.	.
+Dòng 501: ahead	.	Can I go ahead? Yes, go ahead.	.
+Dòng 527: seven	.	Do you work seven days a week?   No, way! I get weekends off.	.
+Dòng 553: better	.	Are you feeling better?   Yes, I’m feeling better now. Thank you.	.
+Dòng 601: just	.	Have you eaten yet?   Yes, I just ate.	.
+Dòng 19: feel	.	How do you feel?   I feel really good.	.
+Dòng 23: like	.	Do you like Japanese food?   Yes, I really like it.	.
+Dòng 33: love	.	Do you love your family?   Yes, I do.	.
+Dòng 41: sad	.	Why are you sad?   I’m not sad. I’m just tired.	.
+Dòng 85: computer	.	Do you have a computer?   Yes, I do.	.
+Dòng 125: Beijing	.	Have you ever been to Beijing?   Yes, I’ve been there once.	.
+Dòng 147: egg	.	Do you want an egg for breakfast? Yes, I’d like one.	.
+Dòng 149: fruit	.	What kind of fruit do you like?   I like grapes.	.
+Dòng 165: umbrella	.	Did you bring an umbrella today?   No, I didn’t bring one.	.
+Dòng 169: pencil	.	Do you have a pencil?   Yes, I do.	.
+Dòng 175: drink	.	What do you want to drink? I want some water.	.
+Dòng 181: water	.	Do you drink water?   Yes, I do.	.
+Dòng 183: door	.	Can you open the door? Sure, I’ll open it.	.
+Dòng 195: dog	.	Do you like dogs? Yes, I like dogs.	.
+Dòng 225: daughter	.	Does your daughter like reading books?   Yes, she does.	.
+Dòng 257: ask, questions	.	Do you have any questions?   Yes, I have one.	.
+Dòng 299: quit, stop	.	Have you quit smoking?   Yes, I have.	.
+Dòng 309: bring	.	Did you bring your book?   Yes, I did.	.
+Dòng 311: get	.	Did you get my message?   No, I didn’t. When did you send it?	.
+Dòng 325: sing	.	Do you sing karaoke?   Yes, sometimes.	.
+Dòng 327: dance	.	Can you dance?   No, I can’t dance at all.	.
+Dòng 331: do, make	.	Do you drink alcohol?   No, I don’t.	.
+Dòng 377: big	.	Is your house big?   No, it isn’t.	.
+Dòng 395: email	.	Did you get my email? Yes, I got your email.	.
+Dòng 397: phone, mobile phone	.	Do you have your phone?   No, I don’t have it on me.	.
+Dòng 399: send	.	Have you sent that email yet?   Yes, I just sent it.	.
+Dòng 413: bad	.	Is my drawing very bad?   No, it’s not bad.	.
+Dòng 427: quiet	.	Is this place quiet?   No, it isn’t very quiet.	.
+Dòng 437: dark	.	Is it dark outside?   Yes, it is.	.
+Dòng 453: quite, relatively	.	Is this restaurant good? Yes, it’s quite good.	.
+Dòng 487: understand	.	Do you understand?   Yes, I understand.	.
+Dòng 501: ahead	.	Can I go ahead? Yes, go ahead.	.
+Dòng 527: seven	.	Do you work seven days a week?   No, way! I get weekends off.	.
+Dòng 553: better	.	Are you feeling better?   Yes, I’m feeling better now. Thank you.	.
+Dòng 601: just	.	Have you eaten yet?   Yes, I just ate.	.
+Dòng 5: eat	.	ăn	.
+Dòng 12: hate	.	ghét	.
+Dòng 24: Who	.	ai	.
+Dòng 53: wrong	.	sai	.
+Dòng 66: convenience store	.	tạp hoá	.
+Dòng 74: cream	.	kem	.
+Dòng 79: delicious	.	ngon	.
+Dòng 83: table, desk	.	cái bàn	.
+Dòng 84: umbrella	.	ô, dù	.
+Dòng 85: wallet	.	cái ví	.
+Dòng 88: coffee	.	cà phê	.
+Dòng 98: cat	.	con mèo	.
+Dòng 105: dad	.	bố, ba	.
+Dòng 112: younger sister	.	em gái	.
+Dòng 113: son	.	con trai	.
+Dòng 114: daughter	.	con gái	.
+Dòng 116: movie	.	phim	.
+Dòng 122: ticket	.	vé	.
+Dòng 134: say, speak	.	nói	.
+Dòng 153: split	.	chia ra,  tách ra	.
+Dòng 156: bring	.	mang, mang theo	.
+Dòng 163: swim	.	bơi	.
+Dòng 167: do, make	.	tạo ra	.
+Dòng 189: far	.	xa	.
+Dòng 221: difficult	.	khó	.
+Dòng 224: sell	.	bán	.
+Dòng 225: buy	.	mua	.
+Dòng 227: tall	.	cao	.
+Dòng 245: understand	.	hiểu	.
+Dòng 260: two	.	hai	.
+Dòng 263: five	.	năm	.
+Dòng 264: six	.	sáu	.
+Dòng 266: eight	.	tám	.
+Dòng 311: today	.	hôm nay	.
+Dòng 313: week	.	tuần	.
+Dòng 316: yesterday	.	hôm qua	.
+Dòng 319: summer 	.	mùa hè	.
+Dòng 323: rain	.	mưa	.
+Dòng 337: shirt	.	áo sơ mi	.
+Dòng 355: away	.	xa, cách xa	.
+Dòng 361: want to, wanna	.	muốn	.
+Dòng 5: eat	.	ăn	.
+Dòng 12: hate	.	ghét	.
+Dòng 24: Who	.	ai	.
+Dòng 53: wrong	.	sai	.
+Dòng 66: convenience store	.	tạp hoá	.
+Dòng 74: cream	.	kem	.
+Dòng 79: delicious	.	ngon	.
+Dòng 83: table, desk	.	cái bàn	.
+Dòng 84: umbrella	.	ô, dù	.
+Dòng 85: wallet	.	cái ví	.
+Dòng 88: coffee	.	cà phê	.
+Dòng 98: cat	.	con mèo	.
+Dòng 105: dad	.	bố, ba	.
+Dòng 112: younger sister	.	em gái	.
+Dòng 113: son	.	con trai	.
+Dòng 114: daughter	.	con gái	.
+Dòng 116: movie	.	phim	.
+Dòng 122: ticket	.	vé	.
+Dòng 134: say, speak	.	nói	.
+Dòng 153: split	.	chia ra,  tách ra	.
+Dòng 156: bring	.	mang, mang theo	.
+Dòng 163: swim	.	bơi	.
+Dòng 167: do, make	.	tạo ra	.
+Dòng 189: far	.	xa	.
+Dòng 221: difficult	.	khó	.
+Dòng 224: sell	.	bán	.
+Dòng 225: buy	.	mua	.
+Dòng 227: tall	.	cao	.
+Dòng 245: understand	.	hiểu	.
+Dòng 260: two	.	hai	.
+Dòng 263: five	.	năm	.
+Dòng 264: six	.	sáu	.
+Dòng 266: eight	.	tám	.
+Dòng 311: today	.	hôm nay	.
+Dòng 313: week	.	tuần	.
+Dòng 316: yesterday	.	hôm qua	.
+Dòng 319: summer 	.	mùa hè	.
+Dòng 323: rain	.	mưa	.
+Dòng 337: shirt	.	áo sơ mi	.
+Dòng 355: away	.	xa, cách xa	.
+Dòng 361: want to, wanna	.	muốn	.
+Dòng 5: drink	.
+Dòng 9: way, method	.
+Dòng 17: cry	.
+Dòng 19: feel	.
+Dòng 23: like	.
+Dòng 25: expect	.
+Dòng 27: miss	.
+Dòng 31: laugh, smile	.
+Dòng 33: love	.
+Dòng 35: disappointed	.
+Dòng 37: fun, interesting	.
+Dòng 39: happy	.
+Dòng 41: sad	.
+Dòng 44: ai	.
+Dòng 51: hello	.
+Dòng 53: bye, goodbye	.
+Dòng 55: coming along	.
+Dòng 57: Why 	.
+Dòng 65: I	.
+Dòng 69: she	.
+Dòng 71: you	.
+Dòng 73: we	.
+Dòng 77: kid,  children	.
+Dòng 79: person, people	.
+Dòng 83: male, man	.
+Dòng 85: computer	.
+Dòng 87: machine	.
+Dòng 89: delete, turn off	.
+Dòng 91: company	.
+Dòng 93: job, work	.
+Dòng 95: tasks	.
+Dòng 97: go to work	.
+Dòng 99: busy	.
+Dòng 102: sai	.
+Dòng 103: wrong	.
+Dòng 105: arrive	.
+Dòng 107: come	.
+Dòng 109: go	.
+Dòng 111: leave, depart	.
+Dòng 113: move	.
+Dòng 115: stay	.
+Dòng 117: leave	.
+Dòng 119: go home	.
+Dòng 123: walk	.
+Dòng 125: Beijing	.
+Dòng 127: bank	.
+Dòng 129: convenience store	.
+Dòng 131: place	.
+Dòng 135: restroom	.
+Dòng 141: hospital	.
+Dòng 143: apple	.
+Dòng 144: kem	.
+Dòng 145: cream	.
+Dòng 147: egg	.
+Dòng 149: fruit	.
+Dòng 151: rice	.
+Dòng 153: soup 	.
+Dòng 154: ngon	.
+Dòng 155: delicious	.
+Dòng 157: bag	.
+Dòng 159: chair	.
+Dòng 161: cup	.
+Dòng 163: table, desk	.
+Dòng 165: umbrella	.
+Dòng 166: cái ví	.
+Dòng 167: wallet	.
+Dòng 169: pencil	.
+Dòng 171: watch	.
+Dòng 175: drink	.
+Dòng 177: milk	.
+Dòng 179: tea	.
+Dòng 181: water	.
+Dòng 183: door	.
+Dòng 185: live	.
+Dòng 187: situation	.
+Dòng 192: con mèo	.
+Dòng 193: cat	.
+Dòng 195: dog	.
+Dòng 197: fish	.
+Dòng 199: lamb	.
+Dòng 201: hotel	.
+Dòng 203: luggage	.
+Dòng 205: travel, trips	.
+Dòng 207: dad	.
+Dòng 209: mom	.
+Dòng 213: husband	.
+Dòng 215: older brother	.
+Dòng 217: older sister	.
+Dòng 218: em trai	.
+Dòng 220: em gái	.
+Dòng 221: younger sister	.
+Dòng 222: con trai	.
+Dòng 223: son	.
+Dòng 225: daughter	.
+Dòng 229: movie	.
+Dòng 231: TV, television	.
+Dòng 233: airport	.
+Dòng 234: xe buýt	.
+Dòng 235: bus	.
+Dòng 240: vé	.
+Dòng 241: ticket	.
+Dòng 245: signal	.
+Dòng 249: welcome	.
+Dòng 253: meet	.
+Dòng 255: help	.
+Dòng 257: ask, questions	.
+Dòng 263: listen, ask	.
+Dòng 265: say, speak	.
+Dòng 267: tell	.
+Dòng 269: refuse	.
+Dòng 273: sit	.
+Dòng 279: anything	.
+Dòng 281: start, begin	.
+Dòng 285: open	.
+Dòng 287: close	.
+Dòng 289: stand	.
+Dòng 291: Sure	.
+Dòng 293: give	.
+Dòng 295: receive, get	.
+Dòng 297: stop	.
+Dòng 299: quit, stop	.
+Dòng 303: split	.
+Dòng 305: spill	.
+Dòng 307: prepare	.
+Dòng 308: mang, mang theo	.
+Dòng 309: bring	.
+Dòng 311: get	.
+Dòng 313: look, watch	.
+Dòng 315: see	.
+Dòng 317: wait	.
+Dòng 319: hang out	.
+Dòng 321: run	.
+Dòng 323: swim	.
+Dòng 325: sing	.
+Dòng 327: dance	.
+Dòng 329: do	.
+Dòng 331: do, make	.
+Dòng 335: hobby	.
+Dòng 339: look for	.
+Dòng 341: find	.
+Dòng 343: hide	.
+Dòng 347: answer	.
+Dòng 349: book	.
+Dòng 353: exam, test	.
+Dòng 355: grade	.
+Dòng 357: homework 	.
+Dòng 361: study	.
+Dòng 363: point, score	.
+Dòng 365: result	.
+Dòng 367: problem	.
+Dòng 371: can	.
+Dòng 374: xa	.
+Dòng 375: far	.
+Dòng 377: big	.
+Dòng 379: short	.
+Dòng 381: low	.
+Dòng 383: small	.
+Dòng 385: long	.
+Dòng 393: call, phone	.
+Dòng 395: email	.
+Dòng 397: phone, mobile phone	.
+Dòng 399: send	.
+Dòng 401: hang up	.
+Dòng 405: black	.
+Dòng 407: blue	.
+Dòng 413: bad	.
+Dòng 415: good	.
+Dòng 421: new	.
+Dòng 423: old	.
+Dòng 425: noisy	.
+Dòng 427: quiet	.
+Dòng 433: beautiful, clean	.
+Dòng 435: dangerous	.
+Dòng 437: dark	.
+Dòng 439: difficult	.
+Dòng 441: expensive	.
+Dòng 444: bán	.
+Dòng 445: sell	.
+Dòng 446: mua	.
+Dòng 447: buy	.
+Dòng 451: tall	.
+Dòng 453: quite, relatively	.
+Dòng 455: too	.
+Dòng 457: very	.
+Dòng 459: doctor	.
+Dòng 463: drawing	.
+Dòng 467: mean	.
+Dòng 469: Japanese	.
+Dòng 471: be + V-ing	.
+Dòng 479: floor	.
+Dòng 483: know	.
+Dòng 485: need	.
+Dòng 487: understand	.
+Dòng 489: want	.
+Dòng 493: feel	.
+Dòng 497: not	.
+Dòng 499: no	.
+Dòng 501: ahead	.
+Dòng 503: friend	.
+Dòng 505: China	.
+Dòng 507: oversleep	.
+Dòng 511: wake up	.
+Dòng 513: wash	.
+Dòng 515: one	.
+Dòng 516: hai	.
+Dòng 517: two	.
+Dòng 518: ba	.
+Dòng 523: five	.
+Dòng 525: six	.
+Dòng 527: seven	.
+Dòng 528: tám	.
+Dòng 529: eight	.
+Dòng 531: nine	.
+Dòng 533: ten	.
+Dòng 537: Have	.
+Dòng 539: my	.
+Dòng 545: how many, how much	.
+Dòng 547: many, much	.
+Dòng 549: quite a few	.
+Dòng 553: better	.
+Dòng 561: accident	.
+Dòng 563: body	.
+Dòng 565: healthy, well	.
+Dòng 567: pain	.
+Dòng 569: sick, ill	.
+Dòng 575: twice	.
+Dòng 579: sky	.
+Dòng 581: afternoon	.
+Dòng 583: close	.
+Dòng 585: day	.
+Dòng 589: evening	.
+Dòng 591: ever	.
+Dòng 601: just	.
+Dòng 607: noon	.
+Dòng 609: now	.
+Dòng 615: still	.
+Dòng 617: time	.
+Dòng 619: today	.
+Dòng 623: week	.
+Dòng 625: weekend	.
+Dòng 627: year	.
+Dòng 629: yesterday	.
+Dòng 635: summer 	.
+Dòng 639: not, yet	.
+Dòng 641: late	.
+Dòng 643: rain	.
+Dòng 645: sunny	.
+Dòng 649: hot	.
+Dòng 653: last name, surname	.
+Dòng 655: name	.
+Dòng 657: spend 	.
+Dòng 659: yen	.
+Dòng 663: slow	.
+Dòng 667: coat	.
+Dòng 669: dress	.
+Dòng 671: shirt	.
+Dòng 673: wear	.
+Dòng 675: suit	.
+Dòng 677: classroom	.
+Dòng 679: school	.
+Dòng 681: student	.
+Dòng 687: Will 	.
+Dòng 691: behind	.
+Dòng 693: in	.
+Dòng 695: outside	.
+Dòng 697: inside	.
+Dòng 701: under, below	.
+Dòng 705: nearby	.
+Dòng 706: xa, cách xa	.
+Dòng 707: away	.
+Dòng 709: here	.
+Dòng 5: drink	.
+Dòng 9: way, method	.
+Dòng 17: cry	.
+Dòng 19: feel	.
+Dòng 23: like	.
+Dòng 25: expect	.
+Dòng 27: miss	.
+Dòng 31: laugh, smile	.
+Dòng 33: love	.
+Dòng 35: disappointed	.
+Dòng 37: fun, interesting	.
+Dòng 39: happy	.
+Dòng 41: sad	.
+Dòng 44: ai	.
+Dòng 51: hello	.
+Dòng 53: bye, goodbye	.
+Dòng 55: coming along	.
+Dòng 57: Why 	.
+Dòng 65: I	.
+Dòng 69: she	.
+Dòng 71: you	.
+Dòng 73: we	.
+Dòng 77: kid,  children	.
+Dòng 79: person, people	.
+Dòng 83: male, man	.
+Dòng 85: computer	.
+Dòng 87: machine	.
+Dòng 89: delete, turn off	.
+Dòng 91: company	.
+Dòng 93: job, work	.
+Dòng 95: tasks	.
+Dòng 97: go to work	.
+Dòng 99: busy	.
+Dòng 102: sai	.
+Dòng 103: wrong	.
+Dòng 105: arrive	.
+Dòng 107: come	.
+Dòng 109: go	.
+Dòng 111: leave, depart	.
+Dòng 113: move	.
+Dòng 115: stay	.
+Dòng 117: leave	.
+Dòng 119: go home	.
+Dòng 123: walk	.
+Dòng 125: Beijing	.
+Dòng 127: bank	.
+Dòng 129: convenience store	.
+Dòng 131: place	.
+Dòng 135: restroom	.
+Dòng 141: hospital	.
+Dòng 143: apple	.
+Dòng 144: kem	.
+Dòng 145: cream	.
+Dòng 147: egg	.
+Dòng 149: fruit	.
+Dòng 151: rice	.
+Dòng 153: soup 	.
+Dòng 154: ngon	.
+Dòng 155: delicious	.
+Dòng 157: bag	.
+Dòng 159: chair	.
+Dòng 161: cup	.
+Dòng 163: table, desk	.
+Dòng 165: umbrella	.
+Dòng 166: cái ví	.
+Dòng 167: wallet	.
+Dòng 169: pencil	.
+Dòng 171: watch	.
+Dòng 175: drink	.
+Dòng 177: milk	.
+Dòng 179: tea	.
+Dòng 181: water	.
+Dòng 183: door	.
+Dòng 185: live	.
+Dòng 187: situation	.
+Dòng 192: con mèo	.
+Dòng 193: cat	.
+Dòng 195: dog	.
+Dòng 197: fish	.
+Dòng 199: lamb	.
+Dòng 201: hotel	.
+Dòng 203: luggage	.
+Dòng 205: travel, trips	.
+Dòng 207: dad	.
+Dòng 209: mom	.
+Dòng 213: husband	.
+Dòng 215: older brother	.
+Dòng 217: older sister	.
+Dòng 218: em trai	.
+Dòng 220: em gái	.
+Dòng 221: younger sister	.
+Dòng 222: con trai	.
+Dòng 223: son	.
+Dòng 225: daughter	.
+Dòng 229: movie	.
+Dòng 231: TV, television	.
+Dòng 233: airport	.
+Dòng 234: xe buýt	.
+Dòng 235: bus	.
+Dòng 240: vé	.
+Dòng 241: ticket	.
+Dòng 245: signal	.
+Dòng 249: welcome	.
+Dòng 253: meet	.
+Dòng 255: help	.
+Dòng 257: ask, questions	.
+Dòng 263: listen, ask	.
+Dòng 265: say, speak	.
+Dòng 267: tell	.
+Dòng 269: refuse	.
+Dòng 273: sit	.
+Dòng 279: anything	.
+Dòng 281: start, begin	.
+Dòng 285: open	.
+Dòng 287: close	.
+Dòng 289: stand	.
+Dòng 291: Sure	.
+Dòng 293: give	.
+Dòng 295: receive, get	.
+Dòng 297: stop	.
+Dòng 299: quit, stop	.
+Dòng 303: split	.
+Dòng 305: spill	.
+Dòng 307: prepare	.
+Dòng 308: mang, mang theo	.
+Dòng 309: bring	.
+Dòng 311: get	.
+Dòng 313: look, watch	.
+Dòng 315: see	.
+Dòng 317: wait	.
+Dòng 319: hang out	.
+Dòng 321: run	.
+Dòng 323: swim	.
+Dòng 325: sing	.
+Dòng 327: dance	.
+Dòng 329: do	.
+Dòng 331: do, make	.
+Dòng 335: hobby	.
+Dòng 339: look for	.
+Dòng 341: find	.
+Dòng 343: hide	.
+Dòng 347: answer	.
+Dòng 349: book	.
+Dòng 353: exam, test	.
+Dòng 355: grade	.
+Dòng 357: homework 	.
+Dòng 361: study	.
+Dòng 363: point, score	.
+Dòng 365: result	.
+Dòng 367: problem	.
+Dòng 371: can	.
+Dòng 374: xa	.
+Dòng 375: far	.
+Dòng 377: big	.
+Dòng 379: short	.
+Dòng 381: low	.
+Dòng 383: small	.
+Dòng 385: long	.
+Dòng 393: call, phone	.
+Dòng 395: email	.
+Dòng 397: phone, mobile phone	.
+Dòng 399: send	.
+Dòng 401: hang up	.
+Dòng 405: black	.
+Dòng 407: blue	.
+Dòng 413: bad	.
+Dòng 415: good	.
+Dòng 421: new	.
+Dòng 423: old	.
+Dòng 425: noisy	.
+Dòng 427: quiet	.
+Dòng 433: beautiful, clean	.
+Dòng 435: dangerous	.
+Dòng 437: dark	.
+Dòng 439: difficult	.
+Dòng 441: expensive	.
+Dòng 444: bán	.
+Dòng 445: sell	.
+Dòng 446: mua	.
+Dòng 447: buy	.
+Dòng 451: tall	.
+Dòng 453: quite, relatively	.
+Dòng 455: too	.
+Dòng 457: very	.
+Dòng 459: doctor	.
+Dòng 463: drawing	.
+Dòng 467: mean	.
+Dòng 469: Japanese	.
+Dòng 471: be + V-ing	.
+Dòng 479: floor	.
+Dòng 483: know	.
+Dòng 485: need	.
+Dòng 487: understand	.
+Dòng 489: want	.
+Dòng 493: feel	.
+Dòng 497: not	.
+Dòng 499: no	.
+Dòng 501: ahead	.
+Dòng 503: friend	.
+Dòng 505: China	.
+Dòng 507: oversleep	.
+Dòng 511: wake up	.
+Dòng 513: wash	.
+Dòng 515: one	.
+Dòng 516: hai	.
+Dòng 517: two	.
+Dòng 518: ba	.
+Dòng 523: five	.
+Dòng 525: six	.
+Dòng 527: seven	.
+Dòng 528: tám	.
+Dòng 529: eight	.
+Dòng 531: nine	.
+Dòng 533: ten	.
+Dòng 537: Have	.
+Dòng 539: my	.
+Dòng 545: how many, how much	.
+Dòng 547: many, much	.
+Dòng 549: quite a few	.
+Dòng 553: better	.
+Dòng 561: accident	.
+Dòng 563: body	.
+Dòng 565: healthy, well	.
+Dòng 567: pain	.
+Dòng 569: sick, ill	.
+Dòng 575: twice	.
+Dòng 579: sky	.
+Dòng 581: afternoon	.
+Dòng 583: close	.
+Dòng 585: day	.
+Dòng 589: evening	.
+Dòng 591: ever	.
+Dòng 601: just	.
+Dòng 607: noon	.
+Dòng 609: now	.
+Dòng 615: still	.
+Dòng 617: time	.
+Dòng 619: today	.
+Dòng 623: week	.
+Dòng 625: weekend	.
+Dòng 627: year	.
+Dòng 629: yesterday	.
+Dòng 635: summer 	.
+Dòng 639: not, yet	.
+Dòng 641: late	.
+Dòng 643: rain	.
+Dòng 645: sunny	.
+Dòng 649: hot	.
+Dòng 653: last name, surname	.
+Dòng 655: name	.
+Dòng 657: spend 	.
+Dòng 659: yen	.
+Dòng 663: slow	.
+Dòng 667: coat	.
+Dòng 669: dress	.
+Dòng 671: shirt	.
+Dòng 673: wear	.
+Dòng 675: suit	.
+Dòng 677: classroom	.
+Dòng 679: school	.
+Dòng 681: student	.
+Dòng 687: Will 	.
+Dòng 691: behind	.
+Dòng 693: in	.
+Dòng 695: outside	.
+Dòng 697: inside	.
+Dòng 701: under, below	.
+Dòng 705: nearby	.
+Dòng 706: xa, cách xa	.
+Dòng 707: away	.
+Dòng 709: here	.

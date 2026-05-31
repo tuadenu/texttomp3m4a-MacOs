@@ -324,6 +324,57 @@ if os.path.exists(CONFIG_FILE):
 else:
     config = {}
 
+
+def _normalize_lang_code(lang_value):
+    lang_clean = (lang_value or "vi").lower().strip()
+    if lang_clean.startswith("vi"):
+        return "vi"
+    if lang_clean.startswith(("zh", "zh-cn", "zh_tw", "zh-hk")):
+        return "zh"
+    if lang_clean.startswith("ja"):
+        return "ja"
+    if lang_clean.startswith("en"):
+        return "en"
+    return "vi"
+
+
+def _load_google_tts_profiles_from_config():
+    stored = config.get("GOOGLE_TTS_PROFILES", {})
+    if not isinstance(stored, dict):
+        return
+    for lang_code, profile in stored.items():
+        if not isinstance(profile, dict):
+            continue
+        normalized = _normalize_lang_code(lang_code)
+        GOOGLE_TTS_PROFILES[normalized] = {
+            "gender": profile.get("gender", "Mặc định") or "Mặc định",
+            "voice_name": profile.get("voice_name", "") or "",
+        }
+
+
+def _save_google_tts_profiles_to_config():
+    try:
+        config["GOOGLE_TTS_PROFILES"] = GOOGLE_TTS_PROFILES
+        os.makedirs(APPDATA_ROOT, exist_ok=True)
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        print(f"⚠ Không lưu được profile Google TTS vào config: {exc}")
+
+
+def _load_ui_tts_engine_from_config():
+    return (config.get("TTS_ENGINE_SELECTED") or "Google Cloud TTS").strip()
+
+
+def _save_ui_tts_engine_to_config(engine_name):
+    try:
+        config["TTS_ENGINE_SELECTED"] = (engine_name or "Google Cloud TTS").strip()
+        os.makedirs(APPDATA_ROOT, exist_ok=True)
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        print(f"⚠ Không lưu được engine TTS vào config: {exc}")
+
 # === Các hàm validate ví dụ (anh có thể thay bằng logic riêng nếu muốn) ===
 #CHECK ĐÚNG ĐỊNH DẠNG EMAIL, SDT
 def is_valid(val, check_func):
@@ -395,6 +446,68 @@ def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
         AudioSegment.silent(duration=ms).export(path, format="mp3", bitrate="192k")
         print(f"⏭️ Dòng rỗng → tạo {ms}ms im lặng: {path}")
 
+    def _get_polly_voice_id(lang_code, voice_value):
+        if lang_code == "ja":
+            return "Mizuki" if voice_value in ["Nữ", "Female"] else "Takumi"
+        if lang_code == "zh":
+            if voice_value in ["Nam", "Male"]:
+                print("⚠ Polly tiếng Trung không có giọng Nam, dùng Zhiyu (nữ).")
+            return "Zhiyu"
+        if lang_code == "en":
+            return "Joanna" if voice_value in ["Nữ", "Female"] else "Matthew"
+        return None
+
+    def _polly_supports_lang(lang_code):
+        return lang_code in ["en", "ja", "zh"]
+
+    def _speak_with_polly(text_value, lang_code, voice_value, speed_value, out_path):
+        import boto3
+
+        voice_id = _get_polly_voice_id(lang_code, voice_value)
+        if not voice_id:
+            raise ValueError("Polly không hỗ trợ ngôn ngữ này")
+
+        polly_client = boto3.Session(
+            aws_access_key_id=AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+            region_name=AWS_REGION
+        ).client('polly')
+
+        text_pol = re.sub(r"^\d+\s*\.\s*\.\s*", "", text_value)
+        text_pol = re.sub(r"(\s*\.\s*){1,}", ' <break time="400ms"/> ', text_pol).strip()
+
+        if speed_value == "Chậm":
+            ssml_text = f"<speak><prosody rate='80%'>{text_pol}</prosody></speak>"
+        else:
+            ssml_text = f"<speak>{text_pol}</speak>"
+
+        response = polly_client.synthesize_speech(
+            VoiceId=voice_id,
+            OutputFormat='mp3',
+            Text=ssml_text,
+            TextType="ssml"
+        )
+
+        with open(out_path, 'wb') as f:
+            f.write(response['AudioStream'].read())
+
+        print(f"✅ Đã tạo file bằng Amazon Polly: {out_path}")
+
+    def _speak_with_gtts(text_value, lang_code, slow_value, out_path):
+        tts = gTTS(text=text_value, lang=lang_code, slow=slow_value)
+        tts.save(out_path)
+        print(f"✅ Đã tạo file bằng gTTS: {out_path}")
+
+    def _speak_with_google(text_value, lang_code, slow_value, out_path):
+        tao_file_google_mp3(
+            text_value,
+            lang=lang_code,
+            gender=voice,
+            voice_name="",
+            toc_do=("Chậm" if slow_value else "Bình thường"),
+            file_out=out_path,
+        )
+
     try:
         #slow = (toc_do == "Chậm")
         # Nếu là tiếng Việt thì luôn tốc độ bình thường
@@ -411,95 +524,183 @@ def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
             text = str(text or "").strip()
 
         # ✅ Chuẩn hoá lang
-        lang_clean = (lang or "vi").lower().strip()
-        if lang_clean.startswith("vi"):
-            lang_clean = "vi"
-        elif lang_clean.startswith(("zh", "zh-cn", "zh_tw", "zh-hk")):
-            lang_clean = "zh"
-        elif lang_clean.startswith("ja"):
-            lang_clean = "ja"
-        elif lang_clean.startswith("en"):
-            lang_clean = "en"
+        lang_clean = _normalize_lang_code(lang)
 
         # ✅ Nếu sau khi làm sạch mà rỗng → tạo im lặng và thoát
         if not text.strip():
             _export_silence(file_out, 300)
             return
 
-        # ✅ Polly không hỗ trợ tiếng Việt → fallback gTTS
-        if engine == "Polly" and lang_clean == "vi":
-            print("⚠ Polly không hỗ trợ tiếng Việt. Dùng gTTS.")
-            engine = "gTTS"
+        engine_norm = (engine or "gTTS").strip().lower()
 
-        # ================= gTTS =================
-        if engine == "gTTS":
-            lang_code = lang_clean.split("-")[0]  # gTTS chỉ cần mã ngắn
+        # ================= Amazon Polly =================
+        if engine_norm == "polly":
             try:
-                tts = gTTS(text=text, lang=lang_code, slow=slow)
-                tts.save(file_out)
-                print(f"✅ Đã tạo file bằng gTTS: {file_out}")
+                _speak_with_polly(text, lang_clean, voice, toc_do, file_out)
+                return
+            except Exception as e:
+                print(f"⚠ Polly lỗi, thử Google Cloud TTS: {e}")
+                try:
+                    _speak_with_google(text, lang_clean, slow, file_out)
+                    return
+                except Exception as e2:
+                    print(f"⚠ Google Cloud TTS lỗi, thử gTTS: {e2}")
+                    _speak_with_gtts(text, lang_clean, slow, file_out)
+                    return
+
+        # ================= Google Cloud TTS / gTTS =================
+        if engine_norm in {"gtts", "google cloud tts", "google cloud", "google"}:
+            try:
+                _speak_with_google(text, lang_clean, slow, file_out)
+                return
+            except Exception as e:
+                print(f"⚠ Google Cloud TTS lỗi hoặc không khả dụng, fallback to gTTS: {e}")
+            try:
+                _speak_with_gtts(text, lang_clean, slow, file_out)
                 return
             except Exception as e:
                 msg = str(e)
-                # Trường hợp text rỗng/không hợp lệ ở mức gTTS
                 if "No text to speak" in msg or "No text to send to TTS API" in msg:
                     _export_silence(file_out, 300)
                     return
-                raise  # lỗi khác: ném tiếp để biết mà xử lý
+                print(f"⚠ gTTS lỗi, thử Polly thay thế: {e}")
+                if _polly_supports_lang(lang_clean):
+                    try:
+                        _speak_with_polly(text, lang_clean, voice, toc_do, file_out)
+                        return
+                    except Exception as polly_error:
+                        print(f"❌ Polly cũng lỗi sau khi gTTS lỗi: {polly_error}")
+                        raise
+                print(f"⚠ Không fallback sang Polly vì ngôn ngữ '{lang_clean}' không được hỗ trợ.")
+                raise
 
-        # ================= Amazon Polly =================
-        elif engine == "Polly":
-            import boto3
-
-            polly_client = boto3.Session(
-                aws_access_key_id=AWS_ACCESS_KEY_ID,
-                aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-                region_name=AWS_REGION
-            ).client('polly')
-
-            # Chọn giọng theo lang & giới tính
-            if lang_clean == "ja":
-                voice_id = "Mizuki" if voice in ["Nữ", "Female"] else "Takumi"
-            elif lang_clean == "zh":
-                voice_id = "Zhiyu"  # zh chỉ có nữ
-                if voice in ["Nam", "Male"]:
-                    print("⚠ Polly tiếng Trung không có giọng Nam, dùng Zhiyu (nữ).")
-            elif lang_clean == "en":
-                voice_id = "Joanna" if voice in ["Nữ", "Female"] else "Matthew"
-            else:
-                # Ngôn ngữ khác không chắc hỗ trợ → fallback gTTS
-                print("⚠ Polly không hỗ trợ ngôn ngữ này. Dùng gTTS.")
-                return tao_file_mp3(text, lang_clean, voice, toc_do, "gTTS", file_out)
-
-            # Làm sạch dấu chấm → khoảng nghỉ nhẹ cho Polly
-            text_pol = re.sub(r"^\d+\s*\.\s*\.\s*", "", text)  # "5. ." dạng
-            text_pol = re.sub(r"(\s*\.\s*){1,}", ' <break time="400ms"/> ', text_pol).strip()
-
-            # SSML + tốc độ
-            if toc_do == "Chậm":
-                ssml_text = f"<speak><prosody rate='80%'>{text_pol}</prosody></speak>"
-            else:
-                ssml_text = f"<speak>{text_pol}</speak>"
-
-            response = polly_client.synthesize_speech(
-                VoiceId=voice_id,
-                OutputFormat='mp3',
-                Text=ssml_text,
-                TextType="ssml"
-            )
-
-            with open(file_out, 'wb') as f:
-                f.write(response['AudioStream'].read())
-
-            print(f"✅ Đã tạo file bằng Amazon Polly: {file_out}")
+        print(f"⚠ Engine '{engine}' không được nhận diện, dùng Google Cloud TTS rồi gTTS.")
+        try:
+            _speak_with_google(text, lang_clean, slow, file_out)
             return
-
-        else:
-            raise Exception("Engine không hợp lệ (gTTS hoặc Polly).")
+        except Exception as e:
+            print(f"⚠ Google Cloud TTS lỗi, fallback to gTTS: {e}")
+        _speak_with_gtts(text, lang_clean, slow, file_out)
+        return
 
     except Exception as e:
         print("❌ Lỗi tạo file mp3:", e)
         raise
+
+
+def _google_tts_lang_code(lang_value):
+    lang_clean = (lang_value or "vi").lower().strip()
+    if lang_clean.startswith("vi"):
+        return "vi-VN"
+    if lang_clean.startswith("en"):
+        return "en-US"
+    if lang_clean.startswith("ja"):
+        return "ja-JP"
+    if lang_clean.startswith(("zh", "zh-cn", "zh_tw", "zh-hk")):
+        return "cmn-CN"
+    return "vi-VN"
+
+
+def _google_tts_gender_enum(label):
+    try:
+        from google.cloud import texttospeech
+    except Exception:
+        raise RuntimeError("google-cloud-texttospeech not installed")
+
+    mapping = {
+        "Nam": texttospeech.SsmlVoiceGender.MALE,
+        "Nữ": texttospeech.SsmlVoiceGender.FEMALE,
+        "Trung tính": texttospeech.SsmlVoiceGender.NEUTRAL,
+        "Mặc định": texttospeech.SsmlVoiceGender.SSML_VOICE_GENDER_UNSPECIFIED,
+        None: texttospeech.SsmlVoiceGender.SSML_VOICE_GENDER_UNSPECIFIED,
+        "": texttospeech.SsmlVoiceGender.SSML_VOICE_GENDER_UNSPECIFIED,
+    }
+    return mapping.get(label, texttospeech.SsmlVoiceGender.SSML_VOICE_GENDER_UNSPECIFIED)
+
+
+def _google_tts_get_profile(lang_code):
+    lang_clean = _normalize_lang_code(lang_code)
+    return GOOGLE_TTS_PROFILES.setdefault(lang_clean, {"gender": "Mặc định", "voice_name": ""})
+
+
+def _google_tts_set_profile(lang_code, gender="Mặc định", voice_name=""):
+    profile = _google_tts_get_profile(lang_code)
+    profile["gender"] = gender or "Mặc định"
+    profile["voice_name"] = voice_name or ""
+    return profile
+
+
+def _google_tts_list_voices(lang_code, gender=None):
+    try:
+        from google.cloud import texttospeech
+    except Exception:
+        raise RuntimeError("google-cloud-texttospeech not installed")
+
+    client = texttospeech.TextToSpeechClient()
+    voices = client.list_voices(language_code=_google_tts_lang_code(lang_code)).voices
+    results = []
+    for voice in voices:
+        voice_gender = getattr(voice.ssml_gender, "name", str(voice.ssml_gender))
+        if gender and gender not in ["Mặc định", ""]:
+            if gender == "Nam" and voice_gender != "MALE":
+                continue
+            if gender == "Nữ" and voice_gender != "FEMALE":
+                continue
+            if gender == "Trung tính" and voice_gender not in ["NEUTRAL", "SSML_VOICE_GENDER_UNSPECIFIED"]:
+                continue
+        results.append({
+            "name": voice.name,
+            "gender": voice_gender,
+            "display": f"{voice.name} · {voice_gender}",
+        })
+    return results
+
+
+def tao_file_google_mp3(text, lang="vi", gender="Mặc định", voice_name="", toc_do="Bình thường", file_out="out.mp3"):
+    try:
+        from google.cloud import texttospeech
+    except Exception:
+        raise RuntimeError("google-cloud-texttospeech not installed")
+
+    text = lam_sach_van_ban(text or "")
+    if not text.strip():
+        from pydub import AudioSegment
+        AudioSegment.silent(duration=300).export(file_out, format="mp3", bitrate="192k")
+        print(f"⏭️ Dòng rỗng → tạo im lặng: {file_out}")
+        return
+
+    profile = _google_tts_get_profile(lang)
+    profile_gender = (profile.get("gender") or "Mặc định").strip()
+    profile_voice_name = (profile.get("voice_name") or "").strip()
+    voice_name = (voice_name or profile_voice_name or "").strip()
+    gender = (profile_gender if profile_gender and profile_gender != "Mặc định" else gender) or "Mặc định"
+    lang_code = _google_tts_lang_code(lang)
+
+    client = texttospeech.TextToSpeechClient()
+    synthesis_input = texttospeech.SynthesisInput(text=text)
+
+    voice_kwargs = {"language_code": lang_code}
+    if voice_name:
+        voice_kwargs["name"] = voice_name
+    else:
+        gender_enum = _google_tts_gender_enum(gender)
+        if gender_enum != texttospeech.SsmlVoiceGender.SSML_VOICE_GENDER_UNSPECIFIED:
+            voice_kwargs["ssml_gender"] = gender_enum
+
+    audio_kwargs = {"audio_encoding": texttospeech.AudioEncoding.MP3}
+    if toc_do == "Chậm":
+        audio_kwargs["speaking_rate"] = 0.8
+
+    response = client.synthesize_speech(
+        input=synthesis_input,
+        voice=texttospeech.VoiceSelectionParams(**voice_kwargs),
+        audio_config=texttospeech.AudioConfig(**audio_kwargs),
+    )
+
+    with open(file_out, "wb") as f:
+        f.write(response.audio_content)
+
+    print(f"✅ Đã tạo file bằng Google Cloud TTS: {file_out}")
 
 #=========================
     
@@ -559,6 +760,21 @@ chup_anh_luu = None
 #Kênh âm thanh bằng pygame
 current_seek_pos = 0  # vị trí phát hiện tại (giây)
 seek_start_time = 0   # thời điểm bắt đầu phát, tính bằng time.time()
+GOOGLE_TTS_LANG_MAP = {
+    "vi": "vi-VN",
+    "en": "en-US",
+    "ja": "ja-JP",
+    "zh": "cmn-CN",
+}
+GOOGLE_TTS_GENDER_LABELS = ["Mặc định", "Nam", "Nữ", "Trung tính"]
+GOOGLE_TTS_PROFILES = {
+    "vi": {"gender": "Mặc định", "voice_name": ""},
+    "en": {"gender": "Mặc định", "voice_name": ""},
+    "ja": {"gender": "Mặc định", "voice_name": ""},
+    "zh": {"gender": "Mặc định", "voice_name": ""},
+}
+
+_load_google_tts_profiles_from_config()
 #==================================================
 ###====CÁC FILE KHÁC HỆ THỐNG====
 #Sound , font các biến âm thanh=============================================================================
@@ -1336,8 +1552,12 @@ def nhap_giong_noi_advanced(entry_cau_hoi, on_text_got=None, root=None):
                         if not os.path.exists(APPDATA_ROOT):
                             os.makedirs(APPDATA_ROOT, exist_ok=True)
                         path = os.path.join(APPDATA_ROOT, f"mic_prompt_{int(time.time())}.mp3")
-                        tts = gTTS("Hãy nói vào mic để hỏi tôi!", lang="vi")
-                        tts.save(path)
+                        # Prefer Google Cloud TTS, fallback to gTTS
+                        try:
+                            _speak_with_google("Hãy nói vào mic để hỏi tôi!", 'vi', False, path)
+                        except Exception:
+                            tts = gTTS("Hãy nói vào mic để hỏi tôi!", lang="vi")
+                            tts.save(path)
                         pygame.mixer.init()
                         pygame.mixer.music.load(path)
                         pygame.mixer.music.play()
@@ -1746,8 +1966,7 @@ def doc_noi_dung_de():
                     file_path = tf.name
 
                 toc_do = combo_toc_do.get()
-                slow = True if toc_do == "Chậm" else False
-                gTTS(text=dong_sach, lang=lang, slow=slow).save(file_path)
+                tao_file_mp3(dong_sach, lang=lang, voice="Female", toc_do=toc_do, engine="gTTS", file_out=file_path)
 
                 sound = pygame.mixer.Sound(file_path)
                 channel_doc.play(sound)
@@ -2053,10 +2272,19 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         cb.pack(anchor="w", padx=10)
 
 
-    tk.Label(option_frame, text="Engine:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(8, 2))
-    combo_engine = ttk.Combobox(option_frame, values=["gTTS", "Polly"], state="readonly")
-    combo_engine.set("Polly")
+    tk.Label(option_frame, text="Engine (Google Cloud TTS / gTTS / Polly):", bg="#f8fff8").pack(anchor="w", padx=10, pady=(8, 2))
+    combo_engine = ttk.Combobox(option_frame, values=["Google Cloud TTS", "gTTS", "Polly"], state="readonly")
+    combo_engine.set(_load_ui_tts_engine_from_config())
     combo_engine.pack(fill="x", padx=10, pady=2)
+    engine_status_var = tk.StringVar(value=f"Đang lưu: {combo_engine.get()}")
+    tk.Label(
+        option_frame,
+        textvariable=engine_status_var,
+        bg="#f8fff8",
+        fg="#2f5f2f",
+        wraplength=260,
+        justify="left",
+    ).pack(anchor="w", padx=10, pady=(0, 2))
     
 
     tk.Label(option_frame, text="Tốc độ:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(10, 2))
@@ -2068,6 +2296,218 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     combo_giong_popup = ttk.Combobox(option_frame, values=["Nam", "Nữ", "Hội thoại 1 câu nam - 1 câu nữ"], state="readonly")
     combo_giong_popup.set("Hội thoại 1 câu nam - 1 câu nữ")
     combo_giong_popup.pack(fill="x", padx=10, pady=2)
+
+    google_voice_status_var = tk.StringVar(value="Google Cloud TTS: mặc định theo ngôn ngữ")
+    tk.Label(option_frame, textvariable=google_voice_status_var, fg="#2f5f2f", bg="#f8fff8", wraplength=250,
+             justify="left").pack(anchor="w", padx=10, pady=(4, 2))
+
+    def update_google_voice_status():
+        try:
+            summary = []
+            for code, label in [("vi", "VI"), ("en", "EN"), ("ja", "JA"), ("zh", "ZH")]:
+                profile = GOOGLE_TTS_PROFILES.get(code, {})
+                gender = profile.get("gender", "Mặc định")
+                voice_name = profile.get("voice_name", "")
+                if voice_name:
+                    summary.append(f"{label}:{gender}/{voice_name}")
+                else:
+                    summary.append(f"{label}:{gender}/mặc định")
+            google_voice_status_var.set(" | ".join(summary))
+        except Exception as exc:
+            google_voice_status_var.set(f"Google Cloud TTS: không đọc được trạng thái ({exc})")
+
+    def open_google_voice_popup():
+        popup_google = tk.Toplevel(option_frame)
+        set_popup_icon(popup_google)
+        popup_google.title("Giọng Google Cloud TTS")
+        popup_google.geometry("650x430")
+        popup_google.resizable(False, False)
+        popup_google.transient(root)
+        popup_google.grab_set()
+        popup_google.attributes("-topmost", True)
+
+        popup_google.update_idletasks()
+        x = root.winfo_x() + 80
+        y = root.winfo_y() + 80
+        popup_google.geometry(f"650x430+{x}+{y}")
+
+        main = tk.Frame(popup_google, bg="white")
+        main.pack(fill="both", expand=True, padx=12, pady=12)
+
+        tk.Label(main, text="Chọn giọng Google Cloud TTS", font=("Arial", 14, "bold"), bg="white").pack(anchor="w")
+
+        controls = tk.Frame(main, bg="white")
+        controls.pack(fill="x", pady=(10, 6))
+
+        tk.Label(controls, text="Ngôn ngữ", bg="white").grid(row=0, column=0, sticky="w")
+        google_lang_var = tk.StringVar(value="Tiếng Việt")
+        google_lang_combo = ttk.Combobox(controls, textvariable=google_lang_var,
+                                         values=["Tiếng Việt", "Tiếng Anh", "Tiếng Nhật", "Tiếng Trung"], state="readonly", width=22)
+        google_lang_combo.grid(row=1, column=0, sticky="we", padx=(0, 10), pady=(2, 8))
+
+        tk.Label(controls, text="Giới tính", bg="white").grid(row=0, column=1, sticky="w")
+        google_gender_var = tk.StringVar(value="Mặc định")
+        google_gender_combo = ttk.Combobox(controls, textvariable=google_gender_var,
+                                           values=GOOGLE_TTS_GENDER_LABELS, state="readonly", width=18)
+        google_gender_combo.grid(row=1, column=1, sticky="we", padx=(0, 10), pady=(2, 8))
+
+        tk.Label(controls, text="Giọng cụ thể", bg="white").grid(row=0, column=2, sticky="w")
+        google_voice_name_var = tk.StringVar(value="(Mặc định)")
+        google_voice_name_combo = ttk.Combobox(controls, textvariable=google_voice_name_var,
+                                               values=["(Mặc định)"], state="readonly", width=30)
+        google_voice_name_combo.grid(row=1, column=2, sticky="we", pady=(2, 8))
+
+        controls.grid_columnconfigure(0, weight=1)
+        controls.grid_columnconfigure(1, weight=1)
+        controls.grid_columnconfigure(2, weight=2)
+
+        tk.Label(main, text="Văn bản nghe thử", bg="white").pack(anchor="w")
+        sample_var = tk.StringVar(value="Xin chào, đây là bài nghe thử Google Cloud TTS.")
+        sample_entry = tk.Entry(main, textvariable=sample_var)
+        sample_entry.pack(fill="x", pady=(2, 8))
+
+        voice_map = {}
+        info_var = tk.StringVar(value="Bấm 'Tải giọng' để lấy danh sách voice từ Google Cloud.")
+        info_label = tk.Label(main, textvariable=info_var, bg="white", fg="#555", wraplength=610, justify="left")
+        info_label.pack(anchor="w", pady=(0, 8))
+
+        def _lang_code_from_label(label):
+            return {
+                "Tiếng Việt": "vi",
+                "Tiếng Anh": "en",
+                "Tiếng Nhật": "ja",
+                "Tiếng Trung": "zh",
+            }.get(label, "vi")
+
+        def load_google_voices():
+            nonlocal voice_map
+            code = _lang_code_from_label(google_lang_var.get())
+            gender = google_gender_var.get()
+            try:
+                voices = _google_tts_list_voices(code, gender if gender != "Mặc định" else None)
+                voice_map = {"(Mặc định)": ""}
+                values = ["(Mặc định)"]
+                for item in voices:
+                    display = item["display"]
+                    voice_map[display] = item["name"]
+                    values.append(display)
+                google_voice_name_combo["values"] = values
+                if google_voice_name_var.get() not in values:
+                    google_voice_name_var.set("(Mặc định)")
+                info_var.set(f"Đã tải {len(voices)} giọng cho {code}. Nếu để '(Mặc định)' thì Google tự chọn giọng chuẩn của ngôn ngữ.")
+            except Exception as exc:
+                google_voice_name_combo["values"] = ["(Mặc định)"]
+                google_voice_name_var.set("(Mặc định)")
+                info_var.set(f"Không tải được danh sách giọng: {exc}")
+
+        def save_google_profile():
+            code = _lang_code_from_label(google_lang_var.get())
+            voice_name = voice_map.get(google_voice_name_var.get(), "")
+            _google_tts_set_profile(code, gender=google_gender_var.get(), voice_name=voice_name)
+            _save_google_tts_profiles_to_config()
+            update_google_voice_status()
+            messagebox.showinfo("Đã lưu", f"Đã lưu giọng Google cho {code}.", parent=popup_google)
+            popup_google.destroy()
+
+        def test_google_voice():
+            code = _lang_code_from_label(google_lang_var.get())
+            voice_name = voice_map.get(google_voice_name_var.get(), "")
+            sample_text = sample_var.get().strip()
+            if not sample_text:
+                sample_text = "Xin chào, đây là bài nghe thử Google Cloud TTS."
+
+            def _worker():
+                try:
+                    import pygame
+                    test_path = os.path.join(APPDATA_ROOT, f"google_tts_test_{uuid.uuid4().hex}.mp3")
+                    tao_file_google_mp3(
+                        sample_text,
+                        lang=code,
+                        gender=google_gender_var.get(),
+                        voice_name=voice_name,
+                        toc_do="Bình thường",
+                        file_out=test_path,
+                    )
+                    pygame.mixer.init()
+                    pygame.mixer.music.load(test_path)
+                    pygame.mixer.music.play()
+                    print(f"✅ Đang nghe thử Google Cloud TTS: {test_path}")
+                except Exception as exc:
+                    print("❌ Không nghe thử được Google Cloud TTS:", exc)
+                    error_message = str(exc)
+                    try:
+                        popup_google.after(
+                            0,
+                            lambda msg=error_message: messagebox.showerror(
+                                "Lỗi nghe thử",
+                                msg,
+                                parent=popup_google,
+                            ),
+                        )
+                    except Exception:
+                        pass
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        def on_lang_or_gender_change(event=None):
+            code = _lang_code_from_label(google_lang_var.get())
+            profile = _google_tts_get_profile(code)
+            google_gender_var.set(profile.get("gender", "Mặc định"))
+            current_voice = profile.get("voice_name", "")
+            load_google_voices()
+            if current_voice:
+                for display, actual_name in voice_map.items():
+                    if actual_name == current_voice:
+                        google_voice_name_var.set(display)
+                        break
+
+            samples = {
+                "vi": "Xin chào, đây là bài nghe thử Google Cloud TTS.",
+                "en": "Hello, this is a Google Cloud TTS voice test.",
+                "ja": "こんにちは、これは Google Cloud TTS のテストです。",
+                "zh": "你好，这是 Google Cloud TTS 的试听。",
+            }
+            sample_var.set(samples.get(code, sample_var.get()))
+
+        def sync_from_selected_lines():
+            try:
+                current_codes = []
+                for _, combo in combos[:5]:
+                    val = combo.get().strip()
+                    if val:
+                        current_codes.append(val)
+                if not current_codes:
+                    return
+                first_code = current_codes[0]
+                mapped = {
+                    "vi": "Tiếng Việt",
+                    "en": "Tiếng Anh",
+                    "ja": "Tiếng Nhật",
+                    "zh": "Tiếng Trung",
+                    "zh-cn": "Tiếng Trung",
+                }.get(first_code, "Tiếng Việt")
+                google_lang_var.set(mapped)
+                on_lang_or_gender_change()
+            except Exception:
+                pass
+
+        google_lang_combo.bind("<<ComboboxSelected>>", on_lang_or_gender_change)
+        google_gender_combo.bind("<<ComboboxSelected>>", on_lang_or_gender_change)
+
+        btn_row = tk.Frame(main, bg="white")
+        btn_row.pack(fill="x", pady=(6, 0))
+
+        tk.Button(btn_row, text="Tải giọng", command=load_google_voices, width=12).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Nghe thử", command=test_google_voice, width=12).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Lấy theo dòng hiện tại", command=sync_from_selected_lines, width=18).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Lưu", command=save_google_profile, width=12).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Đóng", command=popup_google.destroy, width=12).pack(side="right")
+
+        load_google_voices()
+        on_lang_or_gender_change()
+
+    tk.Button(option_frame, text="🎙 Giọng Google Cloud…", command=open_google_voice_popup).pack(fill="x", padx=10, pady=(4, 2))
+    update_google_voice_status()
 
     
 
@@ -2189,6 +2629,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     def on_engine_change(event=None):
         engine = combo_engine.get()
+        _save_ui_tts_engine_to_config(engine)
+        engine_status_var.set(f"Đang lưu: {engine}")
 
         # ✅ Cập nhật toàn bộ list
         for idx, lang in enumerate(selected_lang_list):
@@ -2889,45 +3331,24 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 return "vi"
 
             # Helper: tạo mp3 an toàn từ text (có chèn im lặng nếu cần)
-            def safe_tts_to_mp3(text_in, lang_in, voice_in, engine_in, out_mp3):
-                from gtts import gTTS
-                lang_norm = normalize_lang(lang_in)
-                text_clean = lam_sach_van_ban(text_in or "")
-                if not text_clean.strip():
-                    # rỗng → tạo im lặng 300ms
-                    AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
-                    return "silence"
+                def safe_tts_to_mp3(text_in, lang_in, voice_in, engine_in, out_mp3):
+                    # Use central tao_file_mp3 which prefers Google Cloud for Vietnamese
+                    lang_norm = normalize_lang(lang_in)
+                    text_clean = lam_sach_van_ban(text_in or "")
+                    if not text_clean.strip():
+                        AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
+                        return "silence"
 
-                if engine_in == "gtts":
                     try:
-                        gTTS(text=text_clean, lang=lang_norm, slow=(toc_do == "Chậm")).save(out_mp3)
+                        # forward to tao_file_mp3; engine_in preserved so fallback rules apply
+                        tao_file_mp3(text_clean, lang=lang_norm, voice=voice_in, toc_do=toc_do, engine=engine_in if engine_in else combo_engine.get(), file_out=out_mp3)
                         return "ok"
                     except Exception as e:
-                        if "No text to speak" in str(e) or "No text to send to TTS API" in str(e):
+                        msg = str(e)
+                        if "No text to speak" in msg or "No text to send to TTS API" in msg:
                             AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
                             return "silence"
                         raise
-                else:
-                    # Polly: tiếng Việt fallback gTTS
-                    if lang_norm == "vi":
-                        try:
-                            gTTS(text=text_clean, lang="vi", slow=(toc_do == "Chậm")).save(out_mp3)
-                            return "ok"
-                        except Exception as e:
-                            if "No text to speak" in str(e) or "No text to send to TTS API" in str(e):
-                                AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
-                                return "silence"
-                            raise
-                    else:
-                        # dùng hàm chung của bạn
-                        try:
-                            tao_file_mp3(text_clean, lang=lang_norm, voice=voice_in, toc_do=toc_do, engine="Polly", file_out=out_mp3)
-                            return "ok"
-                        except Exception as e:
-                            if "No text to speak" in str(e) or "No text to send to TTS API" in str(e):
-                                AudioSegment.silent(duration=300).export(out_mp3, format="mp3", bitrate="192k")
-                                return "silence"
-                            raise
 
             try:
                 for i, (dong, lang) in enumerate(danh_sach_doc):
@@ -3941,8 +4362,16 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     sheet_name,
                 ]
 
+                pipeline_env = os.environ.copy()
+                pipeline_env["TTS_ENGINE"] = combo_engine.get()
+                pipeline_env["GOOGLE_TTS_PROFILES_JSON"] = json.dumps(GOOGLE_TTS_PROFILES, ensure_ascii=False)
+                pipeline_env["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
+                pipeline_env["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
+                pipeline_env["AWS_REGION"] = AWS_REGION
+                pipeline_env["AWS_DEFAULT_REGION"] = AWS_REGION
+
                 append_log("\n--- RUN: vocab_pipeline.py ---")
-                pipe_code, pipe_output = run_cmd_and_stream(pipeline_cmd)
+                pipe_code, pipe_output = run_cmd_and_stream(pipeline_cmd, env=pipeline_env)
                 if cancel_state["cancelled"]:
                     update_status(st_m4a, lb_m4a, "Đã huỷ", "red")
                     update_status(st_json, lb_json, "Đã huỷ", "red")
@@ -5180,7 +5609,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         # ("🎮 Game Đoán Chữ", "#ccffcc", bat_dau_game_popup),
         ("📥 Import Excel + Deploy Supabase", "#e8ffe8", import_excel_va_deploy_supabase),
         ("▶️ Đọc nội dung", "lightgreen", doc_popup),
-        ("🎯 Ép về ngôn ngữ đã chọn", "#ffe6cc", lambda: ep_toan_bo_dong_ve_lang()),
+        ("🎯 Đồng bộ ngôn ngữ dòng", "#ffe6cc", lambda: ep_toan_bo_dong_ve_lang()),
         ("⏸ Dừng đọc", "orange", dung_doc),
         ("🔁 Đọc lại", "lightblue", doc_lai_popup),
         ("🎧 Xuất MP3", "lightyellow", xuat_popup_mp3),
@@ -5205,6 +5634,15 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     button_grid.columnconfigure(0, weight=1)
     button_grid.columnconfigure(1, weight=1)
+
+    tk.Label(
+        option_frame,
+        text="Lưu ý: nút 'Đồng bộ ngôn ngữ dòng' chỉ chỉnh ngôn ngữ từng dòng, không đổi engine.",
+        bg="#f8fff8",
+        fg="#666",
+        wraplength=260,
+        justify="left",
+    ).pack(anchor="w", padx=10, pady=(0, 8))
 
 
     
@@ -5270,7 +5708,7 @@ def phat_da_ngon_ngu(danh_sach_cau, giong="Nam", toc_do="Bình thường", close
                 slow = True if toc_do == "Chậm" else False
 
                 file_mp3 = tempfile.mktemp(suffix=".mp3")
-                gTTS(text=dong_sach, lang=lang, slow=slow).save(file_mp3)
+                tao_file_mp3(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine="gTTS", file_out=file_mp3)
 
                 pygame.mixer.init()
                 sound = pygame.mixer.Sound(file_mp3)
@@ -5386,13 +5824,24 @@ def xuat_file_mp3():
 
                     btn_xuat_mp3.config(text=f"⏳ Dòng {i + 1}/{tong_dong}...")
 
-                    tts = gTTS(text=cleaned, lang=lang, slow=slow)
                     temp_mp3 = os.path.join(temp_dir, f"temp_{uuid.uuid4().hex}.mp3")
-                    tts.save(temp_mp3)
-
-                    segment = AudioSegment.from_mp3(temp_mp3)
-                    full_audio += segment + AudioSegment.silent(duration=300)
-                    os.remove(temp_mp3)
+                    try:
+                        # Use central tao_file_mp3 which prefers Google Cloud for vi and falls back
+                        tao_file_mp3(cleaned, lang=lang, voice=None, toc_do=toc_do, engine=combo_engine.get(), file_out=temp_mp3)
+                        segment = AudioSegment.from_mp3(temp_mp3)
+                        full_audio += segment + AudioSegment.silent(duration=300)
+                    except Exception as e:
+                        msg = str(e)
+                        if "No text to speak" in msg or "No text to send to TTS API" in msg:
+                            full_audio += AudioSegment.silent(duration=300)
+                        else:
+                            raise
+                    finally:
+                        try:
+                            if os.path.exists(temp_mp3):
+                                os.remove(temp_mp3)
+                        except Exception:
+                            pass
 
                     progress = int((i + 1) / tong_dong * 100)
                     progress_var.set(progress)
@@ -5666,10 +6115,72 @@ def cutter_sound():
     win.lift()
     win.grab_set()
 
-    file_path = filedialog.askopenfilename(title="Chọn file MP3 hoặc WAV",
-                                           filetypes=[("Audio files", "*.mp3 *.wav")],
+    cutter_audio_filetypes = [("Audio files", "*.mp3 *.wav *.m4a *.aac"), ("All files", "*.*")]
+    cutter_save_filetypes = [
+        ("WAV files", "*.wav"),
+        ("MP3 files", "*.mp3"),
+        ("M4A files", "*.m4a"),
+        ("AAC files", "*.aac"),
+    ]
+    supported_cutter_exts = {".mp3", ".wav", ".m4a", ".aac"}
+
+    def copy_m4a_segment_without_reencode(source_path, save_path, start_ms, end_ms):
+        if not FFMPEG_PATH or not os.path.isfile(FFMPEG_PATH):
+            raise ValueError("Không tìm thấy ffmpeg để cắt M4A giữ nguyên chất lượng.")
+
+        start_sec = start_ms / 1000
+        duration_sec = (end_ms - start_ms) / 1000
+        startupinfo = None
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+        cmd = [
+            FFMPEG_PATH, "-y",
+            "-ss", f"{start_sec:.3f}",
+            "-i", source_path,
+            "-t", f"{duration_sec:.3f}",
+            "-vn",
+            "-c", "copy",
+            "-movflags", "+faststart",
+            save_path,
+        ]
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            startupinfo=startupinfo,
+        )
+        if result.returncode != 0:
+            raise Exception(result.stderr or "FFmpeg không cắt được M4A giữ nguyên chất lượng.")
+
+    def export_cut_segment(segment, save_path, source_path=None, start_ms=None, end_ms=None):
+        ext = os.path.splitext(save_path)[1].lower()
+        source_ext = os.path.splitext(source_path or "")[1].lower()
+        if ext == ".m4a" and source_ext == ".m4a" and start_ms is not None and end_ms is not None:
+            copy_m4a_segment_without_reencode(source_path, save_path, start_ms, end_ms)
+        elif ext == ".m4a":
+            segment.export(save_path, format="ipod", codec="aac", bitrate="192k")
+        elif ext == ".aac":
+            segment.export(save_path, format="adts", codec="aac", bitrate="192k")
+        elif ext == ".mp3":
+            segment.export(save_path, format="mp3", bitrate="192k")
+        elif ext == ".wav":
+            segment.export(save_path, format="wav")
+        else:
+            raise ValueError("Chỉ hỗ trợ lưu WAV, MP3, M4A hoặc AAC.")
+
+    file_path = filedialog.askopenfilename(title="Chọn file MP3, WAV, M4A hoặc AAC",
+                                           filetypes=cutter_audio_filetypes,
                                            parent=win)  # ✅ Thêm parent
     if not file_path:
+        win.destroy()
+        return
+
+    ext = os.path.splitext(file_path)[1].lower()
+    if ext not in supported_cutter_exts:
+        messagebox.showerror("Lỗi", "Chỉ hỗ trợ MP3, WAV, M4A và AAC!", parent=win)
         win.destroy()
         return
 
@@ -5794,14 +6305,12 @@ def cutter_sound():
                 return
 
             save_path = filedialog.asksaveasfilename(defaultextension=".wav",
-                                                     filetypes=[("WAV files", "*.wav"), ("MP3 files", "*.mp3")],
+                                                     filetypes=cutter_save_filetypes,
                                                      title="Lưu file cắt",
                                                      parent=win)  # ✅ Thêm parent
 
             if not save_path:
                 return
-
-            fmt_out = os.path.splitext(save_path)[1][1:].lower()
 
             def thread_cut():
                 try:
@@ -5815,7 +6324,7 @@ def cutter_sound():
                         progress_bar.update()
                         time.sleep(0.01)
 
-                    segment.export(save_path, format=fmt_out, bitrate="192k")
+                    export_cut_segment(segment, save_path, file_path, start_ms, end_ms)
 
                     pygame.mixer.quit()
                     pygame.mixer.init()
@@ -6766,7 +7275,6 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                     try:
                         import requests
                         if key_field == "GPT_API_KEY":
-                            from openai import OpenAI
                             if not new_value.startswith("sk-"):
                                 raise Exception("❌ GPT Key không đúng định dạng. Phải bắt đầu bằng 'sk-'")
                             try:
@@ -6776,7 +7284,6 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                                     messages=[{"role": "user", "content": "Hi"}],
                                     timeout=10
                                 )
-                                messagebox.showinfo("OK", "✅ GPT Key hoạt động tốt!", parent=top)
                             except Exception as e:
                                 msg = str(e)
                                 if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
@@ -6785,28 +7292,6 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                                     raise Exception("❌ GPT Key không hợp lệ hoặc đã bị thu hồi.")
                                 else:
                                     raise Exception(f"❌ Lỗi GPT: {e}")
-
-                        elif key_field == "GEMINI_API_KEY":
-                            if not new_value.startswith("AIza"):
-                                raise Exception("❌ Gemini Key không đúng định dạng. Phải bắt đầu bằng 'AIza'")
-                            try:
-                                client = genai.Client(api_key=new_value)
-                                response = client.models.generate_content(
-                                    model="gemini-1.5-flash",
-                                    contents="Hi",
-                                )
-                                if response.text:
-                                    messagebox.showinfo("OK", "✅ Gemini Key hoạt động tốt!", parent=top)
-                                else:
-                                    raise Exception("Không có phản hồi từ Gemini")
-                            except Exception as e:
-                                msg = str(e)
-                                if "API_KEY_INVALID" in msg or "invalid API key" in msg:
-                                    raise Exception("❌ Gemini Key không hợp lệ hoặc đã bị thu hồi.")
-                                elif "quota" in msg or "exceeded" in msg:
-                                    raise Exception("❌ Gemini Key đã vượt quá quota. Hãy kiểm tra tài khoản Google AI Studio.")
-                                else:
-                                    raise Exception(f"❌ Lỗi Gemini: {e}")
 
                         elif key_field == "DISCORD_WEBHOOK_URL":
                             if new_value.startswith("ps://"):
