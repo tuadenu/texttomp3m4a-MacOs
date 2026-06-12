@@ -2362,7 +2362,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         controls.grid_columnconfigure(2, weight=2)
 
         tk.Label(main, text="Văn bản nghe thử", bg="white").pack(anchor="w")
-        sample_var = tk.StringVar(value="Xin chào, đây là bài nghe thử Google Cloud TTS.")
+        google_tts_sample_texts = {
+            "vi": "Xin chào, tôi là Phương Anh - trợ lý Google TTS.",
+            "en": "Hello, I am Phuong Anh - your Google TTS assistant.",
+            "ja": "こんにちは、私はフォン・アイン、Google TTS アシスタントです。",
+            "zh": "你好，我是芳英，Google TTS 助理。",
+        }
+
+        sample_var = tk.StringVar(value=google_tts_sample_texts["vi"])
         sample_entry = tk.Entry(main, textvariable=sample_var)
         sample_entry.pack(fill="x", pady=(2, 8))
 
@@ -2414,7 +2421,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             voice_name = voice_map.get(google_voice_name_var.get(), "")
             sample_text = sample_var.get().strip()
             if not sample_text:
-                sample_text = "Xin chào, đây là bài nghe thử Google Cloud TTS."
+                sample_text = google_tts_sample_texts.get(code, google_tts_sample_texts["vi"])
+            selected_gender = google_gender_var.get()
 
             def _worker():
                 try:
@@ -2423,7 +2431,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     tao_file_google_mp3(
                         sample_text,
                         lang=code,
-                        gender=google_gender_var.get(),
+                        gender=selected_gender,
                         voice_name=voice_name,
                         toc_do="Bình thường",
                         file_out=test_path,
@@ -2449,7 +2457,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
             threading.Thread(target=_worker, daemon=True).start()
 
-        def on_lang_or_gender_change(event=None):
+        def on_language_change(event=None):
             code = _lang_code_from_label(google_lang_var.get())
             profile = _google_tts_get_profile(code)
             google_gender_var.set(profile.get("gender", "Mặc định"))
@@ -2461,13 +2469,11 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         google_voice_name_var.set(display)
                         break
 
-            samples = {
-                "vi": "Xin chào, đây là bài nghe thử Google Cloud TTS.",
-                "en": "Hello, this is a Google Cloud TTS voice test.",
-                "ja": "こんにちは、これは Google Cloud TTS のテストです。",
-                "zh": "你好，这是 Google Cloud TTS 的试听。",
-            }
-            sample_var.set(samples.get(code, sample_var.get()))
+            sample_var.set(google_tts_sample_texts.get(code, google_tts_sample_texts["vi"]))
+
+        def on_gender_change(event=None):
+            google_voice_name_var.set("(Mặc định)")
+            load_google_voices()
 
         def sync_from_selected_lines():
             try:
@@ -2487,12 +2493,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     "zh-cn": "Tiếng Trung",
                 }.get(first_code, "Tiếng Việt")
                 google_lang_var.set(mapped)
-                on_lang_or_gender_change()
+                on_language_change()
             except Exception:
                 pass
 
-        google_lang_combo.bind("<<ComboboxSelected>>", on_lang_or_gender_change)
-        google_gender_combo.bind("<<ComboboxSelected>>", on_lang_or_gender_change)
+        google_lang_combo.bind("<<ComboboxSelected>>", on_language_change)
+        google_gender_combo.bind("<<ComboboxSelected>>", on_gender_change)
 
         btn_row = tk.Frame(main, bg="white")
         btn_row.pack(fill="x", pady=(6, 0))
@@ -2504,7 +2510,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Button(btn_row, text="Đóng", command=popup_google.destroy, width=12).pack(side="right")
 
         load_google_voices()
-        on_lang_or_gender_change()
+        on_language_change()
 
     tk.Button(option_frame, text="🎙 Giọng Google Cloud…", command=open_google_voice_popup).pack(fill="x", padx=10, pady=(4, 2))
     update_google_voice_status()
