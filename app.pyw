@@ -6822,8 +6822,9 @@ def create_frame_noi_dung(parent):
 
 
         # Trả về các biến cần dùng ở ngoài hàm
-    return (frame_noi_dung, txt_de, entry_cau_hoi, btn_doc, btn_tam_dung, btn_doc_lai,
-            btn_xuat_mp3, progress_var, progress_bar, che_do_doc, combo_ngon_ngu, combo_toc_do)
+    return (frame_noi_dung, frame_text, frame_hoi_gpt, frame_doc, txt_de, entry_cau_hoi,
+            btn_doc, btn_tam_dung, btn_doc_lai, btn_xuat_mp3, progress_var, progress_bar,
+            che_do_doc, combo_ngon_ngu, combo_toc_do)
 
 #====================================================================
 #=====Tải ảnh tự động cho game theo cột Nghĩa TV
@@ -7132,7 +7133,8 @@ def bung_man_hinh():
     root.lift()
     root.focus_force()
     try:
-        root.attributes("-fullscreen", True)
+        dang_toan_man_hinh = str(root.attributes("-fullscreen")).lower() in ("1", "true", "yes")
+        root.attributes("-fullscreen", not dang_toan_man_hinh)
     except Exception:
         screen_width = root.winfo_screenwidth()
         screen_height = root.winfo_screenheight()
@@ -7141,7 +7143,7 @@ def bung_man_hinh():
 
 btn_bung_man_hinh = tk.Button(
     root,
-    text="🖥 Ra màn hình",
+    text="🖥 Toàn màn hình",
     font=("Arial", 10, "bold"),
     bg="#fff2cc",
     fg="#8a4b00",
@@ -7157,29 +7159,134 @@ screen_height = root.winfo_screenheight()
 x = (screen_width // 2) - (width // 2)
 y = (screen_height // 2) - (height // 2)
 root.geometry(f"{width}x{height}+{x}+{y}")
-root.resizable(False, False)  # Không cho phóng to
+root.resizable(True, True)
+root.minsize(1050, 620)
 #=======================
 #GỌI FRAME
 mic_effect_var = tk.StringVar(value="🎙️")
-(frame_noi_dung, txt_de, entry_cau_hoi, btn_doc, btn_tam_dung, btn_doc_lai,
+(frame_noi_dung, frame_text, frame_hoi_gpt, frame_doc, txt_de, entry_cau_hoi, btn_doc, btn_tam_dung, btn_doc_lai,
  btn_xuat_mp3, progress_var, progress_bar, che_do_doc, combo_ngon_ngu, combo_toc_do
 ) = create_frame_noi_dung(root)
 #==================
 
-# === Tạo frame riêng dưới nút MP3 ===
-frame_logo = tk.Frame(root, bg="#f5f7e8")  # hoặc bg khác nếu muốn
-# Gắn frame_logo lên root hoặc frame chứa nút
-frame_logo.place(x=1120, y=565, width=150, height=150)
-# Disabled PIL-based image resize. Use Tk native PhotoImage if logo exists.
-try:
-    logo_img = tk.PhotoImage(file=LOGO_PATH)
-    lbl_logo = tk.Label(frame_logo, image=logo_img, bg="#f5f7e8")
-    lbl_logo.image = logo_img  # giữ tham chiếu
-except Exception as e:
-    print(f"Không tải được logo bằng Tk PhotoImage: {e}")
-    lbl_logo = tk.Label(frame_logo, text="Audio Tool", bg="#f5f7e8", fg="green", font=("Arial", 14, "bold"))
+# === Logo và bố cục co giãn của cửa sổ chính ===
+frame_logo = tk.Frame(root, bg="#f5f7e8", bd=0, highlightthickness=0)
+lbl_logo = tk.Label(frame_logo, text="Audio Tool", bg="#f5f7e8", fg="green", font=("Arial", 14, "bold"))
+lbl_logo.pack(fill="both", expand=True, padx=6, pady=6)
 
-lbl_logo.pack(fill="both", expand=True)
+try:
+    from PIL import Image, ImageTk
+    logo_source_image = Image.open(LOGO_PATH).convert("RGBA")
+except Exception as e:
+    logo_source_image = None
+    print(f"Không tải được logo để co giãn: {e}")
+
+
+def _resize_logo(width, height):
+    """Giữ nguyên tỉ lệ logo, luôn nằm gọn trong khung và không bị cắt."""
+    if logo_source_image is None or width < 10 or height < 10:
+        return
+    image = logo_source_image.copy()
+    image.thumbnail((max(10, width - 12), max(10, height - 12)), Image.LANCZOS)
+    logo_img = ImageTk.PhotoImage(image)
+    lbl_logo.configure(image=logo_img, text="")
+    lbl_logo.image = logo_img
+
+
+def _place_doc_controls(panel_width, panel_height):
+    """Dàn các nút bên phải theo kích thước panel; không thay đổi command."""
+    children = frame_doc.winfo_children()
+    buttons = [w for w in children if isinstance(w, tk.Button)]
+    by_text = {str(w.cget("text")): w for w in buttons}
+    inner_w = max(180, panel_width - 40)
+    button_w = min(280, inner_w)
+    button_x = max(10, (panel_width - button_w) // 2)
+    button_h = 34
+    placements = [
+        ("Đọc / Chọn ngôn ngữ", 10, button_h),
+        ("⏸ Dừng", 58, 30),
+        ("🔁 Đọc lại", 96, 30),
+        ("Convert Mp3 🎹 Wav", max(250, panel_height - 320), 30),
+        ("✂️ Cutter Sound", max(286, panel_height - 284), 30),
+        ("➕ Joiner Sound", max(322, panel_height - 248), 30),
+        ("📥 Import tài liệu", max(358, panel_height - 172), 30),
+    ]
+    for text, y_pos, h in placements:
+        widget = by_text.get(text)
+        if widget is not None:
+            widget.place(x=button_x, y=y_pos, width=button_w, height=h)
+
+    frame_che_do = next((w for w in children if isinstance(w, tk.Frame)), None)
+    if frame_che_do is not None:
+        frame_che_do.place(x=button_x, y=150, width=button_w, height=34)
+    combo_ngon_ngu.place(x=button_x, y=194, width=max(80, (button_w - 10) // 2), height=30)
+    combo_toc_do.place(x=button_x + (button_w + 10) // 2, y=194,
+                       width=max(80, (button_w - 10) // 2), height=30)
+
+
+_layout_job = None
+def apply_main_layout(event=None):
+    """Responsive layout cho phần giao diện chính khi resize/maximize."""
+    global _layout_job
+    if _layout_job is not None:
+        try:
+            root.after_cancel(_layout_job)
+        except Exception:
+            pass
+    _layout_job = root.after(30, _apply_main_layout_now)
+
+
+def _apply_main_layout_now():
+    global _layout_job
+    _layout_job = None
+    root.update_idletasks()
+    win_w = max(1050, root.winfo_width())
+    win_h = max(620, root.winfo_height())
+    margin = 10
+    top = 42
+    main_w = win_w - margin * 2
+    main_h = win_h - top - margin
+    frame_noi_dung.place(x=margin, y=top, width=main_w, height=main_h)
+
+    right_w = min(340, max(285, int(main_w * 0.235)))
+    gap = 14
+    left_w = max(520, main_w - right_w - gap - 20)
+    question_h = 105
+    text_h = max(260, main_h - question_h - 32)
+    frame_text.place(x=10, y=8, width=left_w, height=text_h)
+    # Khung chat rộng bằng khung nhập nội dung để hai vùng thẳng hàng.
+    frame_hoi_gpt.place(x=10, y=text_h + 18, width=left_w, height=question_h)
+    frame_doc.place(x=left_w + gap, y=8, width=right_w, height=main_h - 16)
+
+    question_w = left_w
+    entry_cau_hoi.place(x=8, y=8, width=max(300, question_w - 255), height=28)
+    question_buttons = [w for w in frame_hoi_gpt.winfo_children() if isinstance(w, tk.Button)]
+    x = max(210, question_w - 230)
+    for index, widget in enumerate(question_buttons):
+        widget.place(x=x + index * 72, y=8, width=68 if index < 2 else 54, height=28)
+    for widget in frame_hoi_gpt.winfo_children():
+        if isinstance(widget, tk.Label):
+            widget.place(x=max(10, question_w - 45), y=42)
+
+    panel_h = max(300, main_h - 16)
+    _place_doc_controls(right_w, panel_h)
+    # Logo nằm trong khoảng trống riêng, phía trên nhóm nút công cụ;
+    # không đặt ở đáy panel để tránh che nút Import/Cutter/Joiner.
+    action_y = max(250, panel_h - 320)
+    logo_x = left_w + gap + 15
+    logo_w = min(185, right_w - 30)
+    logo_y = top + 8 + 250
+    logo_h = min(150, action_y - 270)
+    if logo_h >= 70:
+        frame_logo.place(x=logo_x + (right_w - logo_w - 30) // 2,
+                         y=logo_y, width=logo_w, height=logo_h)
+        _resize_logo(logo_w, logo_h)
+    else:
+        frame_logo.place_forget()
+
+
+root.bind("<Configure>", apply_main_layout)
+root.after(100, _apply_main_layout_now)
 
 #============
 def cau_hinh_khoi_dong_cung_win():

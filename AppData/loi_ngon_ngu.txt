@@ -1849,3 +1849,5 @@ Dòng 705: nearby	.
 Dòng 706: xa, cách xa	.
 Dòng 707: away	.
 Dòng 709: here	.
+Dòng 1: flutter analyze
+Dòng 3: flutter pub get
