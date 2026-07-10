@@ -63,6 +63,9 @@ import uuid
 import boto3
 from pydub import AudioSegment
 
+APP_BUILD_TIME = datetime.fromtimestamp(os.path.getmtime(__file__)).strftime("%Y-%m-%d %H:%M:%S")
+APP_BUILD_TAG = f"Code mới nhất: {APP_BUILD_TIME}"
+
 
 def app_beep(freq=1000, duration=200, widget=None):
     if os.name == "nt":
@@ -540,6 +543,7 @@ def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
                 return
             except Exception as e:
                 print(f"⚠ Polly lỗi, thử Google Cloud TTS: {e}")
+                thong_bao_loi_api(e, "AWS Polly")
                 try:
                     _speak_with_google(text, lang_clean, slow, file_out)
                     return
@@ -555,6 +559,7 @@ def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
                 return
             except Exception as e:
                 print(f"⚠ Google Cloud TTS lỗi hoặc không khả dụng, fallback to gTTS: {e}")
+                thong_bao_loi_api(e, "Google Cloud TTS")
             try:
                 _speak_with_gtts(text, lang_clean, slow, file_out)
                 return
@@ -585,6 +590,7 @@ def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
 
     except Exception as e:
         print("❌ Lỗi tạo file mp3:", e)
+        thong_bao_loi_api(e, "TTS")
         raise
 
 
@@ -630,13 +636,23 @@ def _google_tts_set_profile(lang_code, gender="Mặc định", voice_name=""):
     return profile
 
 
+def _google_tts_client(texttospeech_module):
+    """Create a Cloud TTS client using the dedicated API key when configured."""
+    if GOOGLE_TTS_API_KEY:
+        from google.api_core.client_options import ClientOptions
+        return texttospeech_module.TextToSpeechClient(
+            client_options=ClientOptions(api_key=GOOGLE_TTS_API_KEY)
+        )
+    return texttospeech_module.TextToSpeechClient()
+
+
 def _google_tts_list_voices(lang_code, gender=None):
     try:
         from google.cloud import texttospeech
     except Exception:
         raise RuntimeError("google-cloud-texttospeech not installed")
 
-    client = texttospeech.TextToSpeechClient()
+    client = _google_tts_client(texttospeech)
     voices = client.list_voices(language_code=_google_tts_lang_code(lang_code)).voices
     results = []
     for voice in voices:
@@ -676,7 +692,7 @@ def tao_file_google_mp3(text, lang="vi", gender="Mặc định", voice_name="", 
     gender = (profile_gender if profile_gender and profile_gender != "Mặc định" else gender) or "Mặc định"
     lang_code = _google_tts_lang_code(lang)
 
-    client = texttospeech.TextToSpeechClient()
+    client = _google_tts_client(texttospeech)
     synthesis_input = texttospeech.SynthesisInput(text=text)
 
     voice_kwargs = {"language_code": lang_code}
@@ -738,6 +754,9 @@ GEMINI_API_KEY = config.get("GEMINI_API_KEY", "").strip()
 if not is_valid(GEMINI_API_KEY, is_gemini):
     thong_bao_loi_cauhinh("Gemini API Key", "Sai định dạng hoặc rỗng → dùng mặc định.", hien_popup=False)
     GEMINI_API_KEY = config_default.get("GEMINI_API_KEY", "")
+
+# Google Cloud Text-to-Speech dùng key riêng với key Gemini.
+GOOGLE_TTS_API_KEY = config.get("GOOGLE_TTS_API_KEY", "").strip()
 
 DISCORD_WEBHOOK_URL = config.get("DISCORD_WEBHOOK_URL", "").strip()
 if not is_valid(DISCORD_WEBHOOK_URL, is_webhook):
@@ -912,6 +931,7 @@ def gui_discord_thong_bao(msg=""):
         requests.post(DISCORD_WEBHOOK_URL, json={"content": msg})
     except Exception as e:
         print("Lỗi gửi Discord:", e)
+        thong_bao_loi_api(e, "Discord")
 #==========Set logo icon cho toàn thông báo app
 def set_popup_icon(win):
     try:
@@ -1216,6 +1236,7 @@ Cảm ơn bạn đã sử dụng ứng dụng.
                 win.destroy()
 
             except Exception as e:
+                thong_bao_loi_api(e, "Email")
                 messagebox.showerror("Lỗi gửi mail", f"Không thể gửi email:\n{e}", parent=win)
 
         # ✅ Thêm nút Đổi mật khẩu đầy đủ
@@ -1234,6 +1255,7 @@ def goi_gpt_cau_hoi(prompt):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
+        thong_bao_loi_api(e, "GPT")
         return f"Lỗi GPT: {e}"
 ##có chọn ngôn ngữ
 def goi_gemini_cau_hoi(prompt):
@@ -1286,6 +1308,7 @@ Nội dung yêu cầu là:
         return text
 
     except Exception as e:
+        thong_bao_loi_api(e, "Gemini")
         return f"Lỗi Gemini: {e}"
 
 
@@ -2406,6 +2429,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 google_voice_name_combo["values"] = ["(Mặc định)"]
                 google_voice_name_var.set("(Mặc định)")
                 info_var.set(f"Không tải được danh sách giọng: {exc}")
+                thong_bao_loi_api(exc, "Google Cloud TTS")
 
         def save_google_profile():
             code = _lang_code_from_label(google_lang_var.get())
@@ -2442,6 +2466,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     print(f"✅ Đang nghe thử Google Cloud TTS: {test_path}")
                 except Exception as exc:
                     print("❌ Không nghe thử được Google Cloud TTS:", exc)
+                    thong_bao_loi_api(exc, "Google Cloud TTS")
                     error_message = str(exc)
                     try:
                         popup_google.after(
@@ -2873,6 +2898,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         else:
                             tk.messagebox.showerror("Lỗi", f"Không gửi được Discord.\nHTTP {response.status_code}\n{response.text}")
                     except Exception as e:
+                        thong_bao_loi_api(e, "Discord")
                         tk.messagebox.showerror("Lỗi", f"Không gửi Discord:\n{e}")
 
                 popup_done = tk.Toplevel(popup)
@@ -4371,6 +4397,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 pipeline_env = os.environ.copy()
                 pipeline_env["TTS_ENGINE"] = combo_engine.get()
                 pipeline_env["GOOGLE_TTS_PROFILES_JSON"] = json.dumps(GOOGLE_TTS_PROFILES, ensure_ascii=False)
+                pipeline_env["GOOGLE_TTS_API_KEY"] = GOOGLE_TTS_API_KEY
                 pipeline_env["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
                 pipeline_env["AWS_SECRET_ACCESS_KEY"] = AWS_SECRET_ACCESS_KEY
                 pipeline_env["AWS_REGION"] = AWS_REGION
@@ -4378,6 +4405,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
                 append_log("\n--- RUN: vocab_pipeline.py ---")
                 pipe_code, pipe_output = run_cmd_and_stream(pipeline_cmd, env=pipeline_env)
+                thong_bao_loi_api(pipe_output, "pipeline TTS/AWS")
                 if cancel_state["cancelled"]:
                     update_status(st_m4a, lb_m4a, "Đã huỷ", "red")
                     update_status(st_json, lb_json, "Đã huỷ", "red")
@@ -7095,7 +7123,7 @@ try:
     root.iconphoto(False, tk.PhotoImage(file=logo_path))
 except Exception as e:
     print(f"Không tìm thấy logo: {e}")
-root.title("Text To MP3/M4A ĐA NGÔN NGỮ - Audio Tool - VCJ International School")
+root.title(f"Text To MP3/M4A ĐA NGÔN NGỮ - Audio Tool - VCJ International School | {APP_BUILD_TAG}")
 root.configure(bg="#eef3ee")
 
 
@@ -7248,7 +7276,7 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
             ent_new.pack(pady=2)
 
             def luu():
-                new_value = ent_new.get().strip()
+                new_value = _normalize_secret_text(ent_new.get())
                 if not new_value:
                     messagebox.showwarning("Thiếu", f"Chưa nhập {loai}", parent=top)
                     return
@@ -7259,6 +7287,16 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                     unprotect_file(CONFIG_FILE)  # Gỡ bảo vệ
                     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                         json.dump(config, f, indent=2, ensure_ascii=False)
+                    global GPT_API_KEY, GEMINI_API_KEY, GOOGLE_TTS_API_KEY, DISCORD_WEBHOOK_URL, client
+                    if key_field == "GPT_API_KEY":
+                        GPT_API_KEY = new_value
+                        client = OpenAI(api_key=GPT_API_KEY)
+                    elif key_field == "GEMINI_API_KEY":
+                        GEMINI_API_KEY = new_value
+                    elif key_field == "GOOGLE_TTS_API_KEY":
+                        GOOGLE_TTS_API_KEY = new_value
+                    elif key_field == "DISCORD_WEBHOOK_URL":
+                        DISCORD_WEBHOOK_URL = new_value
                     messagebox.showinfo("OK", f"Đã cập nhật {loai}!", parent=top)
                     top.destroy()
 
@@ -7274,7 +7312,7 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
             def kiem_tra():
                 import threading
                 def run():
-                    new_value = ent_new.get().strip()
+                    new_value = _normalize_secret_text(ent_new.get())
                     if not new_value:
                         messagebox.showwarning("Thiếu", f"Chưa nhập {loai}", parent=top)
                         return
@@ -7285,11 +7323,8 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                                 raise Exception("❌ GPT Key không đúng định dạng. Phải bắt đầu bằng 'sk-'")
                             try:
                                 temp_client = OpenAI(api_key=new_value)
-                                temp_client.chat.completions.create(
-                                    model="gpt-3.5-turbo",
-                                    messages=[{"role": "user", "content": "Hi"}],
-                                    timeout=10
-                                )
+                                # Chỉ xác thực key, không gửi nội dung và không phụ thuộc model chat cũ.
+                                next(iter(temp_client.models.list()), None)
                             except Exception as e:
                                 msg = str(e)
                                 if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
@@ -7298,15 +7333,29 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                                     raise Exception("❌ GPT Key không hợp lệ hoặc đã bị thu hồi.")
                                 else:
                                     raise Exception(f"❌ Lỗi GPT: {e}")
+                            messagebox.showinfo("OK", "✅ GPT API key hoạt động!", parent=top)
+
+                        elif key_field == "GEMINI_API_KEY":
+                            temp_client = genai.Client(api_key=new_value)
+                            temp_client.models.generate_content(
+                                model="gemini-1.5-flash",
+                                contents="ping",
+                            )
+                            messagebox.showinfo("OK", "✅ Gemini API key hoạt động!", parent=top)
 
                         elif key_field == "DISCORD_WEBHOOK_URL":
                             if new_value.startswith("ps://"):
                                 new_value = new_value.replace("ps://", "https://", 1)
                             if "api/webhooks/" not in new_value:
                                 raise Exception("⚠ Webhook không đúng định dạng.\nURL phải chứa /api/webhooks/")
-                            r = requests.post(new_value, json={"content": "🔔 Kiểm tra Webhook từ Máy Học Tập"})
+                            test_message = (
+                                "✅ Test webhook từ Text To MP3/M4A.\n"
+                                f"Thời gian: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}\n"
+                                "Nếu bạn thấy tin nhắn này thì webhook đang hoạt động."
+                            )
+                            r = requests.post(new_value, json={"content": test_message}, timeout=10)
                             if r.status_code in [200, 204] or r.ok:
-                                messagebox.showinfo("OK", "✅ Webhook Discord hoạt động!", parent=top)
+                                messagebox.showinfo("OK", "✅ Webhook Discord hoạt động và đã gửi tin nhắn test!", parent=top)
                             elif r.status_code == 401:
                                 raise Exception("❌ Webhook sai hoặc đã bị xoá (401 Unauthorized).")
                             elif r.status_code == 404:
@@ -7314,11 +7363,21 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                             else:
                                 raise Exception(f"Lỗi HTTP {r.status_code}\nPhản hồi: {r.text}")
 
+                        elif key_field == "GOOGLE_TTS_API_KEY":
+                            from google.api_core.client_options import ClientOptions
+                            from google.cloud import texttospeech
+                            test_client = texttospeech.TextToSpeechClient(
+                                client_options=ClientOptions(api_key=new_value)
+                            )
+                            test_client.list_voices(language_code="vi-VN")
+                            messagebox.showinfo("OK", "✅ Google TTS API key hoạt động!", parent=top)
+
                         else:
                             messagebox.showinfo("Thông báo", f"⚠ Chưa hỗ trợ kiểm tra loại '{loai}'.", parent=top)
 
                     except Exception as e:
-                        messagebox.showerror("Lỗi kiểm tra", f"❌ Không kiểm tra được:\n{e}")
+                        if not thong_bao_loi_api(e, loai):
+                            messagebox.showerror("Lỗi kiểm tra", f"❌ Không kiểm tra được:\n{e}")
 
 
                 threading.Thread(target=run, daemon=True).start()
@@ -7332,6 +7391,153 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
             print("Lỗi tạo popup:", e)
 
     ask_password_with_keyboard(thuc_hien)
+
+
+API_KEY_SETTINGS = {
+    "GPT": ("GPT API Key", "GPT_API_KEY", "GPT Key hiện tại:", "Nhập GPT Key mới:"),
+    "Gemini": ("Gemini API KEY cho khung chat", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:"),
+    "Google TTS": ("API key cho Google TTS", "GOOGLE_TTS_API_KEY", "Google TTS Key hiện tại:", "Nhập Google TTS Key mới:"),
+    "Discord": ("Discord Webhook", "DISCORD_WEBHOOK_URL", "Webhook Discord hiện tại:", "Nhập Webhook Discord mới:"),
+    "Email": ("Email & App Password", "EMAIL", "Email/App Password hiện tại:", "Nhập lại trong mục Email & App Password:"),
+    "AWS": ("AWS Keys", "AWS", "AWS Keys hiện tại:", "Nhập lại trong mục AWS Keys:"),
+}
+
+
+def _api_key_service_from_error(error_text, context=""):
+    """Return the settings item that should be opened for an auth/quota error."""
+    text = f"{context} {error_text}".lower()
+    auth_words = (
+        "api key", "apikey", "invalid_api_key", "unauthorized", "forbidden", "401", "403", "429",
+        "quota", "billing", "resource_exhausted", "rate limit", "credential", "accessdenied", "authentication", "permission",
+        "service_disabled", "expired", "hết hạn", "không hợp lệ",
+    )
+    if not any(word in text for word in auth_words):
+        return None
+    if any(word in text for word in ("gemini", "genai", "generate_content")):
+        return "Gemini"
+    if any(word in text for word in ("text-to-speech", "texttospeech", "google cloud tts", "google tts")):
+        return "Google TTS"
+    if any(word in text for word in ("openai", "gpt", "insufficient_quota", "incorrect api key")):
+        return "GPT"
+    if any(word in text for word in ("discord", "webhook")):
+        return "Discord"
+    if any(word in text for word in ("smtp", "email", "app password", "535")):
+        return "Email"
+    if any(word in text for word in ("aws", "amazon", "polly", "botocore", "unrecognizedclient")):
+        return "AWS"
+    return None
+
+
+def _api_error_hint(error_text, context=""):
+    """Classify the error so the popup can explain what to check next."""
+    text = f"{context} {error_text}".lower()
+    if any(word in text for word in (
+        "api key not valid",
+        "invalid api key",
+        "invalid_api_key",
+        "incorrect api key",
+        "api key không đúng",
+        "không đúng định dạng",
+    )):
+        return "invalid"
+    if any(word in text for word in ("quota", "billing", "resource_exhausted", "insufficient_quota", "out of quota", "exceeded your current quota")):
+        return "quota"
+    if any(word in text for word in ("permission", "forbidden", "service disabled", "disabled", "access denied", "unauthorized", "401", "403", "restricted")):
+        return "restricted"
+    if any(word in text for word in ("expired", "hết hạn", "revoked", "deleted", "not found", "404")):
+        return "expired"
+    return "general"
+
+
+def hien_popup_loi_api_key(service, error_text, context=""):
+    """Show an actionable popup with a button to the matching key setting."""
+    setting = API_KEY_SETTINGS.get(service)
+    if not setting:
+        return False
+
+    hint = _api_error_hint(error_text, context)
+    if hint == "invalid":
+        headline = f"Key của {service} đang không hợp lệ hoặc đã bị dán sai."
+        guidance = "Hãy kiểm tra lại key bạn copy có bị dính khoảng trắng, xuống dòng, dấu nháy, hoặc bị dán nhầm sang key khác."
+    elif hint == "quota":
+        headline = f"Key của {service} hợp lệ nhưng đã hết quota / billing."
+        guidance = "Hãy kiểm tra hạn mức, thanh toán và quyền dùng API trong tài khoản Google/OpenAI."
+    elif hint == "restricted":
+        headline = f"Key của {service} hợp lệ nhưng đang bị chặn quyền truy cập."
+        guidance = "Hãy kiểm tra API đã bật đúng chưa, key có bị giới hạn sai dịch vụ, IP, referrer hoặc project không."
+    elif hint == "expired":
+        headline = f"Key của {service} có thể đã bị xoá, thu hồi hoặc hết hạn."
+        guidance = "Hãy tạo key mới hoặc kiểm tra lại key đang dùng có còn tồn tại không."
+    else:
+        headline = f"Dịch vụ {service} đang báo lỗi key, quyền truy cập hoặc quota."
+        guidance = "Vui lòng kiểm tra key còn hiệu lực, billing/quota và thay key trong Cài đặt."
+
+    top = tk.Toplevel(root)
+    set_popup_icon(top)
+    top.title("⚠️ Kiểm tra API key")
+    top.geometry("640x280")
+    top.grab_set()
+    tk.Label(
+        top,
+        text=headline,
+        font=("Arial", 11, "bold"),
+        fg="#b00020",
+        wraplength=590,
+    ).pack(padx=18, pady=(18, 8))
+    tk.Label(
+        top,
+        text=guidance,
+        justify="left",
+        wraplength=590,
+    ).pack(padx=18, pady=4)
+    tk.Label(
+        top,
+        text=str(error_text)[:900],
+        justify="left",
+        wraplength=590,
+        fg="#555555",
+    ).pack(padx=18, pady=4)
+
+    def open_setting():
+        top.destroy()
+        if service == "Email":
+            sua_key_nhom(
+                "Email & App Password",
+                ["SENDER_EMAIL", "SENDER_NAME", "APP_PASSWORD"],
+                ["Email gửi", "Tên gửi", "App Password"],
+                show_pws=[False, False, True],
+            )
+            return
+        if service == "AWS":
+            sua_key_nhom(
+                "AWS Keys",
+                ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+                ["Access Key ID", "Secret Access Key", "Region"],
+                show_pws=[False, True, False],
+            )
+            return
+        sua_key_don(*setting, show_pw=True)
+
+    frame = tk.Frame(top)
+    frame.pack(pady=14)
+    tk.Button(frame, text=f"🔧 Mở thay key {service}", command=open_setting, bg="#0066cc", fg="white", width=22).pack(side="left", padx=8)
+    tk.Button(frame, text="Đóng", command=top.destroy, width=12).pack(side="left", padx=8)
+    return True
+
+
+def thong_bao_loi_api(error, context=""):
+    service = _api_key_service_from_error(str(error), context)
+    if service:
+        hien_popup_loi_api_key(service, str(error), context)
+    return service
+
+
+def _normalize_secret_text(value):
+    """Normalize pasted secrets by removing invisible whitespace and outer quotes."""
+    text = (value or "").strip()
+    text = text.strip('"').strip("'")
+    text = re.sub(r"\s+", "", text)
+    return text
 
  
 #==============
@@ -7411,7 +7617,7 @@ def sua_key_nhom(loai, key_fields, labels, show_pws=None):
             def luu():
                 updated = False
                 for key, ent in entries.items():
-                    new_value = ent.get().strip()
+                    new_value = _normalize_secret_text(ent.get())
                     if new_value:
                         config[key] = new_value
                         updated = True
@@ -7423,6 +7629,13 @@ def sua_key_nhom(loai, key_fields, labels, show_pws=None):
                     unprotect_file(CONFIG_FILE)
                     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                         json.dump(config, f, indent=2, ensure_ascii=False)
+                    global SENDER_EMAIL, SENDER_NAME, APP_PASSWORD, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
+                    SENDER_EMAIL = config.get("SENDER_EMAIL", SENDER_EMAIL)
+                    SENDER_NAME = config.get("SENDER_NAME", SENDER_NAME)
+                    APP_PASSWORD = config.get("APP_PASSWORD", APP_PASSWORD)
+                    AWS_ACCESS_KEY_ID = config.get("AWS_ACCESS_KEY_ID", AWS_ACCESS_KEY_ID)
+                    AWS_SECRET_ACCESS_KEY = config.get("AWS_SECRET_ACCESS_KEY", AWS_SECRET_ACCESS_KEY)
+                    AWS_REGION = config.get("AWS_REGION", AWS_REGION)
                     messagebox.showinfo("OK", f"Đã cập nhật {loai}!", parent=top)
                     top.destroy()
                 except Exception as e:
@@ -7476,12 +7689,12 @@ def sua_key_nhom(loai, key_fields, labels, show_pws=None):
 
                         status_var.set("✅ Kiểm tra thành công!")
                         messagebox.showinfo("✅ OK", "Đã gửi email test thành công đến chính bạn!")
-                        gui_email_bao_admin("📧 Kiểm tra email gửi thành công", f"Đã kiểm tra thành công email gửi: {email}")
 
                     except Exception as e:
                         status_var.set("")
                         progress["value"] = 0
-                        messagebox.showerror("❌ Lỗi", f"Không gửi được email test:\n{e}")
+                        if not thong_bao_loi_api(e, "Email"):
+                            messagebox.showerror("❌ Lỗi", f"Không gửi được email test:\n{e}")
 
                 # ==== Kiểm tra AWS ====
                 elif "AWS_ACCESS_KEY_ID" in entries and "AWS_SECRET_ACCESS_KEY" in entries and "AWS_REGION" in entries:
@@ -7517,7 +7730,8 @@ def sua_key_nhom(loai, key_fields, labels, show_pws=None):
                     except Exception as e:
                         status_var.set("")
                         progress["value"] = 0
-                        messagebox.showerror("❌ Lỗi", f"Không kiểm tra được AWS Polly:\n{e}")
+                        if not thong_bao_loi_api(e, "AWS"):
+                            messagebox.showerror("❌ Lỗi", f"Không kiểm tra được AWS Polly:\n{e}")
 
                 else:
                     messagebox.showinfo("Thông báo", f"⚡ Chưa hỗ trợ kiểm tra online cho nhóm {loai}.", parent=top)
@@ -7571,7 +7785,8 @@ menu_cai_dat.add_separator()
 menu_cai_dat.add_separator()
 menu_cai_dat.add_command(label="🔑 Đổi mật khẩu toàn ứng dụng", command=doi_mat_khau)
 menu_cai_dat.add_command(label="🔧 Sửa GPT API Key", command=lambda: sua_key_don("GPT API Key", "GPT_API_KEY", "GPT Key hiện tại:", "Nhập GPT Key mới:"))
-menu_cai_dat.add_command(label="🔧 Sửa Gemini API Key", command=lambda: sua_key_don("Gemini API Key", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:"))
+menu_cai_dat.add_command(label="🔧 Gemini API KEY cho khung chat", command=lambda: sua_key_don("Gemini API KEY cho khung chat", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:", show_pw=True))
+menu_cai_dat.add_command(label="🔧 API key cho Google TTS", command=lambda: sua_key_don("API key cho Google TTS", "GOOGLE_TTS_API_KEY", "Google TTS Key hiện tại:", "Nhập Google TTS Key mới:", show_pw=True))
 menu_cai_dat.add_command(label="🔧 Sửa Discord Webhook", command=lambda: sua_key_don("Discord Webhook", "DISCORD_WEBHOOK_URL", "Webhook Discord hiện tại:", "Nhập Webhook Discord mới:"))
 menu_cai_dat.add_separator()
 menu_cai_dat.add_command(label="📦 Tải các ứng dụng khác", command=mo_popup_ung_dung_khac)

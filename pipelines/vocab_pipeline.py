@@ -157,6 +157,17 @@ def _get_google_profile(lang):
         return {"gender": "Mặc định", "voice_name": ""}
 
 
+def _google_tts_client():
+    """Create a Cloud TTS client using the dedicated API key when configured."""
+    api_key = os.environ.get("GOOGLE_TTS_API_KEY", "").strip()
+    if api_key:
+        from google.api_core.client_options import ClientOptions
+        return texttospeech.TextToSpeechClient(
+            client_options=ClientOptions(api_key=api_key)
+        )
+    return texttospeech.TextToSpeechClient()
+
+
 def _tts_segment_gtts(text, lang, temp_dir):
     temp_mp3 = os.path.join(temp_dir, f"tts_{uuid.uuid4().hex}.mp3")
     max_retries = int(os.environ.get("TTS_MAX_RETRIES", "5"))
@@ -254,7 +265,7 @@ def _tts_segment_google(text, lang, temp_dir):
     base_delay = float(os.environ.get("GOOGLE_TTS_BASE_DELAY", "1"))
 
     # prepare client and params
-    client = texttospeech.TextToSpeechClient()
+    client = _google_tts_client()
     synthesis_input = texttospeech.SynthesisInput(text=text)
     # choose language/voice per requested lang
     lang_map = {
