@@ -4518,6 +4518,244 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Button(btn_row, text="Đóng", width=10, command=cfg_win.destroy).pack(side="right")
 
 
+    def hsk30_vocab_zip_builder():
+        """Local-only HSK 3.0 builder.  It never invokes the legacy deploy script."""
+        builder_win = tk.Toplevel(popup)
+        set_popup_icon(builder_win)
+        builder_win.title("HSK 3.0 Vocab ZIP Builder")
+        builder_win.geometry("820x680")
+        builder_win.transient(popup)
+        builder_win.grab_set()
+
+        excel_var = tk.StringVar()
+        sheet_var = tk.StringVar()
+        level_label_to_code = {
+            "HSK 1": "hsk1", "HSK 2": "hsk2", "HSK 3": "hsk3", "HSK 4": "hsk4",
+            "HSK 5": "hsk5", "HSK 6": "hsk6", "HSK 7–9": "hsk7_9",
+        }
+        level_display_var = tk.StringVar(value="HSK 1")
+        output_var = tk.StringVar(value=os.path.join(BASE_DIR, "output"))
+        status_var = tk.StringVar(value="Sẵn sàng build local. Deploy/publish pilot đầu đang disabled.")
+        summary_var = tk.StringVar(value="Chưa đọc Excel")
+        artifact_state = {"result": None, "fingerprint": None}
+
+        frame = tk.Frame(builder_win)
+        frame.pack(fill="both", expand=True, padx=14, pady=12)
+        tk.Label(frame, text="HSK 3.0 Vocab ZIP Builder", font=("Arial", 15, "bold")).pack(anchor="w")
+        tk.Label(
+            frame,
+            text="Local only: tạo M4A, ZIP deterministic, validate và verify. Không upload, không publish catalog.",
+            fg="#555",
+        ).pack(anchor="w", pady=(2, 12))
+
+        def form_row(label, variable, browse=None):
+            row = tk.Frame(frame)
+            row.pack(fill="x", pady=3)
+            tk.Label(row, text=label, width=18, anchor="w").pack(side="left")
+            tk.Entry(row, textvariable=variable).pack(side="left", fill="x", expand=True)
+            if browse:
+                tk.Button(row, text=browse[0], width=12, command=browse[1]).pack(side="left", padx=(8, 0))
+
+        def read_sheets(path):
+            from openpyxl import load_workbook
+            workbook = load_workbook(path, read_only=True, data_only=True)
+            try:
+                return list(workbook.sheetnames)
+            finally:
+                workbook.close()
+
+        def choose_excel():
+            selected = filedialog.askopenfilename(
+                parent=builder_win,
+                title="Chọn Excel HSK 3.0",
+                filetypes=[("Excel files", "*.xlsx;*.xlsm;*.xls")],
+            )
+            if not selected:
+                return
+            try:
+                sheets = read_sheets(selected)
+            except Exception as exc:
+                messagebox.showerror("Không đọc được Excel", str(exc), parent=builder_win)
+                return
+            excel_var.set(selected)
+            sheet_combo["values"] = sheets
+            if sheets:
+                sheet_var.set(sheets[0])
+            clear_build_state()
+
+        def choose_output():
+            selected = filedialog.askdirectory(parent=builder_win, title="Chọn thư mục output local")
+            if selected:
+                output_var.set(selected)
+                clear_build_state()
+
+        form_row("Excel path:", excel_var, ("Chọn Excel", choose_excel))
+        sheet_row = tk.Frame(frame)
+        sheet_row.pack(fill="x", pady=3)
+        tk.Label(sheet_row, text="Sheet:", width=18, anchor="w").pack(side="left")
+        sheet_combo = ttk.Combobox(sheet_row, textvariable=sheet_var, state="readonly")
+        sheet_combo.pack(side="left", fill="x", expand=True)
+
+        level_row = tk.Frame(frame)
+        level_row.pack(fill="x", pady=3)
+        tk.Label(level_row, text="Level:", width=18, anchor="w").pack(side="left")
+        ttk.Combobox(level_row, textvariable=level_display_var, values=list(level_label_to_code), state="readonly", width=20).pack(side="left")
+        tk.Label(level_row, text="Pack version: v1", fg="#245a24").pack(side="left", padx=8)
+        tk.Label(level_row, text="HSK 7–9 build local dùng canonical code hsk7_9; chưa publish pilot.", fg="#666").pack(side="left", padx=8)
+        form_row("Output directory:", output_var, ("Chọn thư mục", choose_output))
+
+        tts_row = tk.Frame(frame)
+        tts_row.pack(fill="x", pady=(8, 5))
+        tk.Label(tts_row, text="TTS dùng chung:", width=18, anchor="w", font=("Arial", 10, "bold")).pack(side="left")
+        tk.Label(
+            tts_row,
+            text=f"Engine: {combo_engine.get()} | Giọng: {combo_giong_popup.get()} | Tốc độ: {combo_toc_do_popup.get()}",
+            fg="#245a24",
+        ).pack(side="left")
+        tk.Label(
+            frame,
+            text="Builder tái dùng core TTS/M4A và pinyin filename của vocab_pipeline; profile Google/AWS hiện tại được truyền vào subprocess.",
+            fg="#666", wraplength=760, justify="left",
+        ).pack(anchor="w", pady=(0, 8))
+
+        phase_box = tk.LabelFrame(frame, text="Trạng thái nấc 1 — Build + Validate Local")
+        phase_box.pack(fill="x", pady=(4, 8))
+        tk.Label(phase_box, textvariable=summary_var, anchor="w", justify="left", wraplength=750).pack(fill="x", padx=8, pady=(5, 2))
+        tk.Label(phase_box, textvariable=status_var, anchor="w", fg="#1d4f91", justify="left", wraplength=750).pack(fill="x", padx=8, pady=(0, 6))
+
+        log_text = tk.Text(frame, height=18, wrap="word")
+        log_text.pack(fill="both", expand=True)
+
+        controls = tk.Frame(frame)
+        controls.pack(fill="x", pady=(10, 0))
+
+        def append_log(message):
+            log_text.insert("end", message.rstrip() + "\n")
+            log_text.see("end")
+
+        def selected_config():
+            excel_path = excel_var.get().strip()
+            sheet = sheet_var.get().strip()
+            output = output_var.get().strip()
+            if not excel_path or not os.path.isfile(excel_path):
+                raise ValueError("Chọn file Excel hợp lệ.")
+            if not sheet:
+                raise ValueError("Chọn sheet.")
+            if not output:
+                raise ValueError("Chọn output directory.")
+            return excel_path, sheet, level_label_to_code[level_display_var.get()], output
+
+        def clear_build_state(*_):
+            artifact_state["result"] = None
+            artifact_state["fingerprint"] = None
+            deploy_btn.config(state="disabled")
+
+        def fingerprint(config):
+            excel_path, sheet, level, output = config
+            stat = os.stat(excel_path)
+            return (os.path.abspath(excel_path), stat.st_mtime_ns, stat.st_size, sheet, level, os.path.abspath(output))
+
+        def play_first_audio():
+            result = artifact_state.get("result")
+            if not result:
+                messagebox.showinfo("Chưa có audio", "Hãy build local trước.", parent=builder_win)
+                return
+            audio_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(result["base"]["unpacked"]))), "source_audio")
+            files = sorted(Path(audio_dir).glob("*.m4a"))
+            if not files:
+                messagebox.showwarning("Không có audio", "Không tìm thấy M4A local để phát thử.", parent=builder_win)
+                return
+            try:
+                pygame.mixer.music.load(str(files[0]))
+                pygame.mixer.music.play()
+                append_log(f"▶ Phát thử local: {files[0].name}")
+            except Exception as exc:
+                messagebox.showerror("Không phát được audio", str(exc), parent=builder_win)
+
+        def run_local_build():
+            try:
+                config = selected_config()
+            except ValueError as exc:
+                messagebox.showwarning("Thiếu cấu hình", str(exc), parent=builder_win)
+                return
+            clear_build_state()
+            build_btn.config(state="disabled")
+            status_var.set("Đang chạy build local…")
+            append_log("=== HSK 3.0 BUILD + VALIDATE LOCAL ===")
+
+            def worker():
+                command = [
+                    sys.executable, "-u", os.path.join(BASE_DIR, "pipelines", "vocab_zip_builder.py"),
+                    config[0], "--sheet", config[1], "--level", config[2], "--output", config[3], "--engine", combo_engine.get(),
+                ]
+                env = os.environ.copy()
+                env.update({
+                    "TTS_ENGINE": combo_engine.get(),
+                    "GOOGLE_TTS_PROFILES_JSON": json.dumps(GOOGLE_TTS_PROFILES, ensure_ascii=False),
+                    "GOOGLE_TTS_API_KEY": GOOGLE_TTS_API_KEY,
+                    "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
+                    "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
+                    "AWS_REGION": AWS_REGION,
+                    "AWS_DEFAULT_REGION": AWS_REGION,
+                })
+                process = subprocess.Popen(command, cwd=BASE_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                lines = []
+                assert process.stdout is not None
+                for line in process.stdout:
+                    lines.append(line.rstrip())
+                    builder_win.after(0, append_log, line)
+                code = process.wait()
+
+                def done():
+                    build_btn.config(state="normal")
+                    if code != 0:
+                        status_var.set("FAIL — không có upload/publish nào được chạy.")
+                        summary_var.set("Build local thất bại. Xem log và build_report.json.")
+                        return
+                    report_path = os.path.join(config[3], "vocab", "3.0", config[2], "build_report.json")
+                    try:
+                        with open(report_path, "r", encoding="utf-8") as report_file:
+                            result = json.load(report_file)
+                        if result.get("status") != "PASS":
+                            raise ValueError(result.get("error", "Build report không PASS"))
+                    except Exception as exc:
+                        status_var.set("FAIL — report không hợp lệ.")
+                        summary_var.set(str(exc))
+                        return
+                    artifact_state["result"] = result
+                    artifact_state["fingerprint"] = fingerprint(config)
+                    base = result["base"]
+                    plus = result["plus"]
+                    summary_var.set(
+                        f"PASS | rows={result['totalRows']} | audio đã có={result['audioReused']} | "
+                        f"audio cần tạo/thiếu ban đầu={result['audioGenerated']} | "
+                        f"BASE={base['manifest']['vocabCount']} | PLUS={plus['manifest']['vocabCount']}"
+                    )
+                    status_var.set("Nấc 1 PASS. Nấc 2 vẫn disabled: pilot này không upload hoặc publish.")
+                    append_log(f"BASE: {base['zip']} ({base['bytes']} bytes, {base['sha256']})")
+                    append_log(f"PLUS: {plus['zip']} ({plus['bytes']} bytes, {plus['sha256']})")
+                    deploy_btn.config(state="disabled")
+                builder_win.after(0, done)
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        def deploy_pending():
+            messagebox.showinfo(
+                "Deploy chưa được bật",
+                "Pilot đầu chỉ build/validate local. Upload ZIP, remote verify và publish catalog chưa được implement/kích hoạt.",
+                parent=builder_win,
+            )
+
+        build_btn = tk.Button(controls, text="1. Build + Validate Local", width=27, bg="#cce6ff", command=run_local_build)
+        build_btn.pack(side="left")
+        tk.Button(controls, text="▶ Phát thử audio local", width=20, command=play_first_audio).pack(side="left", padx=8)
+        deploy_btn = tk.Button(controls, text="2. Deploy + Verify + Publish (Pending)", width=34, state="disabled", command=deploy_pending)
+        deploy_btn.pack(side="left")
+
+        for var in (excel_var, sheet_var, level_display_var, output_var):
+            var.trace_add("write", clear_build_state)
+
+
             
     #===Ép ngôn ngữ đã chọn
     def ep_toan_bo_dong_ve_lang():
@@ -5642,6 +5880,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         # Disabled: game/video/background/subtitle features removed in audio-tool version.
         # ("🎮 Game Đoán Chữ", "#ccffcc", bat_dau_game_popup),
         ("📥 Import Excel + Deploy Supabase", "#e8ffe8", import_excel_va_deploy_supabase),
+        ("📦 HSK 3.0 Vocab ZIP Builder", "#d9eaff", hsk30_vocab_zip_builder),
         ("▶️ Đọc nội dung", "lightgreen", doc_popup),
         ("🎯 Đồng bộ ngôn ngữ dòng", "#ffe6cc", lambda: ep_toan_bo_dong_ve_lang()),
         ("⏸ Dừng đọc", "orange", dung_doc),
