@@ -188,6 +188,9 @@ def ensure_audio(
     audio_root: Path,
     sheet_name: str,
     engine: str,
+    speed: str,
+    voice: str,
+    bitrate: str,
     generate_missing: bool,
     progress: Callable[[str], None] | None = None,
 ) -> tuple[int, int]:
@@ -205,10 +208,29 @@ def ensure_audio(
             raise BuildValidationError(f"Thiếu audio: {target}")
         if progress:
             progress(f"Audio {position}/{len(items)}: tạo {target.name}")
-        audio = _build_word_audio(item.word, item.meaning, engine)
-        _export_m4a(audio, str(target))
-        if not target.is_file() or target.stat().st_size == 0:
-            raise BuildValidationError(f"TTS tạo audio rỗng: {target}")
+        # Write atomically so cancelling the subprocess cannot leave a
+        # partially encoded, non-empty M4A that a later build would reuse.
+        partial_target = target.with_name(target.name + ".part")
+        try:
+            if partial_target.exists():
+                partial_target.unlink()
+            audio = _build_word_audio(item.word, item.meaning, engine, speed, voice)
+            _export_m4a(audio, str(partial_target), bitrate)
+            if not partial_target.is_file() or partial_target.stat().st_size == 0:
+                raise BuildValidationError(f"TTS tạo audio rỗng: {target}")
+            os.replace(partial_target, target)
+        except BuildValidationError:
+            raise
+        except Exception as exc:
+            raise BuildValidationError(
+                f"TTS thất bại tại index {item.index} ({item.word!r}); không tạo audio im lặng: {exc}"
+            ) from exc
+        finally:
+            try:
+                if partial_target.exists():
+                    partial_target.unlink()
+            except OSError:
+                pass
         generated += 1
     return reused, generated
 
@@ -550,9 +572,21 @@ def build_hsk30(
     engine: str = "gTTS",
     generate_missing: bool = True,
     progress: Callable[[str], None] | None = None,
+    speed: str = "Bình thường",
+    voice: str = "Mặc định",
+    bitrate: str = "32k",
+    languages: Iterable[str] = ("vi", "zh"),
+    config_confirmed: bool = True,
 ) -> dict[str, object]:
     """Run the complete local-only Build + Validate workflow."""
     _validate_level(level)
+    normalized_languages = {str(language).strip().lower() for language in languages if str(language).strip()}
+    if not config_confirmed:
+        raise BuildValidationError("Chưa xác nhận dùng cấu hình TTS hiện tại cho vocab HSK 3.0.")
+    if not {"vi", "zh"}.issubset(normalized_languages):
+        raise BuildValidationError("Vocab HSK 3.0 cần chọn cả Tiếng Việt và Tiếng Trung trong cấu hình TTS.")
+    if bitrate not in {"26k", "32k"}:
+        raise BuildValidationError("M4A bitrate chỉ hỗ trợ 26k hoặc 32k.")
     output_root = Path(output_directory).expanduser().resolve() / "vocab" / "3.0" / level
     output_root.mkdir(parents=True, exist_ok=True)
     report_path = output_root / "build_report.json"
@@ -570,7 +604,7 @@ def build_hsk30(
         audio_root = output_root / "source_audio"
         if progress:
             progress("Tạo/tái sử dụng M4A")
-        reused, generated = ensure_audio(items, audio_root, sheet_name, engine, generate_missing, progress)
+        reused, generated = ensure_audio(items, audio_root, sheet_name, engine, speed, voice, bitrate, generate_missing, progress)
         _write_local_csv(output_root / "source_check.csv", items)
         if progress:
             progress("Đóng BASE deterministic")
@@ -587,6 +621,13 @@ def build_hsk30(
             "level": level,
             "sheet": sheet_name,
             "sourceExcel": str(Path(excel_path).resolve()),
+            "ttsConfig": {
+                "engine": engine,
+                "speed": speed,
+                "voice": voice,
+                "languages": sorted(normalized_languages),
+                "m4a": {"codec": "AAC-LC", "channels": 1, "sampleRate": 22050, "bitrate": bitrate},
+            },
             "totalRows": len(items),
             "audioReused": reused,
             "audioGenerated": generated,
@@ -631,6 +672,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--level", required=True, choices=SUPPORTED_LEVELS)
     parser.add_argument("--output", required=True, help="Parent directory for output/vocab/3.0")
     parser.add_argument("--engine", default=os.environ.get("TTS_ENGINE", "gTTS"))
+    parser.add_argument("--speed", default=os.environ.get("TTS_SPEED", "Bình thường"))
+    parser.add_argument("--voice", default=os.environ.get("TTS_VOICE", "Mặc định"))
+    parser.add_argument("--bitrate", default=os.environ.get("M4A_BITRATE", "32k"), choices=("26k", "32k"))
+    parser.add_argument("--languages", default=os.environ.get("TTS_LANGUAGES", "vi,zh"))
+    parser.add_argument(
+        "--config-confirmed",
+        default=os.environ.get("TTS_CONFIG_CONFIRMED", "true"),
+        choices=("true", "false"),
+        help="The UI confirmation snapshot; false blocks the build.",
+    )
     parser.add_argument("--reuse-only", action="store_true", help="Fail instead of creating a missing audio file")
     return parser.parse_args()
 
@@ -638,7 +689,20 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
     try:
-        result = build_hsk30(args.excel_file, args.sheet, args.level, args.output, args.engine, not args.reuse_only, print)
+        result = build_hsk30(
+            args.excel_file,
+            args.sheet,
+            args.level,
+            args.output,
+            args.engine,
+            not args.reuse_only,
+            print,
+            speed=args.speed,
+            voice=args.voice,
+            bitrate=args.bitrate,
+            languages=args.languages.split(","),
+            config_confirmed=args.config_confirmed == "true",
+        )
         print(f"STATUS: PASS\nBASE_SHA256: {result['base']['sha256']}\nPLUS_SHA256: {result['plus']['sha256']}")
         return 0
     except BuildValidationError as exc:

@@ -126,10 +126,40 @@ class VocabZipBuilderTests(unittest.TestCase):
 
     def test_hsk20_legacy_pipeline_and_importer_are_not_modified_by_build(self):
         project = Path(__file__).resolve().parents[1]
-        legacy_files = [project / "pipelines" / "vocab_pipeline.py", project / "scripts" / "import_hsk1_to_supabase.js"]
+        legacy_files = [project / "scripts" / "import_hsk1_to_supabase.js"]
         before = [path.read_bytes() for path in legacy_files]
         self._build(self.temp_dir / "out")
         self.assertEqual(before, [path.read_bytes() for path in legacy_files])
+
+    def test_hsk30_requires_confirmed_vi_zh_and_records_selected_m4a_quality(self):
+        self._write_excel()
+        out = self.temp_dir / "out"
+        self._seed_audio(out)
+        with self.assertRaises(BuildValidationError):
+            build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, config_confirmed=False)
+        with self.assertRaises(BuildValidationError):
+            build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, languages=("zh",))
+        result = build_hsk30(
+            self.excel,
+            "hsk1_30",
+            "hsk1",
+            out,
+            generate_missing=False,
+            speed="Chậm",
+            voice="Nữ",
+            bitrate="26k",
+            languages=("vi", "zh"),
+        )
+        self.assertEqual("26k", result["ttsConfig"]["m4a"]["bitrate"])
+        self.assertEqual(["vi", "zh"], result["ttsConfig"]["languages"])
+
+    def test_vocab_pipeline_has_explicit_gtts_path_and_no_silent_tts_fallback(self):
+        project = Path(__file__).resolve().parents[1]
+        source = (project / "pipelines" / "vocab_pipeline.py").read_text(encoding="utf-8")
+        self.assertIn('if engine_clean == "gtts":', source)
+        self.assertIn("gTTS is an explicit user choice. Do not probe Google Cloud first.", source)
+        self.assertIn("raise TTSGenerationError", source)
+        self.assertIn('SUPPORTED_M4A_BITRATES = {"26k", "32k"}', source)
 
     def test_hsk7_9_identity_is_never_split_into_hsk7_hsk8_hsk9(self):
         self._write_excel()
@@ -150,6 +180,21 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertEqual(1, app_source.count('"HSK 7–9": "hsk7_9"'))
         self.assertNotIn('"HSK 7": "hsk7"', app_source)
         self.assertNotIn("import_hsk1_to_supabase", builder_source)
+
+    def test_both_vocab_workflow_windows_have_direct_m4a_quality_selectors(self):
+        project = Path(__file__).resolve().parents[1]
+        app_source = (project / "app.pyw").read_text(encoding="utf-8")
+        self.assertIn("legacy_bitrate_var", app_source)
+        self.assertIn("builder_bitrate_var", app_source)
+        self.assertIn('collect_vocab_tts_config(cfg_win, legacy_bitrate_var.get())', app_source)
+        self.assertIn('collect_vocab_tts_config(builder_win, builder_bitrate_var.get())', app_source)
+        self.assertIn('"--bitrate", vocab_tts["bitrate"]', app_source)
+        self.assertIn('builder_bitrate_var.trace_add("write", refresh_tts_summary)', app_source)
+        self.assertIn('textvariable=tts_summary_var', app_source)
+        self.assertGreaterEqual(app_source.count('text="Chất lượng M4A:"'), 2)
+        self.assertNotIn('Chất lượng M4A vocab (HSK 2.0 / 3.0)', app_source)
+        self.assertIn('DEFAULT_VOCAB_M4A_BITRATE = "32k"', app_source)
+        self.assertIn('return "26k" if', app_source)
 
 
 if __name__ == "__main__":

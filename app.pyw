@@ -18,6 +18,7 @@ from openai import OpenAI
 from google import genai
 import tempfile
 import subprocess
+import signal
 import random
 import socket
 from datetime import datetime
@@ -65,6 +66,8 @@ from pydub import AudioSegment
 
 APP_BUILD_TIME = datetime.fromtimestamp(os.path.getmtime(__file__)).strftime("%Y-%m-%d %H:%M:%S")
 APP_BUILD_TAG = f"Code mới nhất: {APP_BUILD_TIME}"
+# Vocab M4A uses 32 kbps unless the user explicitly selects 26 kbps.
+DEFAULT_VOCAB_M4A_BITRATE = "32k"
 
 
 def app_beep(freq=1000, duration=200, widget=None):
@@ -378,6 +381,28 @@ def _save_ui_tts_engine_to_config(engine_name):
     except Exception as exc:
         print(f"⚠ Không lưu được engine TTS vào config: {exc}")
 
+
+def _write_app_config():
+    os.makedirs(APPDATA_ROOT, exist_ok=True)
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f, ensure_ascii=False, indent=2)
+
+
+def _load_hsk30_recent_selection():
+    return (
+        str(config.get("HSK30_LAST_EXCEL", "") or ""),
+        str(config.get("HSK30_LAST_SHEET", "") or ""),
+    )
+
+
+def _save_hsk30_recent_selection(excel_path, sheet_name):
+    try:
+        config["HSK30_LAST_EXCEL"] = str(excel_path or "")
+        config["HSK30_LAST_SHEET"] = str(sheet_name or "")
+        _write_app_config()
+    except Exception as exc:
+        print(f"⚠ Không lưu được Excel/sheet HSK 3.0 gần nhất: {exc}")
+
 # === Các hàm validate ví dụ (anh có thể thay bằng logic riêng nếu muốn) ===
 #CHECK ĐÚNG ĐỊNH DẠNG EMAIL, SDT
 def is_valid(val, check_func):
@@ -552,8 +577,14 @@ def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
                     _speak_with_gtts(text, lang_clean, slow, file_out)
                     return
 
-        # ================= Google Cloud TTS / gTTS =================
-        if engine_norm in {"gtts", "google cloud tts", "google cloud", "google"}:
+        # ================= gTTS =================
+        if engine_norm == "gtts":
+            # gTTS is explicit: do not contact Google Cloud first.
+            _speak_with_gtts(text, lang_clean, slow, file_out)
+            return
+
+        # ================= Google Cloud TTS =================
+        if engine_norm in {"google cloud tts", "google cloud", "google"}:
             try:
                 _speak_with_google(text, lang_clean, slow, file_out)
                 return
@@ -2202,8 +2233,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     popup = tk.Toplevel(root)
     set_popup_icon(popup)
     popup.title("Chọn ngôn ngữ từng dòng")
-    popup.geometry("1280x820+40+20")
-    popup.minsize(1120, 740)
+    popup.geometry("1420x860+40+20")
+    popup.minsize(1240, 760)
     popup.grab_set()
     popup.transient(root)
 
@@ -2216,7 +2247,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     left_frame = tk.Frame(body_frame, bg="#ffffff")
     left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
-    right_frame = tk.Frame(body_frame, bg="#f8fff8", width=340)
+    right_frame = tk.Frame(body_frame, bg="#f8fff8", width=400)
     right_frame.grid(row=0, column=1, sticky="ns")
     right_frame.pack_propagate(False)
 
@@ -2284,11 +2315,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     # ==== Chọn ngôn ngữ muốn giữ lại ====
     tk.Label(option_frame, text="Ngôn ngữ sử dụng:", font=("Arial", 10, "bold"), bg="#f8fff8").pack(anchor="w", padx=10, pady=(6, 2))
 
+    stored_vocab_languages = config.get("VOCAB_TTS_LANGUAGES", ["vi", "en", "ja", "zh"])
+    if not isinstance(stored_vocab_languages, list):
+        stored_vocab_languages = ["vi", "en", "ja", "zh"]
     ngon_ngu_flags = {
-        "vi": tk.BooleanVar(value=True),
-        "en": tk.BooleanVar(value=True),
-        "ja": tk.BooleanVar(value=True),
-        "zh": tk.BooleanVar(value=True)
+        "vi": tk.BooleanVar(value="vi" in stored_vocab_languages),
+        "en": tk.BooleanVar(value="en" in stored_vocab_languages),
+        "ja": tk.BooleanVar(value="ja" in stored_vocab_languages),
+        "zh": tk.BooleanVar(value="zh" in stored_vocab_languages),
     }
     for code, name in [("vi", "Tiếng Việt"), ("en", "Tiếng Anh"), ("ja", "Tiếng Nhật"), ("zh", "Tiếng Trung")]:
         cb = tk.Checkbutton(option_frame, text=name, variable=ngon_ngu_flags[code], bg="#f8fff8")
@@ -2305,23 +2339,35 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         textvariable=engine_status_var,
         bg="#f8fff8",
         fg="#2f5f2f",
-        wraplength=260,
+        wraplength=360,
         justify="left",
     ).pack(anchor="w", padx=10, pady=(0, 2))
     
 
     tk.Label(option_frame, text="Tốc độ:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(10, 2))
     combo_toc_do_popup = ttk.Combobox(option_frame, values=["Chậm", "Bình thường"], state="readonly")
-    combo_toc_do_popup.set("Chậm")
+    combo_toc_do_popup.set(config.get("VOCAB_TTS_SPEED", "Chậm"))
     combo_toc_do_popup.pack(fill="x", padx=10, pady=2)
 
     tk.Label(option_frame, text="Giọng đọc:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(10, 2))
     combo_giong_popup = ttk.Combobox(option_frame, values=["Nam", "Nữ", "Hội thoại 1 câu nam - 1 câu nữ"], state="readonly")
-    combo_giong_popup.set("Hội thoại 1 câu nam - 1 câu nữ")
+    combo_giong_popup.set(config.get("VOCAB_TTS_VOICE", "Hội thoại 1 câu nam - 1 câu nữ"))
     combo_giong_popup.pack(fill="x", padx=10, pady=2)
 
+    vocab_tts_confirmed_var = tk.BooleanVar(
+        value=str(config.get("VOCAB_TTS_CONFIG_CONFIRMED", "false")).strip().lower() in {"1", "true", "yes"}
+    )
+    tk.Checkbutton(
+        option_frame,
+        text="Xác nhận dùng cấu hình này cho M4A vocab HSK 2.0 và HSK 3.0",
+        variable=vocab_tts_confirmed_var,
+        bg="#f8fff8",
+        wraplength=360,
+        justify="left",
+    ).pack(anchor="w", padx=10, pady=(4, 4))
+
     google_voice_status_var = tk.StringVar(value="Google Cloud TTS: mặc định theo ngôn ngữ")
-    tk.Label(option_frame, textvariable=google_voice_status_var, fg="#2f5f2f", bg="#f8fff8", wraplength=250,
+    tk.Label(option_frame, textvariable=google_voice_status_var, fg="#2f5f2f", bg="#f8fff8", wraplength=360,
              justify="left").pack(anchor="w", padx=10, pady=(4, 2))
 
     def update_google_voice_status():
@@ -2539,6 +2585,62 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     tk.Button(option_frame, text="🎙 Giọng Google Cloud…", command=open_google_voice_popup).pack(fill="x", padx=10, pady=(4, 2))
     update_google_voice_status()
+
+    def _canonical_vocab_bitrate(value):
+        return "26k" if str(value or "").strip().lower() in {"26k", "26 kbps"} else DEFAULT_VOCAB_M4A_BITRATE
+
+    def _vocab_bitrate_display(value):
+        return "26 kbps" if _canonical_vocab_bitrate(value) == "26k" else "32 kbps"
+
+    def collect_vocab_tts_config(parent, bitrate_override=None):
+        """Take one confirmed, serialisable snapshot for both vocab workflows."""
+        selected_languages = [code for code in ("vi", "en", "ja", "zh") if ngon_ngu_flags[code].get()]
+        if not vocab_tts_confirmed_var.get():
+            messagebox.showwarning(
+                "Chưa xác nhận cấu hình",
+                "Hãy tích 'Xác nhận dùng cấu hình này cho M4A vocab HSK 2.0 và HSK 3.0'.",
+                parent=parent,
+            )
+            return None
+        if not {"vi", "zh"}.issubset(set(selected_languages)):
+            messagebox.showwarning(
+                "Thiếu ngôn ngữ vocab",
+                "Vocab HSK cần chọn cả Tiếng Việt và Tiếng Trung.",
+                parent=parent,
+            )
+            return None
+        # The workflow-local selector is authoritative. Blank/invalid means 32 kbps.
+        bitrate = _canonical_vocab_bitrate(bitrate_override)
+        snapshot = {
+            "engine": combo_engine.get().strip(),
+            "speed": combo_toc_do_popup.get().strip(),
+            "voice": combo_giong_popup.get().strip(),
+            "bitrate": bitrate,
+            "languages": selected_languages,
+            "confirmed": True,
+        }
+        try:
+            config["VOCAB_TTS_SPEED"] = snapshot["speed"]
+            config["VOCAB_TTS_VOICE"] = snapshot["voice"]
+            config["VOCAB_M4A_BITRATE"] = snapshot["bitrate"]
+            config["VOCAB_TTS_LANGUAGES"] = snapshot["languages"]
+            config["VOCAB_TTS_CONFIG_CONFIRMED"] = True
+            _write_app_config()
+        except Exception as exc:
+            print(f"⚠ Không lưu được cấu hình vocab TTS: {exc}")
+        return snapshot
+
+    def apply_vocab_tts_env(environment, snapshot):
+        environment.update(
+            {
+                "TTS_ENGINE": snapshot["engine"],
+                "TTS_SPEED": snapshot["speed"],
+                "TTS_VOICE": snapshot["voice"],
+                "M4A_BITRATE": snapshot["bitrate"],
+                "TTS_LANGUAGES": ",".join(snapshot["languages"]),
+                "TTS_CONFIG_CONFIRMED": "true" if snapshot["confirmed"] else "false",
+            }
+        )
 
     
 
@@ -3665,7 +3767,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         cfg_win = tk.Toplevel(popup)
         set_popup_icon(cfg_win)
         cfg_win.title("Import Excel + Deploy Supabase")
-        cfg_win.geometry("760x560")
+        cfg_win.geometry("760x600")
         cfg_win.transient(popup)
         cfg_win.grab_set()
 
@@ -3674,6 +3776,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         excel_var = tk.StringVar()
         sheet_var = tk.StringVar()
+        legacy_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
         profile_var = tk.StringVar(value=profile_state["active_profile"])
         show_key_var = tk.BooleanVar(value=False)
 
@@ -3770,6 +3873,18 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         tk.Label(main_frame, text="Sheet:").pack(anchor="w")
         sheet_combo.pack(fill="x", pady=(2, 10))
+
+        quality_row = tk.Frame(main_frame)
+        quality_row.pack(fill="x", pady=(0, 8))
+        tk.Label(quality_row, text="Chất lượng M4A:", width=18, anchor="w").pack(side="left")
+        ttk.Combobox(
+            quality_row,
+            textvariable=legacy_bitrate_var,
+            values=("26 kbps", "32 kbps"),
+            state="readonly",
+            width=14,
+        ).pack(side="left")
+        tk.Label(quality_row, text="AAC-LC · mono · 22.05 kHz", fg="#666").pack(side="left", padx=(8, 0))
 
         tk.Label(main_frame, text=f"2) Cấu hình Supabase (lưu tại {env_path})", font=("Arial", 11, "bold")).pack(
             anchor="w"
@@ -4378,6 +4493,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 append_log(f"Profile mode: {profile_mode}")
                 append_log(f"Storage folder: {storage_folder}")
                 append_log(f"Config file: {env_path}")
+                vocab_tts = collected["VOCAB_TTS_CONFIG"]
+                append_log(
+                    "Vocab TTS: "
+                    f"engine={vocab_tts['engine']} | speed={vocab_tts['speed']} | "
+                    f"voice={vocab_tts['voice']} | M4A=AAC-LC mono 22050Hz {vocab_tts['bitrate']} | "
+                    f"languages={','.join(vocab_tts['languages'])}"
+                )
 
                 update_status(st_m4a, lb_m4a, "Đang chạy...", "#cc8800")
                 update_status(st_json, lb_json, "Đang chạy...", "#cc8800")
@@ -4395,7 +4517,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 ]
 
                 pipeline_env = os.environ.copy()
-                pipeline_env["TTS_ENGINE"] = combo_engine.get()
+                apply_vocab_tts_env(pipeline_env, vocab_tts)
                 pipeline_env["GOOGLE_TTS_PROFILES_JSON"] = json.dumps(GOOGLE_TTS_PROFILES, ensure_ascii=False)
                 pipeline_env["GOOGLE_TTS_API_KEY"] = GOOGLE_TTS_API_KEY
                 pipeline_env["AWS_ACCESS_KEY_ID"] = AWS_ACCESS_KEY_ID
@@ -4489,12 +4611,16 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             threading.Thread(target=worker, daemon=True).start()
 
         def on_run():
+            vocab_tts = collect_vocab_tts_config(cfg_win, legacy_bitrate_var.get())
+            if not vocab_tts:
+                return
             deploy_mode = hoi_che_do_deploy(cfg_win)
             if not deploy_mode:
                 return
             collected = save_supabase_config(show_ok=False)
             if not collected:
                 return
+            collected["VOCAB_TTS_CONFIG"] = vocab_tts
             mo_cua_so_log_va_chay(collected, deploy_mode)
 
         # Nạp lại lựa chọn Excel/sheet gần nhất
@@ -4527,7 +4653,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         builder_win.transient(popup)
         builder_win.grab_set()
 
-        excel_var = tk.StringVar()
+        last_hsk30_excel, last_hsk30_sheet = _load_hsk30_recent_selection()
+        excel_var = tk.StringVar(value=last_hsk30_excel if os.path.isfile(last_hsk30_excel) else "")
         sheet_var = tk.StringVar()
         level_label_to_code = {
             "HSK 1": "hsk1", "HSK 2": "hsk2", "HSK 3": "hsk3", "HSK 4": "hsk4",
@@ -4535,9 +4662,15 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         }
         level_display_var = tk.StringVar(value="HSK 1")
         output_var = tk.StringVar(value=os.path.join(BASE_DIR, "output"))
+        builder_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
         status_var = tk.StringVar(value="Sẵn sàng build local. Deploy/publish pilot đầu đang disabled.")
         summary_var = tk.StringVar(value="Chưa đọc Excel")
         artifact_state = {"result": None, "fingerprint": None}
+        build_runtime = {
+            "process": None,
+            "paused": False,
+            "cancel_requested": False,
+        }
 
         frame = tk.Frame(builder_win)
         frame.pack(fill="both", expand=True, padx=14, pady=12)
@@ -4581,7 +4714,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             sheet_combo["values"] = sheets
             if sheets:
                 sheet_var.set(sheets[0])
+            _save_hsk30_recent_selection(excel_var.get(), sheet_var.get())
             clear_build_state()
+
+        def remember_hsk30_selection(*_):
+            excel_path = excel_var.get().strip()
+            if excel_path and os.path.isfile(excel_path):
+                _save_hsk30_recent_selection(excel_path, sheet_var.get().strip())
 
         def choose_output():
             selected = filedialog.askdirectory(parent=builder_win, title="Chọn thư mục output local")
@@ -4595,6 +4734,16 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(sheet_row, text="Sheet:", width=18, anchor="w").pack(side="left")
         sheet_combo = ttk.Combobox(sheet_row, textvariable=sheet_var, state="readonly")
         sheet_combo.pack(side="left", fill="x", expand=True)
+        sheet_combo.bind("<<ComboboxSelected>>", remember_hsk30_selection)
+
+        if excel_var.get():
+            try:
+                recent_sheets = read_sheets(excel_var.get())
+                sheet_combo["values"] = recent_sheets
+                sheet_var.set(last_hsk30_sheet if last_hsk30_sheet in recent_sheets else (recent_sheets[0] if recent_sheets else ""))
+            except Exception:
+                excel_var.set("")
+                sheet_var.set("")
 
         level_row = tk.Frame(frame)
         level_row.pack(fill="x", pady=3)
@@ -4604,14 +4753,36 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(level_row, text="HSK 7–9 build local dùng canonical code hsk7_9; chưa publish pilot.", fg="#666").pack(side="left", padx=8)
         form_row("Output directory:", output_var, ("Chọn thư mục", choose_output))
 
+        quality_row = tk.Frame(frame)
+        quality_row.pack(fill="x", pady=3)
+        tk.Label(quality_row, text="Chất lượng M4A:", width=18, anchor="w").pack(side="left")
+        ttk.Combobox(
+            quality_row,
+            textvariable=builder_bitrate_var,
+            values=("26 kbps", "32 kbps"),
+            state="readonly",
+            width=14,
+        ).pack(side="left")
+        tk.Label(quality_row, text="AAC-LC · mono · 22.05 kHz", fg="#666").pack(side="left", padx=(8, 0))
+
+        tts_summary_var = tk.StringVar()
+
+        def refresh_tts_summary(*_):
+            tts_summary_var.set(
+                f"Engine: {combo_engine.get()} | Giọng: {combo_giong_popup.get()} | "
+                f"Tốc độ: {combo_toc_do_popup.get()} | M4A: {builder_bitrate_var.get() or '32 kbps'}"
+            )
+
+        builder_bitrate_var.trace_add("write", refresh_tts_summary)
         tts_row = tk.Frame(frame)
         tts_row.pack(fill="x", pady=(8, 5))
         tk.Label(tts_row, text="TTS dùng chung:", width=18, anchor="w", font=("Arial", 10, "bold")).pack(side="left")
         tk.Label(
             tts_row,
-            text=f"Engine: {combo_engine.get()} | Giọng: {combo_giong_popup.get()} | Tốc độ: {combo_toc_do_popup.get()}",
+            textvariable=tts_summary_var,
             fg="#245a24",
         ).pack(side="left")
+        refresh_tts_summary()
         tk.Label(
             frame,
             text="Builder tái dùng core TTS/M4A và pinyin filename của vocab_pipeline; profile Google/AWS hiện tại được truyền vào subprocess.",
@@ -4632,6 +4803,65 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         def append_log(message):
             log_text.insert("end", message.rstrip() + "\n")
             log_text.see("end")
+
+        def signal_build_process(process, sig):
+            """Signal the builder and its TTS/FFmpeg children as one process group."""
+            if process is None or process.poll() is not None:
+                return
+            try:
+                if os.name == "nt":
+                    process.send_signal(sig)
+                else:
+                    os.killpg(process.pid, sig)
+            except (ProcessLookupError, OSError):
+                # The worker may have exited between poll() and signalling.
+                pass
+
+        def toggle_pause_build():
+            process = build_runtime.get("process")
+            if process is None or process.poll() is not None:
+                return
+            if os.name == "nt":
+                messagebox.showinfo(
+                    "Tạm dừng chưa hỗ trợ",
+                    "Tạm dừng builder hiện chỉ hỗ trợ macOS/Linux. Bạn vẫn có thể huỷ build.",
+                    parent=builder_win,
+                )
+                return
+            if build_runtime["paused"]:
+                signal_build_process(process, signal.SIGCONT)
+                build_runtime["paused"] = False
+                pause_btn.config(text="⏸ Tạm dừng")
+                status_var.set("Đã tiếp tục build local…")
+                append_log("▶ Tiếp tục build local")
+            else:
+                signal_build_process(process, signal.SIGSTOP)
+                build_runtime["paused"] = True
+                pause_btn.config(text="▶ Tiếp tục")
+                status_var.set("Đã tạm dừng build local.")
+                append_log("⏸ Tạm dừng build local")
+
+        def cancel_build():
+            process = build_runtime.get("process")
+            if process is None or process.poll() is not None:
+                return
+            if not messagebox.askyesno(
+                "Huỷ build?",
+                "Dừng build HSK 3.0 hiện tại? Pack chưa hoàn tất sẽ không được coi là PASS.",
+                parent=builder_win,
+            ):
+                return
+            build_runtime["cancel_requested"] = True
+            if build_runtime["paused"]:
+                # SIGTERM is pending for a stopped process; continue first so
+                # the process group can exit promptly.
+                signal_build_process(process, signal.SIGCONT)
+                build_runtime["paused"] = False
+            signal_build_process(process, signal.SIGTERM)
+            cancel_btn.config(state="disabled")
+            pause_btn.config(state="disabled")
+            status_var.set("Đang huỷ build local…")
+            append_log("✖ Yêu cầu huỷ build local")
 
         def selected_config():
             excel_path = excel_var.get().strip()
@@ -4673,24 +4903,35 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 messagebox.showerror("Không phát được audio", str(exc), parent=builder_win)
 
         def run_local_build():
+            vocab_tts = collect_vocab_tts_config(builder_win, builder_bitrate_var.get())
+            if not vocab_tts:
+                return
             try:
                 config = selected_config()
             except ValueError as exc:
                 messagebox.showwarning("Thiếu cấu hình", str(exc), parent=builder_win)
                 return
             clear_build_state()
+            _save_hsk30_recent_selection(config[0], config[1])
             build_btn.config(state="disabled")
+            pause_btn.config(state="normal", text="⏸ Tạm dừng")
+            cancel_btn.config(state="normal")
+            build_runtime["paused"] = False
+            build_runtime["cancel_requested"] = False
             status_var.set("Đang chạy build local…")
             append_log("=== HSK 3.0 BUILD + VALIDATE LOCAL ===")
 
             def worker():
                 command = [
                     sys.executable, "-u", os.path.join(BASE_DIR, "pipelines", "vocab_zip_builder.py"),
-                    config[0], "--sheet", config[1], "--level", config[2], "--output", config[3], "--engine", combo_engine.get(),
+                    config[0], "--sheet", config[1], "--level", config[2], "--output", config[3],
+                    "--engine", vocab_tts["engine"], "--speed", vocab_tts["speed"],
+                    "--voice", vocab_tts["voice"], "--bitrate", vocab_tts["bitrate"],
+                    "--languages", ",".join(vocab_tts["languages"]),
+                    "--config-confirmed", "true",
                 ]
                 env = os.environ.copy()
                 env.update({
-                    "TTS_ENGINE": combo_engine.get(),
                     "GOOGLE_TTS_PROFILES_JSON": json.dumps(GOOGLE_TTS_PROFILES, ensure_ascii=False),
                     "GOOGLE_TTS_API_KEY": GOOGLE_TTS_API_KEY,
                     "AWS_ACCESS_KEY_ID": AWS_ACCESS_KEY_ID,
@@ -4698,16 +4939,40 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     "AWS_REGION": AWS_REGION,
                     "AWS_DEFAULT_REGION": AWS_REGION,
                 })
-                process = subprocess.Popen(command, cwd=BASE_DIR, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                apply_vocab_tts_env(env, vocab_tts)
+                process_kwargs = {
+                    "cwd": BASE_DIR,
+                    "env": env,
+                    "stdout": subprocess.PIPE,
+                    "stderr": subprocess.STDOUT,
+                    "text": True,
+                }
+                if os.name == "nt":
+                    process_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                else:
+                    process_kwargs["start_new_session"] = True
+                process = subprocess.Popen(command, **process_kwargs)
+                build_runtime["process"] = process
                 lines = []
                 assert process.stdout is not None
                 for line in process.stdout:
                     lines.append(line.rstrip())
                     builder_win.after(0, append_log, line)
                 code = process.wait()
+                cancelled = build_runtime.get("cancel_requested", False)
+                build_runtime["process"] = None
 
                 def done():
                     build_btn.config(state="normal")
+                    pause_btn.config(state="disabled", text="⏸ Tạm dừng")
+                    cancel_btn.config(state="disabled")
+                    build_runtime["paused"] = False
+                    build_runtime["cancel_requested"] = False
+                    if cancelled:
+                        status_var.set("Đã huỷ build local — không có upload/publish.")
+                        summary_var.set("Build đã huỷ. Hãy chạy lại từ đầu nếu cần.")
+                        append_log("✖ Build đã được huỷ")
+                        return
                     if code != 0:
                         status_var.set("FAIL — không có upload/publish nào được chạy.")
                         summary_var.set("Build local thất bại. Xem log và build_report.json.")
@@ -4746,10 +5011,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 parent=builder_win,
             )
 
-        build_btn = tk.Button(controls, text="1. Build + Validate Local", width=27, bg="#cce6ff", command=run_local_build)
+        build_btn = tk.Button(controls, text="1. Build + Validate Local", width=25, bg="#cce6ff", command=run_local_build)
         build_btn.pack(side="left")
-        tk.Button(controls, text="▶ Phát thử audio local", width=20, command=play_first_audio).pack(side="left", padx=8)
-        deploy_btn = tk.Button(controls, text="2. Deploy + Verify + Publish (Pending)", width=34, state="disabled", command=deploy_pending)
+        pause_btn = tk.Button(controls, text="⏸ Tạm dừng", width=11, state="disabled", command=toggle_pause_build)
+        pause_btn.pack(side="left", padx=(6, 0))
+        cancel_btn = tk.Button(controls, text="✖ Huỷ build", width=11, state="disabled", command=cancel_build)
+        cancel_btn.pack(side="left", padx=(6, 0))
+        tk.Button(controls, text="▶ Phát thử audio local", width=18, command=play_first_audio).pack(side="left", padx=8)
+        deploy_btn = tk.Button(controls, text="2. Deploy + Verify + Publish (Pending)", width=31, state="disabled", command=deploy_pending)
         deploy_btn.pack(side="left")
 
         for var in (excel_var, sheet_var, level_display_var, output_var):
