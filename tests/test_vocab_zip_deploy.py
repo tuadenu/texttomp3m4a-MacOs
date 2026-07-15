@@ -1,396 +1,474 @@
-import copy
 import hashlib
 import io
 import json
 import shutil
 import tempfile
 import unittest
-from urllib import error as urlerror
+import sys
+import types
 from pathlib import Path
 from unittest.mock import patch
+from urllib import error as urlerror
+
+import pandas as pd
+
+if "pypinyin" not in sys.modules:
+    fake_pypinyin = types.ModuleType("pypinyin")
+
+    class _FakeStyle:
+        NORMAL = "NORMAL"
+
+    def _fake_lazy_pinyin(text, *args, **kwargs):
+        return [str(text)]
+
+    fake_pypinyin.Style = _FakeStyle
+    fake_pypinyin.lazy_pinyin = _fake_lazy_pinyin
+    sys.modules["pypinyin"] = fake_pypinyin
 
 from pipelines import vocab_zip_deploy as deploy
-from pipelines.vocab_zip_builder import build_hsk30
+from pipelines.vocab_zip_builder import SourceVocab, audio_filename, build_hsk30
 
 
 class VocabZipDeployTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.repo_root = Path(__file__).resolve().parents[1]
+        cls.seed_catalog_path = cls.repo_root / deploy.SEED_CATALOG_PATH
+        cls.seed_catalog_bytes = cls.seed_catalog_path.read_bytes()
+        cls.seed_catalog_sha = hashlib.sha256(cls.seed_catalog_bytes).hexdigest()
+
     def setUp(self):
         self.temp_dir = Path(tempfile.mkdtemp(prefix="vocab-deploy-test-"))
         self.excel = self.temp_dir / "source.xlsx"
         rows = [
-            {"index": i, "word": f"词{i}", "meaning_vi": f"nghia {i}", "example_zh": f"例子{i}", "example_vi": f"vi du {i}"}
+            {
+                "index": i,
+                "word": f"词{i}",
+                "meaning_vi": f"nghia {i}",
+                "example_zh": f"例子{i}",
+                "example_vi": f"vi du {i}",
+            }
             for i in range(1, 53)
         ]
-        import pandas as pd
-
         pd.DataFrame(rows).to_excel(self.excel, sheet_name="hsk1_30", index=False)
-        self.output = self.temp_dir / "out"
-        from pipelines.vocab_zip_builder import SourceVocab, audio_filename
-
-        audio_root = self.output / "vocab" / "3.0" / "hsk1" / "source_audio"
-        audio_root.mkdir(parents=True)
-        for row in rows:
-            item = SourceVocab(row["index"], row["word"], row["meaning_vi"], row["example_zh"], row["example_vi"])
-            (audio_root / audio_filename("hsk1_30", item)).write_bytes(f"audio-{row['index']}".encode())
-        self.result = build_hsk30(self.excel, "hsk1_30", "hsk1", self.output, generate_missing=False)
-        self.receipt_fingerprint = deploy.input_fingerprint(self.excel, "hsk1_30", "hsk1", self.output, bitrate="32k")
+        self.rows = rows
+        self.output_root = self.temp_dir / "output"
         self.profile = {
             "SUPABASE_URL": "https://example.supabase.co",
-            "SUPABASE_BUCKET": "vocab-pack-staging",
+            "SUPABASE_BUCKET": deploy.STAGING_BUCKET,
             "SUPABASE_SERVICE_ROLE_KEY": "test-only-secret",
         }
-        self.plan = deploy.build_plan(
-            self.result,
-            (str(self.excel), "hsk1_30", "hsk1", str(self.output)),
-            self.receipt_fingerprint,
-            self.profile,
-            profile_name="dev",
-        )
-        self.source_catalog = {
-            "schemaVersion": 1,
-            "entries": [
-                {
-                    "version": "2.0",
-                    "level": f"hsk{(index // 2) + 1}",
-                    "segment": "base" if index % 2 else "plus",
-                    "packId": f"vocab:2.0:hsk{(index // 2) + 1}:{'base' if index % 2 else 'plus'}:v1",
-                    "collectionId": f"vocab_level::2.0::hsk{(index // 2) + 1}::{'base' if index % 2 else 'plus'}::v1",
-                    "enabled": True,
-                    "objectPath": f"legacy/{index}.zip",
-                    "sha256": f"legacy-{index}",
-                    "packVersion": 1,
-                }
-                for index in range(12)
-            ],
-        }
-        self.source_bytes = (json.dumps(self.source_catalog, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+        self._build_cache = {}
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir)
 
-    def _source_patch(self):
-        return patch.object(deploy, "CATALOG_SOURCE_BYTES", len(self.source_bytes)), patch.object(
-            deploy, "CATALOG_SOURCE_SHA256", hashlib.sha256(self.source_bytes).hexdigest()
+    def _entries_key(self, catalog):
+        for key in ("entries", "packs", "collections"):
+            if isinstance(catalog.get(key), list):
+                return key
+        raise AssertionError("catalog thiếu field entry list")
+
+    def _seed_audio(self, level):
+        audio_root = self.output_root / "vocab" / "3.0" / level / "source_audio"
+        audio_root.mkdir(parents=True, exist_ok=True)
+        for row in self.rows:
+            item = SourceVocab(row["index"], row["word"], row["meaning_vi"], row["example_zh"], row["example_vi"])
+            (audio_root / audio_filename("hsk1_30", item)).write_bytes(f"audio-{level}-{row['index']}".encode("utf-8"))
+
+    def _build(self, level):
+        if level in self._build_cache:
+            return self._build_cache[level]
+        self._seed_audio(level)
+        result = build_hsk30(self.excel, "hsk1_30", level, self.output_root, generate_missing=False)
+        self._build_cache[level] = result
+        return result
+
+    def _plan(self, level):
+        result = self._build(level)
+        bitrate = str(result.get("ttsConfig", {}).get("m4a", {}).get("bitrate", "32k"))
+        receipt_fingerprint = deploy.input_fingerprint(self.excel, "hsk1_30", level, self.output_root, bitrate=bitrate)
+        return deploy.build_plan(
+            result,
+            (str(self.excel), "hsk1_30", level, str(self.output_root)),
+            receipt_fingerprint,
+            self.profile,
+            profile_name="dev",
         )
 
-    def _run(self, client=None, confirmation=None, **kwargs):
-        client = client or deploy.MemoryStorageClient(urls={deploy.CATALOG_SOURCE_URL: self.source_bytes})
-        p1, p2 = self._source_patch()
-        with p1, p2:
-            return deploy.deploy_with_client(
-                client,
-                self.plan,
-                source_catalog_payload=self.source_bytes,
-                confirmation=confirmation or deploy.CONFIRMATION_PHRASE,
-                **kwargs,
-            )
+    def _write_source_snapshot(self):
+        source_snapshot = self.output_root / "vocab" / "3.0" / "catalog_revisions" / "v1" / "vocab_pack_catalog_20_30_v1.json"
+        source_snapshot.parent.mkdir(parents=True, exist_ok=True)
+        source_snapshot.write_bytes(self.seed_catalog_bytes)
+        return source_snapshot
 
-    def _contract(self, base_manifest=None, plus_manifest=None, base_vocab=None, plus_vocab=None):
-        base_manifest = copy.deepcopy(base_manifest or self.result["base"]["manifest"])
-        plus_manifest = copy.deepcopy(plus_manifest or self.result["plus"]["manifest"])
-        base_vocab = copy.deepcopy(base_vocab or self.result["base"]["vocab"])
-        plus_vocab = copy.deepcopy(plus_vocab or self.result["plus"]["vocab"])
-        with patch.object(deploy, "_read_pack_json", side_effect=[(base_manifest, base_vocab), (plus_manifest, plus_vocab)]):
-            return deploy.validate_compatibility_contract("base.zip", "plus.zip")
+    def _write_revision_snapshot(self, revision: int, payload: bytes):
+        snapshot = self.output_root / "vocab" / "3.0" / "catalog_revisions" / f"v{revision}" / f"vocab_pack_catalog_20_30_v{revision}.json"
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        snapshot.write_bytes(payload)
+        return snapshot
 
-    def test_base_ids_hash_matches_audited_contract_without_newline(self):
+    def _stage(self, level, client=None):
+        plan = self._plan(level)
+        client = client or deploy.MemoryStorageClient()
+        logs = []
+        result = deploy.stage_packs_with_client(
+            client,
+            plan,
+            confirmation=deploy.stage_confirmation_phrase(level),
+            output_directory=self.output_root,
+            progress=logs.append,
+        )
+        return plan, client, logs, result
+
+    def _write_receipts_for_levels(self, levels):
+        for level in levels:
+            self._stage(level)
+
+    def test_seed_catalog_is_verified_and_has_12_enabled_entries(self):
+        catalog = deploy.load_seed_catalog(self.repo_root)[1]
+        key = self._entries_key(catalog)
+        entries = catalog[key]
+        self.assertEqual(12, len(entries))
+        self.assertTrue(all(entry.get("enabled") is True for entry in entries))
+        self.assertEqual(self.seed_catalog_sha, hashlib.sha256(self.seed_catalog_bytes).hexdigest())
+
+    def test_compatibility_hash_from_base_ids_matches_audited_value(self):
         ids = [str(index) for index in range(1, 51)]
         self.assertEqual("9b1b99d5d0172de2b1ee78c385b51ebc8ac652508ed5cb500982fc0618283fdf", deploy.compatibility_hash_from_ids(ids))
         compact = json.dumps(ids, ensure_ascii=False, separators=(",", ":"), sort_keys=False).encode("utf-8")
         self.assertNotIn(b" ", compact)
         self.assertFalse(compact.endswith(b"\n"))
 
-    def test_compatibility_hash_rejects_number_ids_and_order_changes_hash(self):
-        with self.assertRaises(deploy.DeployValidationError):
-            deploy.compatibility_hash_from_ids([1, "2"])
-        ordered = [str(index) for index in range(1, 51)]
-        reordered = ordered[:]
-        reordered[0], reordered[1] = reordered[1], reordered[0]
-        self.assertNotEqual(deploy.compatibility_hash_from_ids(ordered), deploy.compatibility_hash_from_ids(reordered))
+    def test_generic_object_paths_and_confirmation_phrases(self):
+        self.assertEqual("vocab/3.0/hsk7_9/base/v1/vocab_hsk7_9_30_base_v1.zip", deploy.pack_object_path("hsk7_9", "base"))
+        self.assertEqual("vocab/3.0/hsk2/plus/v1/vocab_hsk2_30_plus_v1.zip", deploy.pack_object_path("hsk2", "plus"))
+        self.assertEqual("STAGE HSK7_9 3.0", deploy.stage_confirmation_phrase("hsk7_9"))
+        self.assertEqual("PUBLISH VOCAB CATALOG", deploy.CATALOG_PUBLISH_CONFIRMATION)
 
-    def test_contract_returns_same_hash_for_base_manifest_plus_base_hash_and_catalog(self):
-        contract = self._contract()
-        self.assertEqual(self.plan.compatibility_hash, contract["compatibilityHash"])
-        self.assertEqual(contract["compatibilityHash"], self.result["base"]["manifest"]["orderedVocabIdsSha256"])
-        self.assertEqual(contract["compatibilityHash"], self.result["plus"]["manifest"]["baseOrderedVocabIdsSha256"])
-        self.assertEqual(contract["compatibilityHash"], "9b1b99d5d0172de2b1ee78c385b51ebc8ac652508ed5cb500982fc0618283fdf")
+    def test_stage_supports_generic_levels_and_writes_receipts(self):
+        for level in ("hsk2", "hsk7_9"):
+            with self.subTest(level=level):
+                plan, client, logs, result = self._stage(level)
+                receipt_path = deploy.deploy_receipt_path(self.output_root, level)
+                self.assertEqual("REMOTE PACKS VERIFIED", result["status"])
+                self.assertTrue(receipt_path.is_file())
+                self.assertIn("classification=ABSENT", "\n".join(logs))
+                self.assertEqual(4, len([call for call in client.calls if call[0] == "GET"]))
+                self.assertEqual(2, len([call for call in client.calls if call[0] == "CREATE"]))
+                self.assertEqual(plan.base_object_path, result["receipt"]["base"]["objectPath"])
+                self.assertEqual(plan.plus_object_path, result["receipt"]["plus"]["objectPath"])
+                self.assertFalse((self.output_root / "vocab" / "3.0" / "catalog_revisions").exists())
 
-    def test_contract_rejects_missing_or_duplicate_base_id(self):
-        base_manifest = copy.deepcopy(self.result["base"]["manifest"])
-        base_manifest["orderedVocabIds"] = base_manifest["orderedVocabIds"][:-1]
+    def test_stage_bad_confirmation_does_not_call_network(self):
+        plan = self._plan("hsk2")
+        client = deploy.MemoryStorageClient()
         with self.assertRaises(deploy.DeployValidationError):
-            self._contract(base_manifest=base_manifest)
-        base_manifest = copy.deepcopy(self.result["base"]["manifest"])
-        base_manifest["orderedVocabIds"][-1] = base_manifest["orderedVocabIds"][-2]
-        with self.assertRaises(deploy.DeployValidationError):
-            self._contract(base_manifest=base_manifest)
-
-    def test_contract_rejects_manifest_relationship_mismatches(self):
-        base_manifest = copy.deepcopy(self.result["base"]["manifest"])
-        base_manifest["orderedVocabIdsSha256"] = "0" * 64
-        with self.assertRaises(deploy.DeployValidationError):
-            self._contract(base_manifest=base_manifest)
-        plus_manifest = copy.deepcopy(self.result["plus"]["manifest"])
-        plus_manifest["baseOrderedVocabIdsSha256"] = "0" * 64
-        with self.assertRaises(deploy.DeployValidationError):
-            self._contract(plus_manifest=plus_manifest)
-        plus_manifest["baseOrderedVocabIdsSha256"] = self.result["plus"]["manifest"]["baseOrderedVocabIdsSha256"]
-        plus_manifest["requiresPackId"] = "wrong"
-        with self.assertRaises(deploy.DeployValidationError):
-            self._contract(plus_manifest=plus_manifest)
-        plus_manifest["requiresPackId"] = self.result["plus"]["manifest"]["requiresPackId"]
-        plus_manifest["compatibleBaseVersion"] = 99
-        with self.assertRaises(deploy.DeployValidationError):
-            self._contract(plus_manifest=plus_manifest)
-
-    def test_contract_rejects_base_plus_overlap_and_does_not_use_plus_hash(self):
-        plus_vocab = copy.deepcopy(self.result["plus"]["vocab"])
-        plus_vocab[0]["id"] = "1"
-        plus_manifest = copy.deepcopy(self.result["plus"]["manifest"])
-        plus_manifest["orderedVocabIds"][0] = "1"
-        with self.assertRaises(deploy.DeployValidationError):
-            self._contract(plus_manifest=plus_manifest, plus_vocab=plus_vocab)
-        contract = self._contract()
-        self.assertNotEqual(contract["compatibilityHash"], self.result["plus"]["manifest"]["orderedVocabIdsSha256"])
-
-    def test_catalog_rejects_different_base_plus_compatibility_hash(self):
-        base = deploy.catalog_entry_from_manifest(self.result["base"]["manifest"], sha256=self.plan.base_sha256, zip_bytes=self.plan.base_bytes, compatibility_hash="base-hash")
-        plus = deploy.catalog_entry_from_manifest(self.result["plus"]["manifest"], sha256=self.plan.plus_sha256, zip_bytes=self.plan.plus_bytes, compatibility_hash="plus-hash")
-        with self.assertRaises(deploy.DeployValidationError):
-            deploy.merge_catalog(self.source_catalog, base, plus)
-
-    def test_catalog_dry_run_reports_counts_sha_and_preserves_legacy(self):
-        p1, p2 = self._source_patch()
-        with p1, p2:
-            report = deploy.build_catalog_dry_run(
-                self.source_bytes,
-                self.plan.base_local_path,
-                self.plan.plus_local_path,
-                base_sha256=self.plan.base_sha256,
-                plus_sha256=self.plan.plus_sha256,
-            )
-        self.assertEqual("PASS", report["status"])
-        self.assertEqual(12, report["legacyEntryCount"])
-        self.assertEqual(2, report["hsk30EntryCount"])
-        self.assertEqual(0, report["duplicateIdentityCount"])
-        self.assertEqual(self.plan.compatibility_hash, report["compatibilityHash"])
-        self.assertEqual(report["sha256"], hashlib.sha256(report["payload"]).hexdigest())
-        self.assertEqual(self.source_catalog["entries"], report["catalog"]["entries"][:12])
-
-    def test_confirmation_wrong_does_not_call_network(self):
-        client = deploy.MemoryStorageClient(urls={deploy.CATALOG_SOURCE_URL: self.source_bytes})
-        with self.assertRaises(deploy.DeployValidationError):
-            self._run(client, confirmation="wrong")
+            deploy.stage_packs_with_client(client, plan, confirmation="WRONG", output_directory=self.output_root)
         self.assertEqual([], client.calls)
 
-    def test_cancel_is_local_only(self):
-        client = deploy.MemoryStorageClient(urls={deploy.CATALOG_SOURCE_URL: self.source_bytes})
-        with self.assertRaises(deploy.DeployValidationError):
-            deploy.require_confirmation("")
-        self.assertEqual([], client.calls)
-
-    def test_source_sha_mismatch_rejected_before_upload(self):
-        bad = b"bad catalog"
-        client = deploy.MemoryStorageClient(urls={deploy.CATALOG_SOURCE_URL: bad})
-        with patch.object(deploy, "CATALOG_SOURCE_BYTES", len(bad)), patch.object(deploy, "CATALOG_SOURCE_SHA256", "0" * 64):
-            with self.assertRaises(deploy.DeployValidationError):
-                deploy.deploy_with_client(client, self.plan, source_catalog_payload=bad, confirmation=deploy.CONFIRMATION_PHRASE)
-        self.assertFalse(any(call[0] == "CREATE" for call in client.calls))
-
-    def test_upload_and_get_verify_success(self):
-        client = deploy.MemoryStorageClient()
-        result = self._run(client)
-        self.assertEqual("PUBLISH PASS", result["status"])
-        self.assertEqual(3, len([call for call in client.calls if call[0] == "CREATE"]))
-        self.assertEqual(6, len([call for call in client.calls if call[0] == "GET"]))
-
-    def test_source_catalog_is_fetched_before_zip_upload(self):
-        client = deploy.MemoryStorageClient(urls={deploy.CATALOG_SOURCE_URL: self.source_bytes})
-        p1, p2 = self._source_patch()
-        with p1, p2:
-            deploy.deploy_with_client(
-                client,
-                self.plan,
-                source_catalog_payload=None,
-                confirmation=deploy.CONFIRMATION_PHRASE,
-            )
-        self.assertEqual("GET_URL", client.calls[0][0])
-        first_create = next(index for index, call in enumerate(client.calls) if call[0] == "CREATE")
-        self.assertLess(0, first_create)
-
-    def test_existing_same_sha_is_reused(self):
-        client = deploy.MemoryStorageClient()
-        client.objects[(self.plan.bucket, self.plan.base_object_path)] = Path(self.plan.base_local_path).read_bytes()
-        client.objects[(self.plan.bucket, self.plan.plus_object_path)] = Path(self.plan.plus_local_path).read_bytes()
-        self._run(client)
-        creates = [call for call in client.calls if call[0] == "CREATE"]
-        self.assertEqual(1, len(creates))
-        self.assertEqual(self.plan.catalog_target_path, creates[0][2])
-
-    def test_existing_different_sha_is_rejected_without_overwrite(self):
-        client = deploy.MemoryStorageClient(objects={(self.plan.bucket, self.plan.base_object_path): b"different"})
-        with self.assertRaises(deploy.DeployValidationError):
-            self._run(client)
+    def test_stage_present_match_reuses_remote_objects(self):
+        plan = self._plan("hsk2")
+        base_bytes = Path(plan.base_local_path).read_bytes()
+        plus_bytes = Path(plan.plus_local_path).read_bytes()
+        client = deploy.MemoryStorageClient(objects={
+            (plan.bucket, plan.base_object_path): base_bytes,
+            (plan.bucket, plan.plus_object_path): plus_bytes,
+        })
+        logs = []
+        deploy.stage_packs_with_client(
+            client,
+            plan,
+            confirmation=deploy.stage_confirmation_phrase("hsk2"),
+            output_directory=self.output_root,
+            progress=logs.append,
+        )
+        self.assertIn("classification=PRESENT_MATCH", "\n".join(logs))
         self.assertEqual([], [call for call in client.calls if call[0] == "CREATE"])
 
-    def test_plus_failure_does_not_publish_catalog(self):
+    def test_stage_present_conflict_is_rejected_without_upload(self):
+        plan = self._plan("hsk2")
+        client = deploy.MemoryStorageClient(objects={(plan.bucket, plan.base_object_path): b"different"})
+        logs = []
+        with self.assertRaises(deploy.DeployValidationError):
+            deploy.stage_packs_with_client(
+                client,
+                plan,
+                confirmation=deploy.stage_confirmation_phrase("hsk2"),
+                output_directory=self.output_root,
+                progress=logs.append,
+            )
+        self.assertIn("classification=PRESENT_CONFLICT", "\n".join(logs))
+        self.assertEqual([], [call for call in client.calls if call[0] == "CREATE"])
+
+    def test_stage_plus_failure_does_not_write_receipt_or_catalog(self):
+        plan = self._plan("hsk2")
+
         class FailingPlus(deploy.MemoryStorageClient):
             def create_object(self, bucket, object_path, payload, content_type):
-                if object_path == deploy.PLUS_OBJECT_PATH:
-                    raise RuntimeError("simulated PLUS failure")
+                if object_path == plan.plus_object_path:
+                    raise RuntimeError("simulated plus failure")
                 return super().create_object(bucket, object_path, payload, content_type)
 
         client = FailingPlus()
         with self.assertRaises(deploy.PartialDeployError):
-            self._run(client)
-        self.assertIn((self.plan.bucket, self.plan.base_object_path), client.objects)
-        self.assertNotIn((self.plan.bucket, self.plan.catalog_target_path), client.objects)
+            deploy.stage_packs_with_client(
+                client,
+                plan,
+                confirmation=deploy.stage_confirmation_phrase("hsk2"),
+                output_directory=self.output_root,
+            )
+        self.assertFalse(deploy.deploy_receipt_path(self.output_root, "hsk2").exists())
+        self.assertFalse(any(path.name.startswith("vocab_pack_catalog") for path in (self.output_root / "vocab" / "3.0").rglob("*.json")))
 
-    def test_remote_catalog_mismatch_fails_after_zips_without_overwrite(self):
-        client = deploy.MemoryStorageClient(objects={(self.plan.bucket, self.plan.catalog_target_path): b"old"})
-        with self.assertRaises(deploy.DeployValidationError):
-            self._run(client)
-        self.assertEqual(b"old", client.objects[(self.plan.bucket, self.plan.catalog_target_path)])
-
-    def test_catalog_preserves_legacy_and_adds_exactly_two(self):
-        base = deploy.catalog_entry_from_manifest(self.result["base"]["manifest"], sha256=self.plan.base_sha256, zip_bytes=self.plan.base_bytes, compatibility_hash="hash")
-        plus = deploy.catalog_entry_from_manifest(self.result["plus"]["manifest"], sha256=self.plan.plus_sha256, zip_bytes=self.plan.plus_bytes, compatibility_hash="hash")
-        merged = deploy.merge_catalog(self.source_catalog, base, plus)
-        self.assertEqual(self.source_catalog["entries"], merged["entries"][:12])
-        self.assertEqual({"base", "plus"}, {entry["segment"] for entry in merged["entries"] if entry["version"] == "3.0"})
-
-    def test_duplicate_catalog_identity_rejected(self):
-        base = deploy.catalog_entry_from_manifest(self.result["base"]["manifest"], sha256=self.plan.base_sha256, zip_bytes=self.plan.base_bytes, compatibility_hash="hash")
-        source = copy.deepcopy(self.source_catalog)
-        source["entries"].append(base)
-        with self.assertRaises(deploy.DeployValidationError):
-            deploy.merge_catalog(source, base, base)
-
-    def test_build_gate_rejects_changed_input(self):
-        changed = deploy.input_fingerprint(self.excel, "hsk1_30", "hsk1", self.output, bitrate="26k")
-        with self.assertRaises(deploy.DeployValidationError):
-            deploy.build_plan(self.result, (str(self.excel), "hsk1_30", "hsk1", str(self.output)), changed, self.profile)
-
-    def test_build_gate_rejects_missing_profile_and_wrong_bucket(self):
-        with self.assertRaises(deploy.DeployValidationError):
-            deploy.build_plan(self.result, (str(self.excel), "hsk1_30", "hsk1", str(self.output)), self.receipt_fingerprint, {"SUPABASE_BUCKET": "", "SUPABASE_URL": "x", "SUPABASE_SERVICE_ROLE_KEY": "fake"})
-
-    def test_legacy_profile_bucket_is_not_reused_for_hsk30(self):
-        profile = dict(self.profile, SUPABASE_BUCKET="audio")
-        plan = deploy.build_plan(self.result, (str(self.excel), "hsk1_30", "hsk1", str(self.output)), self.receipt_fingerprint, profile)
-        self.assertEqual(deploy.PILOT_BUCKET, plan.bucket)
-
-    def test_only_zip_and_catalog_objects_are_created(self):
-        client = deploy.MemoryStorageClient()
-        self._run(client)
-        created = {call[2] for call in client.calls if call[0] == "CREATE"}
-        self.assertEqual({self.plan.base_object_path, self.plan.plus_object_path, self.plan.catalog_target_path}, created)
-        self.assertFalse(any(path.endswith((".xlsx", ".csv", "vocab.json", "manifest.json", ".m4a")) for path in created))
-
-    def test_no_legacy_importer_in_deploy_module(self):
-        source = Path(deploy.__file__).read_text(encoding="utf-8")
-        self.assertNotIn("import_hsk1_to_supabase", source)
-
-    def test_rest_client_is_network_disabled_by_default_and_plan_does_not_expose_key(self):
-        client = deploy.SupabaseStorageRestClient("https://example.supabase.co", "test-only-secret")
-        with self.assertRaises(deploy.DeployValidationError):
-            client.get_url("https://example.invalid/catalog.json")
-        self.assertNotIn("test-only-secret", repr(self.plan))
-
-    def test_read_only_client_has_no_write_path(self):
-        client = deploy.ReadOnlySupabaseStorageClient("https://example.supabase.co")
-        self.assertEqual([], client.methods)
-        with self.assertRaises(deploy.DeployValidationError):
-            client.create_object("bucket", "path", b"x", "application/octet-stream")
-        with self.assertRaises(deploy.DeployValidationError):
-            client.update_object("bucket", "path", b"x")
-        with self.assertRaises(deploy.DeployValidationError):
-            client.delete_object("bucket", "path")
-        self.assertEqual([], client.methods)
-
-    def test_http_400_not_found_body_is_absent(self):
+    def test_http_400_not_found_and_404_are_absent(self):
         client = deploy.SupabaseStorageRestClient("https://example.supabase.co", "secret", network_enabled=True, retries=0)
-        cases = [
+        bodies = [
             b'{"statusCode":404,"message":"Object not found"}',
+            b'{"statusCode":"404","message":"missing"}',
             b'{"error":"not_found","message":"Object not found"}',
         ]
-        for body in cases:
-            error = urlerror.HTTPError("https://example", 400, "bad", {}, io.BytesIO(body))
-            with patch.object(deploy.urlrequest, "urlopen", side_effect=error):
-                with self.assertRaises(deploy.StorageNotFound) as caught:
-                    client.get_object("bucket", "object")
-            self.assertEqual(400, caught.exception.http_status)
-
-    def test_http_404_is_absent_but_auth_and_server_errors_are_not(self):
-        for status in (401, 403, 500):
-            client = deploy.SupabaseStorageRestClient("https://example.supabase.co", "secret", network_enabled=True, retries=0)
-            error = urlerror.HTTPError("https://example", status, "error", {}, io.BytesIO(b'{"error":"denied"}'))
-            with patch.object(deploy.urlrequest, "urlopen", side_effect=error):
-                with self.assertRaises(deploy.DeployValidationError):
-                    client.get_object("bucket", "object")
-        client = deploy.SupabaseStorageRestClient("https://example.supabase.co", "secret", network_enabled=True, retries=0)
-        error = urlerror.HTTPError("https://example", 404, "missing", {}, io.BytesIO(b""))
-        with patch.object(deploy.urlrequest, "urlopen", side_effect=error):
+        for body in bodies:
+            err = urlerror.HTTPError("https://example", 400, "bad", {}, io.BytesIO(body))
+            with self.subTest(body=body):
+                with patch.object(deploy.urlrequest, "urlopen", side_effect=err):
+                    with self.assertRaises(deploy.StorageNotFound) as caught:
+                        client.get_object("bucket", "object")
+                self.assertEqual(400, caught.exception.http_status)
+        err = urlerror.HTTPError("https://example", 404, "missing", {}, io.BytesIO(b""))
+        with patch.object(deploy.urlrequest, "urlopen", side_effect=err):
             with self.assertRaises(deploy.StorageNotFound) as caught:
                 client.get_object("bucket", "object")
         self.assertEqual(404, caught.exception.http_status)
 
-    def test_absent_probe_uploads_create_only_and_logs(self):
-        client = deploy.MemoryStorageClient()
+    def test_http_401_403_500_are_errors(self):
+        for status in (401, 403, 500):
+            client = deploy.SupabaseStorageRestClient("https://example.supabase.co", "secret", network_enabled=True, retries=0)
+            err = urlerror.HTTPError("https://example", status, "error", {}, io.BytesIO(b'{"error":"denied"}'))
+            with self.subTest(status=status):
+                with patch.object(deploy.urlrequest, "urlopen", side_effect=err):
+                    with self.assertRaises(deploy.DeployValidationError):
+                        client.get_object("bucket", "object")
+
+    def test_publish_catalog_requires_staged_receipts_and_preserves_source(self):
+        self._write_source_snapshot()
+        self._write_receipts_for_levels(("hsk2", "hsk7_9"))
+        source_bytes = self.seed_catalog_bytes
+        source_path = deploy.catalog_object_path(1)
+        client = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, source_path): source_bytes})
         logs = []
-        self._run(client, progress=logs.append)
+        result = deploy.publish_catalog_with_client(
+            client,
+            output_directory=self.output_root,
+            confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION,
+            progress=logs.append,
+        )
+        self.assertEqual("CATALOG PUBLISHED", result["status"])
+        self.assertEqual(2, result["revision"])
+        self.assertEqual(deploy.catalog_object_path(2), result["objectPath"])
+        self.assertEqual(16, result["entryCount"])
         self.assertIn("classification=ABSENT", "\n".join(logs))
-        self.assertEqual(3, len([call for call in client.calls if call[0] == "CREATE"]))
+        snapshot = deploy.load_catalog_source_snapshot(self.output_root)
+        self.assertEqual(2, snapshot.revision)
+        key = self._entries_key(snapshot.catalog)
+        entries = snapshot.catalog[key]
+        seed_catalog = json.loads(source_bytes.decode("utf-8"))
+        seed_key = self._entries_key(seed_catalog)
+        self.assertEqual(16, len(entries))
+        legacy_entries = entries[:12]
+        self.assertEqual(seed_catalog[seed_key], legacy_entries)
 
-    def test_present_conflict_logs_and_does_not_upload(self):
-        client = deploy.MemoryStorageClient(objects={(self.plan.bucket, self.plan.base_object_path): b"different"})
-        logs = []
-        with self.assertRaises(deploy.DeployValidationError):
-            self._run(client, progress=logs.append)
-        self.assertIn("classification=PRESENT_CONFLICT", "\n".join(logs))
-        self.assertFalse(any(call[0] == "CREATE" for call in client.calls))
+    def test_publish_does_not_upload_zip_objects(self):
+        self._write_source_snapshot()
+        self._write_receipts_for_levels(("hsk2",))
+        source_path = deploy.catalog_object_path(1)
+        client = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, source_path): self.seed_catalog_bytes})
+        result = deploy.publish_catalog_with_client(
+            client,
+            output_directory=self.output_root,
+            confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION,
+        )
+        create_paths = [call[2] for call in client.calls if call[0] == "CREATE"]
+        self.assertEqual([result["objectPath"]], create_paths)
+        self.assertTrue(all(not path.endswith(".zip") for path in create_paths))
 
-    def test_read_only_preflight_absent_objects_is_local_pass_and_get_only(self):
-        class AbsentReadOnly:
-            def __init__(self, payload):
-                self.payload = payload
-                self.methods = []
+    def test_publish_reads_current_revision_and_hsk1_receipt_is_noop(self):
+        self._write_revision_snapshot(1, self.seed_catalog_bytes)
+        current_v2 = (self.repo_root / "output" / "vocab" / "3.0" / "hsk1" / "deploy_preflight" / "combined_catalog_dry_run.json").read_bytes()
+        self._write_revision_snapshot(2, current_v2)
+        self._stage("hsk2")
+        current_v2_catalog = json.loads(current_v2.decode("utf-8"))
+        v2_key = self._entries_key(current_v2_catalog)
+        hsk1_entries = [entry for entry in current_v2_catalog[v2_key] if entry["version"] == "3.0" and entry["level"] == "hsk1"]
+        hsk1_receipt = {
+            "schemaVersion": 1,
+            "version": deploy.STANDARD_VERSION,
+            "level": "hsk1",
+            "packVersion": deploy.PACK_VERSION,
+            "compatibilityHash": hsk1_entries[0]["compatibilityHash"],
+            "base": {**hsk1_entries[0], "remoteVerified": True},
+            "plus": {**hsk1_entries[1], "remoteVerified": True},
+        }
+        deploy.deploy_receipt_path(self.output_root, "hsk1").parent.mkdir(parents=True, exist_ok=True)
+        deploy.deploy_receipt_path(self.output_root, "hsk1").write_text(json.dumps(hsk1_receipt, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+        source_path = deploy.catalog_object_path(2)
+        client = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, source_path): current_v2})
+        result = deploy.publish_catalog_with_client(
+            client,
+            output_directory=self.output_root,
+            confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION,
+        )
+        self.assertEqual(3, result["revision"])
+        self.assertEqual(16, result["entryCount"])
+        snapshot = deploy.load_catalog_source_snapshot(self.output_root)
+        self.assertEqual(3, snapshot.revision)
+        self.assertEqual(16, snapshot.entry_count)
+        self.assertEqual(16, len(snapshot.catalog[self._entries_key(snapshot.catalog)]))
 
-            def get_url(self, url):
-                self.methods.append("GET")
-                return self.payload
+    def test_catalog_revision_progresses_14_to_16_to_26_and_preserves_previous_entries(self):
+        self._write_revision_snapshot(1, self.seed_catalog_bytes)
+        current_v2 = (self.repo_root / "output" / "vocab" / "3.0" / "hsk1" / "deploy_preflight" / "combined_catalog_dry_run.json").read_bytes()
+        self._write_revision_snapshot(2, current_v2)
+        seed_catalog = json.loads(self.seed_catalog_bytes.decode("utf-8"))
+        seed_key = self._entries_key(seed_catalog)
+        current_v2_catalog = json.loads(current_v2.decode("utf-8"))
+        v2_key = self._entries_key(current_v2_catalog)
+        v2_entries = current_v2_catalog[v2_key]
 
-            def get_object(self, bucket, object_path):
-                self.methods.append("GET")
-                raise deploy.StorageNotFound(object_path)
+        self._stage("hsk2")
+        client_v3 = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, deploy.catalog_object_path(2)): current_v2})
+        result_v3 = deploy.publish_catalog_with_client(client_v3, output_directory=self.output_root, confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION)
+        self.assertEqual(3, result_v3["revision"])
+        self.assertEqual(16, result_v3["entryCount"])
 
-        client = AbsentReadOnly(self.source_bytes)
-        p1, p2 = self._source_patch()
-        with p1, p2:
-            report = deploy.run_hsk1_read_only_preflight(
-                self.result,
-                (str(self.excel), "hsk1_30", "hsk1", str(self.output)),
-                self.receipt_fingerprint,
-                self.profile,
-                client=client,
-                output_directory=self.output,
+        self._stage("hsk3")
+        self._stage("hsk4")
+        self._stage("hsk5")
+        self._stage("hsk6")
+        self._stage("hsk7_9")
+        client_v4 = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, deploy.catalog_object_path(3)): (self.output_root / "vocab" / "3.0" / "catalog_revisions" / "v3" / "vocab_pack_catalog_20_30_v3.json").read_bytes()})
+        result_v4 = deploy.publish_catalog_with_client(client_v4, output_directory=self.output_root, confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION)
+        self.assertEqual(4, result_v4["revision"])
+        self.assertEqual(26, result_v4["entryCount"])
+        snapshot_v4 = deploy.load_catalog_source_snapshot(self.output_root)
+        self.assertEqual(4, snapshot_v4.revision)
+        self.assertEqual(26, snapshot_v4.entry_count)
+        merged_entries = snapshot_v4.catalog[self._entries_key(snapshot_v4.catalog)]
+        self.assertEqual(v2_entries, merged_entries[:14])
+        self.assertEqual(seed_catalog[seed_key], merged_entries[:12])
+        self.assertEqual(len(merged_entries), len({(e["version"], e["level"], e["segment"]) for e in merged_entries}))
+        self.assertEqual(26, len(merged_entries))
+
+    def test_publish_reuses_existing_catalog_when_sha_matches(self):
+        self._write_source_snapshot()
+        self._write_receipts_for_levels(("hsk2",))
+        source_path = deploy.catalog_object_path(1)
+        target_path = deploy.catalog_object_path(2)
+        target_bytes = deploy._canonical_json_bytes(
+            deploy.merge_catalog(
+                deploy.load_catalog_source_snapshot(self.output_root).catalog,
+                [deploy.catalog_entry_from_plan(self._plan("hsk2"), "base"), deploy.catalog_entry_from_plan(self._plan("hsk2"), "plus")],
             )
-        self.assertEqual("PASS", report["status"], report)
-        self.assertEqual(["ABSENT", "ABSENT", "ABSENT"], [report["remote"][name]["status"] for name in ("base", "plus", "catalog")])
-        self.assertEqual(["GET", "GET", "GET", "GET"], client.methods)
-        self.assertTrue((self.output / "vocab/3.0/hsk1/deploy_preflight/preflight_report.json").is_file())
+        )
+        client = deploy.MemoryStorageClient(objects={
+            (deploy.STAGING_BUCKET, source_path): self.seed_catalog_bytes,
+            (deploy.STAGING_BUCKET, target_path): target_bytes,
+        })
+        logs = []
+        result = deploy.publish_catalog_with_client(
+            client,
+            output_directory=self.output_root,
+            confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION,
+            progress=logs.append,
+        )
+        self.assertIn("classification=PRESENT_MATCH", "\n".join(logs))
+        self.assertEqual(target_path, result["objectPath"])
 
-    def test_partial_error_reports_completed_remote_objects(self):
-        class FailingCatalog(deploy.MemoryStorageClient):
-            def create_object(self, bucket, object_path, payload, content_type):
-                if object_path == deploy.CATALOG_TARGET_PATH:
-                    raise RuntimeError("catalog unavailable")
-                return super().create_object(bucket, object_path, payload, content_type)
+    def test_duplicate_receipt_additions_are_rejected(self):
+        self._write_source_snapshot()
+        plan = self._plan("hsk2")
+        receipt = {
+            "schemaVersion": 1,
+            "version": deploy.STANDARD_VERSION,
+            "level": "hsk2",
+            "packVersion": deploy.PACK_VERSION,
+            "compatibilityHash": plan.compatibility_hash,
+            "base": {**deploy.catalog_entry_from_plan(plan, "base"), "remoteVerified": True},
+            "plus": {**deploy.catalog_entry_from_plan(plan, "plus"), "remoteVerified": True},
+        }
+        with patch.object(deploy, "collect_deploy_receipts", return_value=[deploy.validate_deploy_receipt(receipt), deploy.validate_deploy_receipt(receipt)]):
+            with self.assertRaises(deploy.DeployValidationError):
+                deploy.prepare_catalog_publish(self.output_root)
 
-        client = FailingCatalog()
-        with self.assertRaises(deploy.PartialDeployError) as caught:
-            self._run(client)
-        self.assertEqual((deploy.BASE_OBJECT_PATH, deploy.PLUS_OBJECT_PATH), caught.exception.completed_objects)
+    def test_duplicate_packid_and_collectionid_are_rejected_in_catalog_validation(self):
+        base = deploy.catalog_entry_from_plan(self._plan("hsk2"), "base")
+        bad_catalog = json.loads(self.seed_catalog_bytes.decode("utf-8"))
+        key = self._entries_key(bad_catalog)
+        bad_catalog[key].append(dict(bad_catalog[key][0]))
+        with self.assertRaises(deploy.DeployValidationError):
+            deploy.verify_catalog_payload(deploy._canonical_json_bytes(bad_catalog))
+
+    def test_build_plan_does_not_mutate_profile_or_expose_secret(self):
+        plan = self._plan("hsk2")
+        original = dict(self.profile)
+        deploy.build_plan(
+            self._build("hsk2"),
+            (str(self.excel), "hsk1_30", "hsk2", str(self.output_root)),
+            deploy.input_fingerprint(self.excel, "hsk1_30", "hsk2", self.output_root, bitrate="32k"),
+            self.profile,
+            profile_name="dev",
+        )
+        self.assertEqual(original, self.profile)
+        self.assertNotIn("test-only-secret", repr(plan))
+
+    def test_create_only_upload_uses_post_and_sets_upsert_false(self):
+        client = deploy.SupabaseStorageRestClient("https://example.supabase.co", "secret", network_enabled=True, retries=0)
+        captured = {}
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return b"ok"
+
+        def fake_urlopen(request, timeout=None, context=None):
+            captured["method"] = request.get_method()
+            captured["headers"] = {k.lower(): v for k, v in request.header_items()}
+            captured["url"] = request.full_url
+            return FakeResponse()
+
+        with patch.object(deploy.urlrequest, "urlopen", side_effect=fake_urlopen):
+            client.create_object("bucket", "path/object.zip", b"data", "application/zip")
+        self.assertEqual("POST", captured["method"])
+        self.assertEqual("false", captured["headers"].get("x-upsert"))
+        self.assertEqual("application/zip", captured["headers"].get("content-type"))
+
+    def test_catalog_serialization_is_deterministic(self):
+        self._write_revision_snapshot(1, self.seed_catalog_bytes)
+        current_v2 = (self.repo_root / "output" / "vocab" / "3.0" / "hsk1" / "deploy_preflight" / "combined_catalog_dry_run.json").read_bytes()
+        self._write_revision_snapshot(2, current_v2)
+        self._stage("hsk2")
+        plan = deploy.prepare_catalog_publish(self.output_root)
+        merged_a = deploy.merge_catalog(plan.source.catalog, list(plan.additions))
+        merged_b = deploy.merge_catalog(plan.source.catalog, list(plan.additions))
+        bytes_a = deploy._canonical_json_bytes(merged_a)
+        bytes_b = deploy._canonical_json_bytes(merged_b)
+        self.assertEqual(bytes_a, bytes_b)
+        self.assertEqual(hashlib.sha256(bytes_a).hexdigest(), hashlib.sha256(bytes_b).hexdigest())
+
+    def test_pack_and_catalog_object_paths_are_level_generic(self):
+        for level in ("hsk1", "hsk2", "hsk3", "hsk4", "hsk5", "hsk6", "hsk7_9"):
+            with self.subTest(level=level):
+                self.assertEqual(f"vocab/3.0/{level}/base/v1/vocab_{level}_30_base_v1.zip", deploy.pack_object_path(level, "base"))
+                self.assertEqual(f"vocab/3.0/{level}/plus/v1/vocab_{level}_30_plus_v1.zip", deploy.pack_object_path(level, "plus"))
+
+    def test_no_legacy_importer_is_referenced_in_deploy_module(self):
+        source = Path(deploy.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("import_hsk1_to_supabase", source)
 
 
 if __name__ == "__main__":

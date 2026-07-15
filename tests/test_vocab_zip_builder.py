@@ -3,9 +3,24 @@ import shutil
 import tempfile
 import unittest
 import zipfile
+import sys
+import types
 from pathlib import Path
 
 import pandas as pd
+
+if "pypinyin" not in sys.modules:
+    fake_pypinyin = types.ModuleType("pypinyin")
+
+    class _FakeStyle:
+        NORMAL = "NORMAL"
+
+    def _fake_lazy_pinyin(text, *args, **kwargs):
+        return [str(text)]
+
+    fake_pypinyin.Style = _FakeStyle
+    fake_pypinyin.lazy_pinyin = _fake_lazy_pinyin
+    sys.modules["pypinyin"] = fake_pypinyin
 
 from pipelines.vocab_zip_builder import BuildValidationError, build_hsk30, deployment_allowed, verify_pack, verify_pack_pair
 
@@ -191,9 +206,11 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertIn('"--bitrate", vocab_tts["bitrate"]', app_source)
         self.assertIn('builder_bitrate_var.trace_add("write", refresh_tts_summary)', app_source)
         self.assertIn('textvariable=tts_summary_var', app_source)
-        self.assertIn("Compatibility hash BASE/PLUS", app_source)
-        self.assertIn('state="disabled", command=deploy_pending', app_source)
-        self.assertIn('deploy_btn.config(state="normal")', app_source)
+        self.assertIn("Compatibility hash:", app_source)
+        self.assertIn('state="disabled", command=stage_packs_pending', app_source)
+        self.assertIn('state="disabled", command=publish_catalog_pending', app_source)
+        self.assertIn('stage_btn.config(state="normal")', app_source)
+        self.assertIn('publish_btn.config(state="normal")', app_source)
         self.assertGreaterEqual(app_source.count('text="Chất lượng M4A:"'), 2)
         self.assertNotIn('Chất lượng M4A vocab (HSK 2.0 / 3.0)', app_source)
         self.assertIn('DEFAULT_VOCAB_M4A_BITRATE = "32k"', app_source)

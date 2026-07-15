@@ -4647,13 +4647,15 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     def hsk30_vocab_zip_builder():
         """Local-only HSK 3.0 builder.  It never invokes the legacy deploy script."""
         from pipelines.vocab_zip_deploy import (
-            CONFIRMATION_PHRASE as DEPLOY_CONFIRMATION_PHRASE,
+            CATALOG_PUBLISH_CONFIRMATION,
             DeployValidationError,
             SupabaseStorageRestClient,
             build_plan,
             input_fingerprint,
-            load_local_source_catalog,
-            deploy_with_client,
+            prepare_catalog_publish,
+            publish_catalog_with_client,
+            stage_confirmation_phrase,
+            stage_packs_with_client,
         )
 
         builder_win = tk.Toplevel(popup)
@@ -4688,7 +4690,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(frame, text="HSK 3.0 Vocab ZIP Builder", font=("Arial", 15, "bold")).pack(anchor="w")
         tk.Label(
             frame,
-            text="Local only: tạo M4A, ZIP deterministic, validate và verify. Không upload, không publish catalog.",
+            text="Build local → stage ZIP packs → publish catalog revision riêng. HSK 2.0 legacy không đổi.",
             fg="#555",
         ).pack(anchor="w", pady=(2, 12))
 
@@ -4890,7 +4892,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         def clear_build_state(*_):
             artifact_state["result"] = None
             artifact_state["fingerprint"] = None
-            deploy_btn.config(state="disabled")
+            stage_btn.config(state="disabled")
 
         def fingerprint(config):
             excel_path, sheet, level, output = config
@@ -4947,14 +4949,22 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         def refresh_deploy_gate():
             try:
-                load_local_source_catalog(BASE_DIR)
                 plan = current_deploy_plan()
             except (DeployValidationError, ValueError, OSError):
-                deploy_btn.config(state="disabled")
+                stage_btn.config(state="disabled")
                 compatibility_var.set("Compatibility hash: chưa PASS")
                 return False
             compatibility_var.set(f"Compatibility hash: {plan.compatibility_hash}")
-            deploy_btn.config(state="normal")
+            stage_btn.config(state="normal")
+            return True
+
+        def refresh_catalog_gate():
+            try:
+                prepare_catalog_publish(output_var.get().strip())
+            except (DeployValidationError, ValueError, OSError):
+                publish_btn.config(state="disabled")
+                return False
+            publish_btn.config(state="normal")
             return True
 
         def play_first_audio():
@@ -5068,7 +5078,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         f"audio cần tạo/thiếu ban đầu={result['audioGenerated']} | "
                         f"BASE={base['manifest']['vocabCount']} | PLUS={plus['manifest']['vocabCount']}"
                     )
-                    status_var.set("Nấc 1 PASS. Nấc 2 đã mở; cần xác nhận trước remote write.")
+                    status_var.set("Nấc 1 PASS. Nấc 2 Upload + Verify Packs đã mở; Nấc 3 Publish Combined Catalog vẫn pending.")
                     append_log(f"BASE: {base['zip']} ({base['bytes']} bytes, {base['sha256']})")
                     append_log(f"PLUS: {plus['zip']} ({plus['bytes']} bytes, {plus['sha256']})")
                     refresh_deploy_gate()
@@ -5076,84 +5086,122 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
             threading.Thread(target=worker, daemon=True).start()
 
-        def deploy_pending():
+        def stage_packs_pending():
             try:
-                source_payload, _ = load_local_source_catalog(BASE_DIR)
                 plan = current_deploy_plan()
-                profile_name, profile = load_active_supabase_profile()
+                _, profile = load_active_supabase_profile()
             except Exception as exc:
-                deploy_btn.config(state="disabled")
-                messagebox.showwarning("Deploy chưa đủ điều kiện", str(exc), parent=builder_win)
+                stage_btn.config(state="disabled")
+                messagebox.showwarning("Stage chưa đủ điều kiện", str(exc), parent=builder_win)
                 return
-
+            phrase = stage_confirmation_phrase(plan.level)
             confirm = tk.Toplevel(builder_win)
             set_popup_icon(confirm)
-            confirm.title("Xác nhận Phase 2 — HSK1 3.0")
-            confirm.geometry("760x610")
+            confirm.title(f"Xác nhận stage {plan.level.upper()} 3.0")
+            confirm.geometry("760x520")
             confirm.transient(builder_win)
             confirm.grab_set()
             details = (
-                f"Profile: {plan.profile_name}\n"
-                f"Project URL: {plan.project_url}\n"
-                f"Bucket: {plan.bucket}\n"
+                f"Profile: {plan.profile_name}\nProject URL: {plan.project_url}\nBucket: {plan.bucket}\n"
                 f"Level: {plan.level} | packVersion: v{plan.pack_version}\n\n"
-                f"BASE local: {plan.base_local_path}\n"
-                f"BASE bytes/SHA: {plan.base_bytes} / {plan.base_sha256}\n"
-                f"BASE remote: {plan.base_object_path}\n\n"
-                f"PLUS local: {plan.plus_local_path}\n"
-                f"PLUS bytes/SHA: {plan.plus_bytes} / {plan.plus_sha256}\n"
-                f"PLUS remote: {plan.plus_object_path}\n\n"
-                f"Catalog nguồn local: {plan.catalog_source_url}\n"
-                f"Catalog nguồn bytes/SHA: {plan.catalog_source_bytes} / {plan.catalog_source_sha256}\n"
-                f"Catalog đích: {plan.catalog_target_path}\n\n"
-                f"Compatibility hash BASE/PLUS: {plan.compatibility_hash}\n\n"
-                "CẢNH BÁO: đây là thao tác remote write thật. Chỉ upload ZIP BASE, ZIP PLUS "
-                "và catalog combined; không upload audio/Excel/JSON rời."
+                f"BASE: {plan.base_object_path}\n{plan.base_bytes} bytes | {plan.base_sha256}\n\n"
+                f"PLUS: {plan.plus_object_path}\n{plan.plus_bytes} bytes | {plan.plus_sha256}\n\n"
+                "Thao tác này chỉ upload + GET-verify hai ZIP bằng create-only. Catalog không được tạo/publish."
             )
             tk.Label(confirm, text=details, anchor="w", justify="left", wraplength=720).pack(fill="both", expand=True, padx=14, pady=(14, 8))
-            tk.Label(confirm, text=f"Nhập chính xác: {DEPLOY_CONFIRMATION_PHRASE}", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            tk.Label(confirm, text=f"Nhập chính xác: {phrase}", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
             phrase_var = tk.StringVar()
             tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=(4, 10))
 
-            def confirm_remote_write():
-                if phrase_var.get() != DEPLOY_CONFIRMATION_PHRASE:
+            def confirm_stage():
+                if phrase_var.get() != phrase:
                     messagebox.showwarning("Xác nhận sai", "Chuỗi xác nhận không khớp; chưa có remote request nào được gọi.", parent=confirm)
                     return
+                confirmation = phrase_var.get()
                 confirm.destroy()
-                deploy_btn.config(state="disabled")
+                stage_btn.config(state="disabled")
                 build_btn.config(state="disabled")
-                status_var.set("Đang deploy Phase 2 — remote write…")
-                append_log("=== HSK1 3.0 DEPLOY + VERIFY + PUBLISH ===")
+                status_var.set(f"Đang stage {plan.level.upper()} ZIP packs…")
+                append_log(f"=== STAGE {plan.level.upper()} 3.0 ===")
 
                 def worker():
                     try:
-                        key = str(profile.get("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip()
-                        client = SupabaseStorageRestClient(
-                            plan.project_url,
-                            key,
-                            network_enabled=True,
-                        )
-                        result = deploy_with_client(
-                            client,
-                            plan,
-                            source_catalog_payload=source_payload,
-                            confirmation=phrase_var.get(),
-                            progress=lambda message: builder_win.after(0, append_log, message),
-                        )
+                        client = SupabaseStorageRestClient(plan.project_url, str(profile.get("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip(), network_enabled=True)
+                        result = stage_packs_with_client(client, plan, confirmation=confirmation, output_directory=output_var.get().strip(), progress=lambda message: builder_win.after(0, append_log, message))
                     except Exception as exc:
-                        error_message = str(exc)
-                        builder_win.after(0, lambda: status_var.set(f"DEPLOY FAIL/PARTIAL — {error_message}"))
-                        builder_win.after(0, append_log, f"✖ Phase 2 thất bại: {error_message}")
-                        return
-                    builder_win.after(0, lambda: status_var.set("PUBLISH PASS — BASE, PLUS và catalog đã GET-verify."))
-                    builder_win.after(0, append_log, f"Catalog PASS: {result['catalogBytes']} bytes, SHA {result['catalogSha256']}")
+                        message = str(exc)
+                        builder_win.after(0, lambda: status_var.set(f"STAGE FAIL/PARTIAL — {message}"))
+                        builder_win.after(0, append_log, f"✖ Stage thất bại: {message}")
+                    else:
+                        builder_win.after(0, lambda: status_var.set("REMOTE PACKS VERIFIED | CATALOG NOT PUBLISHED"))
+                        builder_win.after(0, append_log, f"Receipt: {result['receiptPath']}")
+                        builder_win.after(0, refresh_catalog_gate)
+                    finally:
+                        builder_win.after(0, lambda: build_btn.config(state="normal"))
 
                 threading.Thread(target=worker, daemon=True).start()
 
             buttons = tk.Frame(confirm)
             buttons.pack(fill="x", padx=14, pady=(0, 14))
             tk.Button(buttons, text="Huỷ", width=12, command=confirm.destroy).pack(side="right", padx=(8, 0))
-            tk.Button(buttons, text="Xác nhận deploy thật", width=20, command=confirm_remote_write).pack(side="right")
+            tk.Button(buttons, text="Xác nhận stage packs", width=20, command=confirm_stage).pack(side="right")
+
+        def publish_catalog_pending():
+            try:
+                publish_plan = prepare_catalog_publish(output_var.get().strip())
+                _, profile = load_active_supabase_profile()
+            except Exception as exc:
+                publish_btn.config(state="disabled")
+                messagebox.showwarning("Publish catalog chưa đủ điều kiện", str(exc), parent=builder_win)
+                return
+            confirm = tk.Toplevel(builder_win)
+            set_popup_icon(confirm)
+            confirm.title(f"Xác nhận publish catalog v{publish_plan.target_revision}")
+            confirm.geometry("760x480")
+            confirm.transient(builder_win)
+            confirm.grab_set()
+            details = (
+                f"Catalog source: v{publish_plan.source.revision} | {publish_plan.source.object_path}\n"
+                f"Source SHA: {publish_plan.source.sha256}\n"
+                f"Catalog target: {publish_plan.target_object_path}\n"
+                f"Entries source: {publish_plan.source.entry_count}\n"
+                f"Entries thêm từ deploy receipt: {len(publish_plan.additions)}\n\n"
+                "CẢNH BÁO: remote write tạo catalog revision mới bằng create-only. Catalog cũ không bị overwrite."
+            )
+            tk.Label(confirm, text=details, anchor="w", justify="left", wraplength=720).pack(fill="both", expand=True, padx=14, pady=(14, 8))
+            tk.Label(confirm, text=f"Nhập chính xác: {CATALOG_PUBLISH_CONFIRMATION}", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            phrase_var = tk.StringVar()
+            tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=(4, 10))
+
+            def confirm_publish():
+                if phrase_var.get() != CATALOG_PUBLISH_CONFIRMATION:
+                    messagebox.showwarning("Xác nhận sai", "Chuỗi xác nhận không khớp; chưa có remote request nào được gọi.", parent=confirm)
+                    return
+                confirmation = phrase_var.get()
+                confirm.destroy()
+                publish_btn.config(state="disabled")
+                status_var.set("Đang publish combined catalog revision mới…")
+                append_log("=== PUBLISH COMBINED VOCAB CATALOG ===")
+
+                def worker():
+                    try:
+                        client = SupabaseStorageRestClient(str(profile.get("SUPABASE_URL", "") or "").strip(), str(profile.get("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip(), network_enabled=True)
+                        result = publish_catalog_with_client(client, output_directory=output_var.get().strip(), confirmation=confirmation, progress=lambda message: builder_win.after(0, append_log, message))
+                    except Exception as exc:
+                        message = str(exc)
+                        builder_win.after(0, lambda: status_var.set(f"CATALOG FAIL — {message}"))
+                        builder_win.after(0, append_log, f"✖ Publish catalog thất bại: {message}")
+                    else:
+                        builder_win.after(0, lambda: status_var.set("CATALOG PUBLISHED"))
+                        builder_win.after(0, append_log, f"Catalog URL: {result['publicUrl']}")
+                        builder_win.after(0, append_log, f"Catalog: {result['bytes']} bytes | SHA {result['sha256']} | entries={result['entryCount']}")
+
+                threading.Thread(target=worker, daemon=True).start()
+
+            buttons = tk.Frame(confirm)
+            buttons.pack(fill="x", padx=14, pady=(0, 14))
+            tk.Button(buttons, text="Huỷ", width=12, command=confirm.destroy).pack(side="right", padx=(8, 0))
+            tk.Button(buttons, text="Xác nhận publish catalog", width=23, command=confirm_publish).pack(side="right")
 
         build_btn = tk.Button(controls, text="1. Build + Validate Local", width=25, bg="#cce6ff", command=run_local_build)
         build_btn.pack(side="left")
@@ -5162,11 +5210,15 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         cancel_btn = tk.Button(controls, text="✖ Huỷ build", width=11, state="disabled", command=cancel_build)
         cancel_btn.pack(side="left", padx=(6, 0))
         tk.Button(controls, text="▶ Phát thử audio local", width=18, command=play_first_audio).pack(side="left", padx=8)
-        deploy_btn = tk.Button(controls, text="2. Deploy + Verify + Publish", width=31, state="disabled", command=deploy_pending)
-        deploy_btn.pack(side="left")
+        stage_btn = tk.Button(controls, text="2. Upload + Verify Packs", width=24, state="disabled", command=stage_packs_pending)
+        stage_btn.pack(side="left")
+        publish_btn = tk.Button(controls, text="3. Publish Combined Catalog", width=27, state="disabled", command=publish_catalog_pending)
+        publish_btn.pack(side="left", padx=(6, 0))
 
         for var in (excel_var, sheet_var, level_display_var, output_var, builder_bitrate_var):
             var.trace_add("write", clear_build_state)
+        refresh_deploy_gate()
+        refresh_catalog_gate()
 
 
             
