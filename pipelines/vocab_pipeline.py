@@ -33,6 +33,7 @@ TARGET_SAMPLE_RATE = 22050
 TARGET_CHANNELS = 1
 TARGET_BITRATE = "32k"
 SUPPORTED_M4A_BITRATES = {"26k", "32k"}
+SUPPORTED_VOCAB_AUDIO_MODES = {"zh_only", "zh_vi"}
 
 # gTTS local cache and rate limiting
 _TTS_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".tts_cache")
@@ -59,7 +60,14 @@ def _resolve_m4a_bitrate(bitrate: str | None = None) -> str:
     return resolved
 
 
-def _vocab_tts_runtime_config() -> tuple[str, str, str, set[str]]:
+def _resolve_vocab_audio_mode(audio_mode: str | None = None) -> str:
+    resolved = (audio_mode or os.environ.get("TTS_AUDIO_MODE") or "zh_vi").strip().lower()
+    if resolved in {"zh_only", "zh-only", "chinese_only"}:
+        return "zh_only"
+    return "zh_vi"
+
+
+def _vocab_tts_runtime_config() -> tuple[str, str, str, set[str], str]:
     """Read the UI snapshot passed to the vocab subprocess without secrets."""
     if str(os.environ.get("TTS_CONFIG_CONFIRMED", "true")).strip().lower() not in {"1", "true", "yes"}:
         raise ValueError("Chưa xác nhận dùng cấu hình TTS hiện tại cho vocab HSK.")
@@ -70,7 +78,7 @@ def _vocab_tts_runtime_config() -> tuple[str, str, str, set[str]]:
     languages = {value.strip().lower() for value in raw_languages.split(",") if value.strip()}
     if raw_languages and not {"vi", "zh"}.issubset(languages):
         raise ValueError("Vocab HSK cần chọn cả Tiếng Việt và Tiếng Trung trong cấu hình TTS.")
-    return speed, voice, bitrate, languages
+    return speed, voice, bitrate, languages, _resolve_vocab_audio_mode()
 
 
 def _log(message):
@@ -366,25 +374,18 @@ def _tts_segment(text, lang, temp_dir, engine_mode, speed="Bình thường", voi
         # gTTS is an explicit user choice. Do not probe Google Cloud first.
         return _tts_segment_gtts(text, lang_code, temp_dir, speed)
 
-    # If engine explicitly set to Polly, try Polly first, then Google, then gTTS
+    # If Polly is explicitly selected, keep fallback local to Polly -> gTTS.
+    # Do not probe Google Cloud here: Polly has no Vietnamese voice in this
+    # pipeline, and a Polly credential/service failure should not depend on a
+    # separate Google Cloud project being enabled.
     if engine_clean == "polly":
-        if lang_code in {"en", "ja", "zh"}:
-            try:
-                return _tts_segment_polly(text, lang_code, temp_dir, speed, voice)
-            except Exception as exc:
-                _log(f"[Pipeline] Polly failed for lang={lang_code}: {exc}")
-                _log(f"[Pipeline] Trying Google Cloud TTS for lang={lang_code}")
-                try:
-                    return _tts_segment_google(text, lang_code, temp_dir, speed, voice)
-                except Exception as gexc:
-                    _log(f"[Pipeline] Google Cloud TTS also failed: {gexc}; falling back to gTTS")
-                    return _tts_segment_gtts(text, lang_code, temp_dir, speed)
-
-        _log(f"[Pipeline] Polly does not support lang={lang_code}; trying Google Cloud then gTTS")
+        if lang_code not in {"en", "ja", "zh"}:
+            _log(f"[Pipeline] Polly does not support lang={lang_code}; using gTTS")
+            return _tts_segment_gtts(text, lang_code, temp_dir, speed)
         try:
-            return _tts_segment_google(text, lang_code, temp_dir, speed, voice)
-        except Exception as gexc:
-            _log(f"[Pipeline] Google Cloud TTS failed for lang={lang_code}: {gexc}; falling back to gTTS")
+            return _tts_segment_polly(text, lang_code, temp_dir, speed, voice)
+        except Exception as exc:
+            _log(f"[Pipeline] Polly failed for lang={lang_code}: {exc}; falling back to gTTS")
             return _tts_segment_gtts(text, lang_code, temp_dir, speed)
 
     # Google Cloud (and legacy/unrecognised values): prefer Google Cloud then gTTS.
@@ -406,7 +407,7 @@ def _tts_segment(text, lang, temp_dir, engine_mode, speed="Bình thường", voi
         raise TTSGenerationError(f"Không tạo được audio bằng engine {engine_mode} cho lang={lang_code}") from exc
 
 
-def _build_word_audio(word, meaning, engine_mode, speed="Bình thường", voice="Mặc định"):
+def _build_word_audio(word, meaning, engine_mode, speed="Bình thường", voice="Mặc định", audio_mode="zh_vi"):
     temp_dir = tempfile.gettempdir()
     created_files = []
     try:
@@ -415,6 +416,8 @@ def _build_word_audio(word, meaning, engine_mode, speed="Bình thường", voice
         zh_seg, zh_path = _tts_segment(word, "zh-CN", temp_dir, engine_mode, speed, zh_voice)
         if zh_path:
             created_files.append(zh_path)
+        if _resolve_vocab_audio_mode(audio_mode) == "zh_only":
+            return zh_seg
         vi_seg, vi_path = _tts_segment(meaning, "vi", temp_dir, engine_mode, speed, vi_voice)
         if vi_path:
             created_files.append(vi_path)
@@ -444,11 +447,11 @@ def _export_m4a(audio, file_path, bitrate=None):
 def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
     overwrite_local_audio = str(os.environ.get("OVERWRITE_LOCAL_AUDIO", "false")).lower() == "true"
     engine_mode = os.environ.get("TTS_ENGINE", "gTTS")
-    speed, voice, bitrate, languages = _vocab_tts_runtime_config()
+    speed, voice, bitrate, languages, audio_mode = _vocab_tts_runtime_config()
     _log(f"[Pipeline] Start: excel={file_path}")
     _log(f"[Pipeline] Sheet: {sheet_name}")
     _log(f"[Pipeline] TTS engine: {engine_mode}")
-    _log(f"[Pipeline] TTS speed: {speed} | voice: {voice} | M4A: AAC-LC mono 22050Hz {bitrate}")
+    _log(f"[Pipeline] TTS speed: {speed} | voice: {voice} | audio mode: {audio_mode} | M4A: AAC-LC mono 22050Hz {bitrate}")
     if languages:
         _log(f"[Pipeline] Selected languages: {','.join(sorted(languages))}")
     df = pd.read_excel(file_path, sheet_name=sheet_name)
@@ -515,7 +518,7 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
                 _log(f"[Pipeline] Overwrite existing M4A {row_index}/{total_valid}: {file_name}")
             _log(f"[Pipeline] Generate {row_index}/{total_valid}: word={word} -> {file_name}")
             try:
-                audio = _build_word_audio(word, meaning, engine_mode, speed, voice)
+                audio = _build_word_audio(word, meaning, engine_mode, speed, voice, audio_mode)
                 _export_m4a(audio, file_path_out, bitrate)
             except Exception as exc:
                 raise TTSGenerationError(

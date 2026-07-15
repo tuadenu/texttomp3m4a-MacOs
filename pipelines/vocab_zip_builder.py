@@ -195,6 +195,7 @@ def ensure_audio(
     bitrate: str,
     generate_missing: bool,
     progress: Callable[[str], None] | None = None,
+    audio_mode: str = "zh_vi",
 ) -> tuple[int, int]:
     """Reuse non-empty M4A files or generate them through the existing TTS core."""
     audio_root.mkdir(parents=True, exist_ok=True)
@@ -216,7 +217,7 @@ def ensure_audio(
         try:
             if partial_target.exists():
                 partial_target.unlink()
-            audio = _build_word_audio(item.word, item.meaning, engine, speed, voice)
+            audio = _build_word_audio(item.word, item.meaning, engine, speed, voice, audio_mode)
             _export_m4a(audio, str(partial_target), bitrate)
             if not partial_target.is_file() or partial_target.stat().st_size == 0:
                 raise BuildValidationError(f"TTS tạo audio rỗng: {target}")
@@ -607,6 +608,7 @@ def build_hsk30(
     speed: str = "Bình thường",
     voice: str = "Mặc định",
     bitrate: str = "32k",
+    audio_mode: str = "zh_vi",
     languages: Iterable[str] = ("vi", "zh"),
     config_confirmed: bool = True,
     pack_version: int = PACK_VERSION,
@@ -620,6 +622,8 @@ def build_hsk30(
         raise BuildValidationError("Vocab HSK 3.0 cần chọn cả Tiếng Việt và Tiếng Trung trong cấu hình TTS.")
     if bitrate not in {"26k", "32k"}:
         raise BuildValidationError("M4A bitrate chỉ hỗ trợ 26k hoặc 32k.")
+    if audio_mode not in {"zh_only", "zh_vi"}:
+        raise BuildValidationError("Audio mode chỉ hỗ trợ zh_only hoặc zh_vi.")
     output_root = Path(output_directory).expanduser().resolve() / "vocab" / "3.0" / level
     output_root.mkdir(parents=True, exist_ok=True)
     report_path = output_root / "build_report.json"
@@ -637,7 +641,10 @@ def build_hsk30(
         audio_root = output_root / "source_audio"
         if progress:
             progress("Tạo/tái sử dụng M4A")
-        reused, generated = ensure_audio(items, audio_root, sheet_name, engine, speed, voice, bitrate, generate_missing, progress)
+        reused, generated = ensure_audio(
+            items, audio_root, sheet_name, engine, speed, voice, bitrate,
+            generate_missing, progress, audio_mode=audio_mode,
+        )
         _write_local_csv(output_root / "source_check.csv", items)
         if progress:
             progress("Đóng BASE deterministic")
@@ -659,6 +666,7 @@ def build_hsk30(
                 "engine": engine,
                 "speed": speed,
                 "voice": voice,
+                "audioMode": audio_mode,
                 "languages": sorted(normalized_languages),
                 "m4a": {"codec": "AAC-LC", "channels": 1, "sampleRate": 22050, "bitrate": bitrate},
             },
@@ -710,6 +718,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--speed", default=os.environ.get("TTS_SPEED", "Bình thường"))
     parser.add_argument("--voice", default=os.environ.get("TTS_VOICE", "Mặc định"))
     parser.add_argument("--bitrate", default=os.environ.get("M4A_BITRATE", "32k"), choices=("26k", "32k"))
+    parser.add_argument("--audio-mode", default=os.environ.get("TTS_AUDIO_MODE", "zh_vi"), choices=("zh_only", "zh_vi"))
     parser.add_argument("--languages", default=os.environ.get("TTS_LANGUAGES", "vi,zh"))
     parser.add_argument(
         "--config-confirmed",
@@ -735,6 +744,7 @@ def main() -> int:
             speed=args.speed,
             voice=args.voice,
             bitrate=args.bitrate,
+            audio_mode=args.audio_mode,
             languages=args.languages.split(","),
             config_confirmed=args.config_confirmed == "true",
             pack_version=args.pack_version,

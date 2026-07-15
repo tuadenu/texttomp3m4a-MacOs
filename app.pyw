@@ -2592,7 +2592,15 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     def _vocab_bitrate_display(value):
         return "26 kbps" if _canonical_vocab_bitrate(value) == "26k" else "32 kbps"
 
-    def collect_vocab_tts_config(parent, bitrate_override=None):
+    def _canonical_vocab_audio_mode(value):
+        return "zh_only" if str(value or "").strip().lower() in {
+            "zh_only", "zh-only", "chinese_only", "chỉ đọc tiếng trung"
+        } else "zh_vi"
+
+    def _vocab_audio_mode_display(value):
+        return "Chỉ đọc tiếng Trung" if _canonical_vocab_audio_mode(value) == "zh_only" else "Đọc tiếng Trung + Tiếng Việt"
+
+    def collect_vocab_tts_config(parent, bitrate_override=None, audio_mode_override=None):
         """Take one confirmed, serialisable snapshot for both vocab workflows."""
         selected_languages = [code for code in ("vi", "en", "ja", "zh") if ngon_ngu_flags[code].get()]
         if not vocab_tts_confirmed_var.get():
@@ -2611,11 +2619,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             return None
         # The workflow-local selector is authoritative. Blank/invalid means 32 kbps.
         bitrate = _canonical_vocab_bitrate(bitrate_override)
+        audio_mode = _canonical_vocab_audio_mode(audio_mode_override)
         snapshot = {
             "engine": combo_engine.get().strip(),
             "speed": combo_toc_do_popup.get().strip(),
             "voice": combo_giong_popup.get().strip(),
             "bitrate": bitrate,
+            "audio_mode": audio_mode,
             "languages": selected_languages,
             "confirmed": True,
         }
@@ -2623,6 +2633,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             config["VOCAB_TTS_SPEED"] = snapshot["speed"]
             config["VOCAB_TTS_VOICE"] = snapshot["voice"]
             config["VOCAB_M4A_BITRATE"] = snapshot["bitrate"]
+            config["VOCAB_AUDIO_MODE"] = snapshot["audio_mode"]
             config["VOCAB_TTS_LANGUAGES"] = snapshot["languages"]
             config["VOCAB_TTS_CONFIG_CONFIRMED"] = True
             _write_app_config()
@@ -2637,6 +2648,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 "TTS_SPEED": snapshot["speed"],
                 "TTS_VOICE": snapshot["voice"],
                 "M4A_BITRATE": snapshot["bitrate"],
+                "TTS_AUDIO_MODE": snapshot["audio_mode"],
                 "TTS_LANGUAGES": ",".join(snapshot["languages"]),
                 "TTS_CONFIG_CONFIRMED": "true" if snapshot["confirmed"] else "false",
             }
@@ -3777,6 +3789,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         excel_var = tk.StringVar()
         sheet_var = tk.StringVar()
         legacy_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
+        legacy_audio_mode_var = tk.StringVar(value=_vocab_audio_mode_display(config.get("VOCAB_AUDIO_MODE", "zh_vi")))
         profile_var = tk.StringVar(value=profile_state["active_profile"])
         show_key_var = tk.BooleanVar(value=False)
 
@@ -3885,6 +3898,17 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             width=14,
         ).pack(side="left")
         tk.Label(quality_row, text="AAC-LC · mono · 22.05 kHz", fg="#666").pack(side="left", padx=(8, 0))
+
+        audio_mode_row = tk.Frame(main_frame)
+        audio_mode_row.pack(fill="x", pady=(0, 8))
+        tk.Label(audio_mode_row, text="Nội dung audio:", width=18, anchor="w").pack(side="left")
+        ttk.Combobox(
+            audio_mode_row,
+            textvariable=legacy_audio_mode_var,
+            values=("Chỉ đọc tiếng Trung", "Đọc tiếng Trung + Tiếng Việt"),
+            state="readonly",
+            width=30,
+        ).pack(side="left")
 
         tk.Label(main_frame, text=f"2) Cấu hình Supabase (lưu tại {env_path})", font=("Arial", 11, "bold")).pack(
             anchor="w"
@@ -4611,7 +4635,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             threading.Thread(target=worker, daemon=True).start()
 
         def on_run():
-            vocab_tts = collect_vocab_tts_config(cfg_win, legacy_bitrate_var.get())
+            vocab_tts = collect_vocab_tts_config(cfg_win, legacy_bitrate_var.get(), legacy_audio_mode_var.get())
             if not vocab_tts:
                 return
             deploy_mode = hoi_che_do_deploy(cfg_win)
@@ -4690,6 +4714,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         pack_version_label_var = tk.StringVar(value="Pack version: v1")
         output_var = tk.StringVar(value=os.path.join(BASE_DIR, "output"))
         builder_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
+        builder_audio_mode_var = tk.StringVar(value=_vocab_audio_mode_display(config.get("VOCAB_AUDIO_MODE", "zh_vi")))
         status_var = tk.StringVar(value="Sẵn sàng build local. Phase 2 chỉ chạy sau local PASS và xác nhận.")
         summary_var = tk.StringVar(value="Chưa đọc Excel")
         compatibility_var = tk.StringVar(value="Compatibility hash: chưa verify")
@@ -4902,15 +4927,28 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         ).pack(side="left")
         tk.Label(quality_row, text="AAC-LC · mono · 22.05 kHz", fg="#666").pack(side="left", padx=(8, 0))
 
+        audio_mode_row = tk.Frame(frame)
+        audio_mode_row.pack(fill="x", pady=3)
+        tk.Label(audio_mode_row, text="Nội dung audio:", width=18, anchor="w").pack(side="left")
+        ttk.Combobox(
+            audio_mode_row,
+            textvariable=builder_audio_mode_var,
+            values=("Chỉ đọc tiếng Trung", "Đọc tiếng Trung + Tiếng Việt"),
+            state="readonly",
+            width=30,
+        ).pack(side="left")
+
         tts_summary_var = tk.StringVar()
 
         def refresh_tts_summary(*_):
             tts_summary_var.set(
                 f"Engine: {combo_engine.get()} | Giọng: {combo_giong_popup.get()} | "
-                f"Tốc độ: {combo_toc_do_popup.get()} | M4A: {builder_bitrate_var.get() or '32 kbps'}"
+                f"Tốc độ: {combo_toc_do_popup.get()} | M4A: {builder_bitrate_var.get() or '32 kbps'} | "
+                f"Audio: {builder_audio_mode_var.get()}"
             )
 
         builder_bitrate_var.trace_add("write", refresh_tts_summary)
+        builder_audio_mode_var.trace_add("write", refresh_tts_summary)
         tts_row = tk.Frame(frame)
         tts_row.pack(fill="x", pady=(8, 5))
         tk.Label(tts_row, text="TTS dùng chung:", width=18, anchor="w", font=("Arial", 10, "bold")).pack(side="left")
@@ -5339,7 +5377,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 messagebox.showerror("Không phát được audio", str(exc), parent=builder_win)
 
         def run_local_build():
-            vocab_tts = collect_vocab_tts_config(builder_win, builder_bitrate_var.get())
+            vocab_tts = collect_vocab_tts_config(builder_win, builder_bitrate_var.get(), builder_audio_mode_var.get())
             if not vocab_tts:
                 return
             try:
@@ -5364,6 +5402,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     "--pack-version", pack_version_var.get(),
                     "--engine", vocab_tts["engine"], "--speed", vocab_tts["speed"],
                     "--voice", vocab_tts["voice"], "--bitrate", vocab_tts["bitrate"],
+                    "--audio-mode", vocab_tts["audio_mode"],
                     "--languages", ",".join(vocab_tts["languages"]),
                     "--config-confirmed", "true",
                 ]
@@ -5593,7 +5632,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Button(publish_controls, text="? Publish Help", width=14, command=lambda: open_hsk30_help("Cách kích hoạt cấp độ mới trong app")).pack(side="left", padx=(6, 0))
 
         pack_version_var.trace_add("write", refresh_pack_version_label)
-        for var in (excel_var, sheet_var, level_display_var, output_var, builder_bitrate_var, pack_version_var):
+        for var in (excel_var, sheet_var, level_display_var, output_var, builder_bitrate_var, builder_audio_mode_var, pack_version_var):
             var.trace_add("write", clear_build_state)
         refresh_pack_version_label()
         refresh_deploy_gate()

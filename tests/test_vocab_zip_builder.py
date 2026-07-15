@@ -5,9 +5,11 @@ import unittest
 import zipfile
 import sys
 import types
+from unittest.mock import patch
 from pathlib import Path
 
 import pandas as pd
+from pydub import AudioSegment
 
 if "pypinyin" not in sys.modules:
     fake_pypinyin = types.ModuleType("pypinyin")
@@ -23,6 +25,7 @@ if "pypinyin" not in sys.modules:
     sys.modules["pypinyin"] = fake_pypinyin
 
 from pipelines.vocab_zip_builder import BuildValidationError, build_hsk30, deployment_allowed, verify_pack, verify_pack_pair
+from pipelines import vocab_pipeline
 
 
 class VocabZipBuilderTests(unittest.TestCase):
@@ -202,6 +205,30 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertIn("raise TTSGenerationError", source)
         self.assertIn('SUPPORTED_M4A_BITRATES = {"26k", "32k"}', source)
 
+    def test_polly_branch_uses_gtts_directly_for_vi_and_on_polly_failure(self):
+        project = Path(__file__).resolve().parents[1]
+        source = (project / "pipelines" / "vocab_pipeline.py").read_text(encoding="utf-8")
+        polly_branch = source.split('if engine_clean == "polly":', 1)[1].split(
+            "# Google Cloud (and legacy/unrecognised values):", 1
+        )[0]
+        self.assertIn("Polly does not support lang={lang_code}; using gTTS", polly_branch)
+        self.assertIn("Polly failed for lang={lang_code}: {exc}; falling back to gTTS", polly_branch)
+        self.assertNotIn("_tts_segment_google", polly_branch)
+
+    def test_vocab_audio_mode_zh_only_skips_vietnamese_segment(self):
+        segment = AudioSegment.silent(duration=100)
+        with patch.object(vocab_pipeline, "_tts_segment", return_value=(segment, None)) as tts:
+            vocab_pipeline._build_word_audio("爱", "yêu", "gTTS", audio_mode="zh_only")
+        self.assertEqual(1, tts.call_count)
+        self.assertEqual("zh-CN", tts.call_args.args[1])
+
+    def test_vocab_audio_mode_zh_vi_keeps_two_segments(self):
+        segment = AudioSegment.silent(duration=100)
+        with patch.object(vocab_pipeline, "_tts_segment", return_value=(segment, None)) as tts:
+            vocab_pipeline._build_word_audio("爱", "yêu", "gTTS", audio_mode="zh_vi")
+        self.assertEqual(2, tts.call_count)
+        self.assertEqual(["zh-CN", "vi"], [call.args[1] for call in tts.call_args_list])
+
     def test_hsk7_9_identity_is_never_split_into_hsk7_hsk8_hsk9(self):
         self._write_excel()
         out = self.temp_dir / "out"
@@ -225,10 +252,11 @@ class VocabZipBuilderTests(unittest.TestCase):
     def test_both_vocab_workflow_windows_have_direct_m4a_quality_selectors(self):
         project = Path(__file__).resolve().parents[1]
         app_source = (project / "app.pyw").read_text(encoding="utf-8")
+        builder_source = (project / "pipelines" / "vocab_zip_builder.py").read_text(encoding="utf-8")
         self.assertIn("legacy_bitrate_var", app_source)
         self.assertIn("builder_bitrate_var", app_source)
-        self.assertIn('collect_vocab_tts_config(cfg_win, legacy_bitrate_var.get())', app_source)
-        self.assertIn('collect_vocab_tts_config(builder_win, builder_bitrate_var.get())', app_source)
+        self.assertIn('collect_vocab_tts_config(cfg_win, legacy_bitrate_var.get(), legacy_audio_mode_var.get())', app_source)
+        self.assertIn('collect_vocab_tts_config(builder_win, builder_bitrate_var.get(), builder_audio_mode_var.get())', app_source)
         self.assertIn('"--bitrate", vocab_tts["bitrate"]', app_source)
         self.assertIn('builder_bitrate_var.trace_add("write", refresh_tts_summary)', app_source)
         self.assertIn('textvariable=tts_summary_var', app_source)
@@ -253,6 +281,12 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertNotIn('Chất lượng M4A vocab (HSK 2.0 / 3.0)', app_source)
         self.assertIn('DEFAULT_VOCAB_M4A_BITRATE = "32k"', app_source)
         self.assertIn('return "26k" if', app_source)
+        self.assertGreaterEqual(app_source.count('text="Nội dung audio:"'), 2)
+        self.assertIn('"Chỉ đọc tiếng Trung"', app_source)
+        self.assertIn('"Đọc tiếng Trung + Tiếng Việt"', app_source)
+        self.assertIn('"--audio-mode", vocab_tts["audio_mode"]', app_source)
+        self.assertIn('"TTS_AUDIO_MODE": snapshot["audio_mode"]', app_source)
+        self.assertIn('"audioMode": audio_mode', builder_source)
 
 
 if __name__ == "__main__":
