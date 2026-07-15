@@ -169,9 +169,10 @@ def canonical_audio_uri(level: str, item: SourceVocab) -> str:
 
 
 def _ordered_ids_hash(items: Iterable[SourceVocab]) -> str:
-    # HSK 2.0 hashes the compact JSON representation of the ordered string IDs.
+    # Flutter/HSK2 contract: compact JSON UTF-8, with no trailing newline.
     ordered = [item.stable_id for item in items]
-    return _sha256_bytes(_json_bytes(ordered))
+    payload = json.dumps(ordered, ensure_ascii=False, separators=(",", ":"), sort_keys=False).encode("utf-8")
+    return _sha256_bytes(payload)
 
 
 def _validate_level(level: str) -> None:
@@ -500,7 +501,9 @@ def validate_pack_data(
         errors.append("audio_url không unique")
     if manifest.get("orderedVocabIds") != ids:
         errors.append("orderedVocabIds không khớp vocab.json")
-    expected_ids_hash = _sha256_bytes(_json_bytes(ids))
+    expected_ids_hash = _sha256_bytes(
+        json.dumps(ids, ensure_ascii=False, separators=(",", ":"), sort_keys=False).encode("utf-8")
+    )
     if manifest.get("orderedVocabIdsSha256") != expected_ids_hash:
         errors.append("orderedVocabIdsSha256 không đúng")
     if manifest.get("vocabCount") != len(vocab):

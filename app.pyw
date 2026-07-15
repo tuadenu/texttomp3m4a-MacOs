@@ -4646,6 +4646,16 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     def hsk30_vocab_zip_builder():
         """Local-only HSK 3.0 builder.  It never invokes the legacy deploy script."""
+        from pipelines.vocab_zip_deploy import (
+            CONFIRMATION_PHRASE as DEPLOY_CONFIRMATION_PHRASE,
+            DeployValidationError,
+            SupabaseStorageRestClient,
+            build_plan,
+            input_fingerprint,
+            load_local_source_catalog,
+            deploy_with_client,
+        )
+
         builder_win = tk.Toplevel(popup)
         set_popup_icon(builder_win)
         builder_win.title("HSK 3.0 Vocab ZIP Builder")
@@ -4663,8 +4673,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         level_display_var = tk.StringVar(value="HSK 1")
         output_var = tk.StringVar(value=os.path.join(BASE_DIR, "output"))
         builder_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
-        status_var = tk.StringVar(value="Sẵn sàng build local. Deploy/publish pilot đầu đang disabled.")
+        status_var = tk.StringVar(value="Sẵn sàng build local. Phase 2 chỉ chạy sau local PASS và xác nhận.")
         summary_var = tk.StringVar(value="Chưa đọc Excel")
+        compatibility_var = tk.StringVar(value="Compatibility hash: chưa verify")
         artifact_state = {"result": None, "fingerprint": None}
         build_runtime = {
             "process": None,
@@ -4788,6 +4799,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             text="Builder tái dùng core TTS/M4A và pinyin filename của vocab_pipeline; profile Google/AWS hiện tại được truyền vào subprocess.",
             fg="#666", wraplength=760, justify="left",
         ).pack(anchor="w", pady=(0, 8))
+        tk.Label(frame, textvariable=compatibility_var, fg="#245a24", anchor="w").pack(fill="x", pady=(0, 5))
 
         phase_box = tk.LabelFrame(frame, text="Trạng thái nấc 1 — Build + Validate Local")
         phase_box.pack(fill="x", pady=(4, 8))
@@ -4882,8 +4894,68 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         def fingerprint(config):
             excel_path, sheet, level, output = config
-            stat = os.stat(excel_path)
-            return (os.path.abspath(excel_path), stat.st_mtime_ns, stat.st_size, sheet, level, os.path.abspath(output))
+            return input_fingerprint(
+                excel_path,
+                sheet,
+                level,
+                output,
+                bitrate=_canonical_vocab_bitrate(builder_bitrate_var.get()),
+            )
+
+        def load_active_supabase_profile():
+            """Read the existing profile/key without changing or displaying the key."""
+            env_values = {}
+            env_path = os.path.join(BASE_DIR, ".env")
+            if os.path.isfile(env_path):
+                try:
+                    for line in Path(env_path).read_text(encoding="utf-8").splitlines():
+                        stripped = line.strip()
+                        if stripped and not stripped.startswith("#") and "=" in stripped:
+                            key, value = stripped.split("=", 1)
+                            env_values[key.strip()] = value.strip()
+                except Exception:
+                    env_values = {}
+            default_profile = {
+                "SUPABASE_URL": env_values.get("SUPABASE_URL", ""),
+                "SUPABASE_SERVICE_ROLE_KEY": env_values.get("SUPABASE_SERVICE_ROLE_KEY", ""),
+                "SUPABASE_BUCKET": env_values.get("SUPABASE_BUCKET", ""),
+            }
+            profile_path = os.path.join(APPDATA_ROOT, "supabase_import_profiles.json")
+            active_name = "dev"
+            profile = dict(default_profile)
+            try:
+                raw = json.loads(Path(profile_path).read_text(encoding="utf-8"))
+                active_name = str(raw.get("active_profile", "dev"))
+                profiles = raw.get("profiles", {})
+                if isinstance(profiles, dict) and isinstance(profiles.get(active_name), dict):
+                    profile.update(profiles[active_name])
+            except Exception:
+                pass
+            return active_name, profile
+
+        def current_deploy_plan():
+            result = artifact_state.get("result")
+            current_config = selected_config()
+            profile_name, profile = load_active_supabase_profile()
+            return build_plan(
+                result,
+                current_config,
+                artifact_state.get("fingerprint"),
+                profile,
+                profile_name=profile_name,
+            )
+
+        def refresh_deploy_gate():
+            try:
+                load_local_source_catalog(BASE_DIR)
+                plan = current_deploy_plan()
+            except (DeployValidationError, ValueError, OSError):
+                deploy_btn.config(state="disabled")
+                compatibility_var.set("Compatibility hash: chưa PASS")
+                return False
+            compatibility_var.set(f"Compatibility hash: {plan.compatibility_hash}")
+            deploy_btn.config(state="normal")
+            return True
 
         def play_first_audio():
             result = artifact_state.get("result")
@@ -4996,20 +5068,92 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         f"audio cần tạo/thiếu ban đầu={result['audioGenerated']} | "
                         f"BASE={base['manifest']['vocabCount']} | PLUS={plus['manifest']['vocabCount']}"
                     )
-                    status_var.set("Nấc 1 PASS. Nấc 2 vẫn disabled: pilot này không upload hoặc publish.")
+                    status_var.set("Nấc 1 PASS. Nấc 2 đã mở; cần xác nhận trước remote write.")
                     append_log(f"BASE: {base['zip']} ({base['bytes']} bytes, {base['sha256']})")
                     append_log(f"PLUS: {plus['zip']} ({plus['bytes']} bytes, {plus['sha256']})")
-                    deploy_btn.config(state="disabled")
+                    refresh_deploy_gate()
                 builder_win.after(0, done)
 
             threading.Thread(target=worker, daemon=True).start()
 
         def deploy_pending():
-            messagebox.showinfo(
-                "Deploy chưa được bật",
-                "Pilot đầu chỉ build/validate local. Upload ZIP, remote verify và publish catalog chưa được implement/kích hoạt.",
-                parent=builder_win,
+            try:
+                source_payload, _ = load_local_source_catalog(BASE_DIR)
+                plan = current_deploy_plan()
+                profile_name, profile = load_active_supabase_profile()
+            except Exception as exc:
+                deploy_btn.config(state="disabled")
+                messagebox.showwarning("Deploy chưa đủ điều kiện", str(exc), parent=builder_win)
+                return
+
+            confirm = tk.Toplevel(builder_win)
+            set_popup_icon(confirm)
+            confirm.title("Xác nhận Phase 2 — HSK1 3.0")
+            confirm.geometry("760x610")
+            confirm.transient(builder_win)
+            confirm.grab_set()
+            details = (
+                f"Profile: {plan.profile_name}\n"
+                f"Project URL: {plan.project_url}\n"
+                f"Bucket: {plan.bucket}\n"
+                f"Level: {plan.level} | packVersion: v{plan.pack_version}\n\n"
+                f"BASE local: {plan.base_local_path}\n"
+                f"BASE bytes/SHA: {plan.base_bytes} / {plan.base_sha256}\n"
+                f"BASE remote: {plan.base_object_path}\n\n"
+                f"PLUS local: {plan.plus_local_path}\n"
+                f"PLUS bytes/SHA: {plan.plus_bytes} / {plan.plus_sha256}\n"
+                f"PLUS remote: {plan.plus_object_path}\n\n"
+                f"Catalog nguồn local: {plan.catalog_source_url}\n"
+                f"Catalog nguồn bytes/SHA: {plan.catalog_source_bytes} / {plan.catalog_source_sha256}\n"
+                f"Catalog đích: {plan.catalog_target_path}\n\n"
+                f"Compatibility hash BASE/PLUS: {plan.compatibility_hash}\n\n"
+                "CẢNH BÁO: đây là thao tác remote write thật. Chỉ upload ZIP BASE, ZIP PLUS "
+                "và catalog combined; không upload audio/Excel/JSON rời."
             )
+            tk.Label(confirm, text=details, anchor="w", justify="left", wraplength=720).pack(fill="both", expand=True, padx=14, pady=(14, 8))
+            tk.Label(confirm, text=f"Nhập chính xác: {DEPLOY_CONFIRMATION_PHRASE}", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            phrase_var = tk.StringVar()
+            tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=(4, 10))
+
+            def confirm_remote_write():
+                if phrase_var.get() != DEPLOY_CONFIRMATION_PHRASE:
+                    messagebox.showwarning("Xác nhận sai", "Chuỗi xác nhận không khớp; chưa có remote request nào được gọi.", parent=confirm)
+                    return
+                confirm.destroy()
+                deploy_btn.config(state="disabled")
+                build_btn.config(state="disabled")
+                status_var.set("Đang deploy Phase 2 — remote write…")
+                append_log("=== HSK1 3.0 DEPLOY + VERIFY + PUBLISH ===")
+
+                def worker():
+                    try:
+                        key = str(profile.get("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip()
+                        client = SupabaseStorageRestClient(
+                            plan.project_url,
+                            key,
+                            network_enabled=True,
+                        )
+                        result = deploy_with_client(
+                            client,
+                            plan,
+                            source_catalog_payload=source_payload,
+                            confirmation=phrase_var.get(),
+                            progress=lambda message: builder_win.after(0, append_log, message),
+                        )
+                    except Exception as exc:
+                        error_message = str(exc)
+                        builder_win.after(0, lambda: status_var.set(f"DEPLOY FAIL/PARTIAL — {error_message}"))
+                        builder_win.after(0, append_log, f"✖ Phase 2 thất bại: {error_message}")
+                        return
+                    builder_win.after(0, lambda: status_var.set("PUBLISH PASS — BASE, PLUS và catalog đã GET-verify."))
+                    builder_win.after(0, append_log, f"Catalog PASS: {result['catalogBytes']} bytes, SHA {result['catalogSha256']}")
+
+                threading.Thread(target=worker, daemon=True).start()
+
+            buttons = tk.Frame(confirm)
+            buttons.pack(fill="x", padx=14, pady=(0, 14))
+            tk.Button(buttons, text="Huỷ", width=12, command=confirm.destroy).pack(side="right", padx=(8, 0))
+            tk.Button(buttons, text="Xác nhận deploy thật", width=20, command=confirm_remote_write).pack(side="right")
 
         build_btn = tk.Button(controls, text="1. Build + Validate Local", width=25, bg="#cce6ff", command=run_local_build)
         build_btn.pack(side="left")
@@ -5018,10 +5162,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         cancel_btn = tk.Button(controls, text="✖ Huỷ build", width=11, state="disabled", command=cancel_build)
         cancel_btn.pack(side="left", padx=(6, 0))
         tk.Button(controls, text="▶ Phát thử audio local", width=18, command=play_first_audio).pack(side="left", padx=8)
-        deploy_btn = tk.Button(controls, text="2. Deploy + Verify + Publish (Pending)", width=31, state="disabled", command=deploy_pending)
+        deploy_btn = tk.Button(controls, text="2. Deploy + Verify + Publish", width=31, state="disabled", command=deploy_pending)
         deploy_btn.pack(side="left")
 
-        for var in (excel_var, sheet_var, level_display_var, output_var):
+        for var in (excel_var, sheet_var, level_display_var, output_var, builder_bitrate_var):
             var.trace_add("write", clear_build_state)
 
 

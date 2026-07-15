@@ -32,12 +32,45 @@ PAUSE_MS = 500
 TARGET_SAMPLE_RATE = 22050
 TARGET_CHANNELS = 1
 TARGET_BITRATE = "32k"
+SUPPORTED_M4A_BITRATES = {"26k", "32k"}
 
 # gTTS local cache and rate limiting
 _TTS_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".tts_cache")
 os.makedirs(_TTS_CACHE_DIR, exist_ok=True)
 _gtts_lock = threading.Lock()
 _last_gtts_time = 0.0
+
+
+class TTSGenerationError(RuntimeError):
+    """A requested TTS engine could not create audible source audio."""
+
+
+def _is_slow_speed(speed: str | None) -> bool:
+    return (speed or "").strip().lower() == "chậm"
+
+
+def _resolve_m4a_bitrate(bitrate: str | None = None) -> str:
+    resolved = (bitrate or os.environ.get("M4A_BITRATE") or TARGET_BITRATE).strip().lower()
+    if resolved not in SUPPORTED_M4A_BITRATES:
+        raise ValueError(
+            f"M4A bitrate không hỗ trợ: {resolved}. Chỉ hỗ trợ: "
+            + ", ".join(sorted(SUPPORTED_M4A_BITRATES))
+        )
+    return resolved
+
+
+def _vocab_tts_runtime_config() -> tuple[str, str, str, set[str]]:
+    """Read the UI snapshot passed to the vocab subprocess without secrets."""
+    if str(os.environ.get("TTS_CONFIG_CONFIRMED", "true")).strip().lower() not in {"1", "true", "yes"}:
+        raise ValueError("Chưa xác nhận dùng cấu hình TTS hiện tại cho vocab HSK.")
+    speed = (os.environ.get("TTS_SPEED") or "Bình thường").strip()
+    voice = (os.environ.get("TTS_VOICE") or "Mặc định").strip()
+    bitrate = _resolve_m4a_bitrate()
+    raw_languages = os.environ.get("TTS_LANGUAGES", "").strip()
+    languages = {value.strip().lower() for value in raw_languages.split(",") if value.strip()}
+    if raw_languages and not {"vi", "zh"}.issubset(languages):
+        raise ValueError("Vocab HSK cần chọn cả Tiếng Việt và Tiếng Trung trong cấu hình TTS.")
+    return speed, voice, bitrate, languages
 
 
 def _log(message):
@@ -168,7 +201,7 @@ def _google_tts_client():
     return texttospeech.TextToSpeechClient()
 
 
-def _tts_segment_gtts(text, lang, temp_dir):
+def _tts_segment_gtts(text, lang, temp_dir, speed="Bình thường"):
     temp_mp3 = os.path.join(temp_dir, f"tts_{uuid.uuid4().hex}.mp3")
     max_retries = int(os.environ.get("TTS_MAX_RETRIES", "5"))
     base_delay = float(os.environ.get("TTS_BASE_DELAY_SECONDS", "5"))
@@ -196,7 +229,7 @@ def _tts_segment_gtts(text, lang, temp_dir):
                     time.sleep(to_sleep)
                 _last_gtts_time = time.time()
 
-            gTTS(text=text, lang=lang).save(temp_mp3)
+            gTTS(text=text, lang=lang, slow=_is_slow_speed(speed)).save(temp_mp3)
             # copy to cache for reuse
             try:
                 shutil.copyfile(temp_mp3, cache_path)
@@ -225,11 +258,10 @@ def _tts_segment_gtts(text, lang, temp_dir):
     except OSError:
         pass
 
-    _log(f"[Pipeline] Fallback to silence for lang={lang}")
-    return AudioSegment.silent(duration=PAUSE_MS), None
+    raise TTSGenerationError(f"gTTS không tạo được audio cho lang={lang}: {text!r}")
 
 
-def _tts_segment_polly(text, lang, temp_dir):
+def _tts_segment_polly(text, lang, temp_dir, speed="Bình thường", voice="Mặc định"):
     temp_mp3 = os.path.join(temp_dir, f"tts_{uuid.uuid4().hex}.mp3")
     lang_code = _normalize_lang_code(lang)
     voice_id = _polly_voice_id(lang_code)
@@ -242,11 +274,16 @@ def _tts_segment_polly(text, lang, temp_dir):
         region_name=_get_polly_region(),
     ).client("polly")
 
+    text_type = "text"
+    tts_text = text
+    if _is_slow_speed(speed):
+        tts_text = f"<speak><prosody rate='80%'>{text}</prosody></speak>"
+        text_type = "ssml"
     response = polly_client.synthesize_speech(
         VoiceId=voice_id,
         OutputFormat="mp3",
-        Text=text,
-        TextType="text",
+        Text=tts_text,
+        TextType=text_type,
     )
 
     with open(temp_mp3, "wb") as f:
@@ -255,7 +292,7 @@ def _tts_segment_polly(text, lang, temp_dir):
     return AudioSegment.from_mp3(temp_mp3), temp_mp3
 
 
-def _tts_segment_google(text, lang, temp_dir):
+def _tts_segment_google(text, lang, temp_dir, speed="Bình thường", voice="Mặc định"):
     """Use Google Cloud Text-to-Speech via ADC or service account."""
     if texttospeech is None:
         raise RuntimeError("google-cloud-texttospeech not installed")
@@ -279,6 +316,9 @@ def _tts_segment_google(text, lang, temp_dir):
     profile = _get_google_profile(lang)
     voice_name = (profile.get("voice_name") or "").strip()
     gender_label = (profile.get("gender") or "Mặc định").strip()
+    requested_voice = (voice or "Mặc định").strip()
+    if not voice_name and requested_voice in {"Nam", "Nữ", "Trung tính"}:
+        gender_label = requested_voice
 
     voice_kwargs = {"language_code": lang_code}
     if voice_name:
@@ -297,7 +337,10 @@ def _tts_segment_google(text, lang, temp_dir):
             pass
 
     voice = texttospeech.VoiceSelectionParams(**voice_kwargs)
-    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
+    audio_kwargs = {"audio_encoding": texttospeech.AudioEncoding.MP3}
+    if _is_slow_speed(speed):
+        audio_kwargs["speaking_rate"] = 0.8
+    audio_config = texttospeech.AudioConfig(**audio_kwargs)
 
     last_exc = None
     for attempt in range(1, max_retries + 1):
@@ -316,58 +359,63 @@ def _tts_segment_google(text, lang, temp_dir):
     raise last_exc
 
 
-def _tts_segment(text, lang, temp_dir, engine_mode):
+def _tts_segment(text, lang, temp_dir, engine_mode, speed="Bình thường", voice="Mặc định"):
     lang_code = _normalize_lang_code(lang)
     engine_clean = (engine_mode or "gTTS").strip().lower()
+    if engine_clean == "gtts":
+        # gTTS is an explicit user choice. Do not probe Google Cloud first.
+        return _tts_segment_gtts(text, lang_code, temp_dir, speed)
+
     # If engine explicitly set to Polly, try Polly first, then Google, then gTTS
     if engine_clean == "polly":
         if lang_code in {"en", "ja", "zh"}:
             try:
-                return _tts_segment_polly(text, lang_code, temp_dir)
+                return _tts_segment_polly(text, lang_code, temp_dir, speed, voice)
             except Exception as exc:
                 _log(f"[Pipeline] Polly failed for lang={lang_code}: {exc}")
                 _log(f"[Pipeline] Trying Google Cloud TTS for lang={lang_code}")
                 try:
-                    return _tts_segment_google(text, lang_code, temp_dir)
+                    return _tts_segment_google(text, lang_code, temp_dir, speed, voice)
                 except Exception as gexc:
                     _log(f"[Pipeline] Google Cloud TTS also failed: {gexc}; falling back to gTTS")
-                    return _tts_segment_gtts(text, lang_code, temp_dir)
+                    return _tts_segment_gtts(text, lang_code, temp_dir, speed)
 
         _log(f"[Pipeline] Polly does not support lang={lang_code}; trying Google Cloud then gTTS")
         try:
-            return _tts_segment_google(text, lang_code, temp_dir)
+            return _tts_segment_google(text, lang_code, temp_dir, speed, voice)
         except Exception as gexc:
             _log(f"[Pipeline] Google Cloud TTS failed for lang={lang_code}: {gexc}; falling back to gTTS")
-            return _tts_segment_gtts(text, lang_code, temp_dir)
+            return _tts_segment_gtts(text, lang_code, temp_dir, speed)
 
-    # Default (engine is gTTS or unspecified): prefer Google Cloud, then gTTS, then Polly
+    # Google Cloud (and legacy/unrecognised values): prefer Google Cloud then gTTS.
     try:
-        return _tts_segment_google(text, lang_code, temp_dir)
+        return _tts_segment_google(text, lang_code, temp_dir, speed, voice)
     except Exception as exc:
         _log(f"[Pipeline] Google Cloud TTS failed for lang={lang_code}: {exc}; falling back to gTTS")
 
     try:
-        return _tts_segment_gtts(text, lang_code, temp_dir)
+        return _tts_segment_gtts(text, lang_code, temp_dir, speed)
     except Exception as exc:
         _log(f"[Pipeline] gTTS failed for lang={lang_code}: {exc}")
         if lang_code in {"en", "ja", "zh"}:
             _log(f"[Pipeline] Fallback to Polly for lang={lang_code}")
             try:
-                return _tts_segment_polly(text, lang_code, temp_dir)
+                return _tts_segment_polly(text, lang_code, temp_dir, speed, voice)
             except Exception as polly_exc:
                 _log(f"[Pipeline] Polly fallback failed for lang={lang_code}: {polly_exc}")
-        _log(f"[Pipeline] Fallback to silence for lang={lang_code}")
-        return AudioSegment.silent(duration=PAUSE_MS), None
+        raise TTSGenerationError(f"Không tạo được audio bằng engine {engine_mode} cho lang={lang_code}") from exc
 
 
-def _build_word_audio(word, meaning, engine_mode):
+def _build_word_audio(word, meaning, engine_mode, speed="Bình thường", voice="Mặc định"):
     temp_dir = tempfile.gettempdir()
     created_files = []
     try:
-        zh_seg, zh_path = _tts_segment(word, "zh-CN", temp_dir, engine_mode)
+        zh_voice = "Nam" if voice == "Hội thoại 1 câu nam - 1 câu nữ" else voice
+        vi_voice = "Nữ" if voice == "Hội thoại 1 câu nam - 1 câu nữ" else voice
+        zh_seg, zh_path = _tts_segment(word, "zh-CN", temp_dir, engine_mode, speed, zh_voice)
         if zh_path:
             created_files.append(zh_path)
-        vi_seg, vi_path = _tts_segment(meaning, "vi", temp_dir, engine_mode)
+        vi_seg, vi_path = _tts_segment(meaning, "vi", temp_dir, engine_mode, speed, vi_voice)
         if vi_path:
             created_files.append(vi_path)
 
@@ -382,13 +430,13 @@ def _build_word_audio(word, meaning, engine_mode):
                 pass
 
 
-def _export_m4a(audio, file_path):
+def _export_m4a(audio, file_path, bitrate=None):
     normalized = audio.set_channels(TARGET_CHANNELS).set_frame_rate(TARGET_SAMPLE_RATE)
     normalized.export(
         file_path,
         format="ipod",
         codec="aac",
-        bitrate=TARGET_BITRATE,
+        bitrate=_resolve_m4a_bitrate(bitrate),
         parameters=["-ac", str(TARGET_CHANNELS), "-ar", str(TARGET_SAMPLE_RATE)],
     )
 
@@ -396,9 +444,13 @@ def _export_m4a(audio, file_path):
 def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
     overwrite_local_audio = str(os.environ.get("OVERWRITE_LOCAL_AUDIO", "false")).lower() == "true"
     engine_mode = os.environ.get("TTS_ENGINE", "gTTS")
+    speed, voice, bitrate, languages = _vocab_tts_runtime_config()
     _log(f"[Pipeline] Start: excel={file_path}")
     _log(f"[Pipeline] Sheet: {sheet_name}")
     _log(f"[Pipeline] TTS engine: {engine_mode}")
+    _log(f"[Pipeline] TTS speed: {speed} | voice: {voice} | M4A: AAC-LC mono 22050Hz {bitrate}")
+    if languages:
+        _log(f"[Pipeline] Selected languages: {','.join(sorted(languages))}")
     df = pd.read_excel(file_path, sheet_name=sheet_name)
     col = _normalize_columns(df)
 
@@ -462,8 +514,13 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
             if overwrite_local_audio and os.path.isfile(file_path_out):
                 _log(f"[Pipeline] Overwrite existing M4A {row_index}/{total_valid}: {file_name}")
             _log(f"[Pipeline] Generate {row_index}/{total_valid}: word={word} -> {file_name}")
-            audio = _build_word_audio(word, meaning, engine_mode)
-            _export_m4a(audio, file_path_out)
+            try:
+                audio = _build_word_audio(word, meaning, engine_mode, speed, voice)
+                _export_m4a(audio, file_path_out, bitrate)
+            except Exception as exc:
+                raise TTSGenerationError(
+                    f"TTS thất bại tại vocab {row_index} ({word!r}); không tạo audio im lặng: {exc}"
+                ) from exc
             generated_count += 1
 
         _log(f"[Pipeline] Progress: processed {row_index}/{total_valid} items")
@@ -558,4 +615,8 @@ def parse_args():
 
 if __name__ == "__main__":
     args = parse_args()
-    run_vocab_pipeline(args.excel_file, args.sheet, skip_validate=args.skip_validate)
+    try:
+        run_vocab_pipeline(args.excel_file, args.sheet, skip_validate=args.skip_validate)
+    except Exception as exc:
+        print(f"STATUS: FAIL\n{exc}")
+        raise SystemExit(1)

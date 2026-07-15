@@ -42,6 +42,9 @@ package-lock.json
 # Output
 output/
 
+pipelines/.tts_cache/
+
+.claude/
 # Secrets
 *.enc
 
