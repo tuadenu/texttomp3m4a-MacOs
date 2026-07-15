@@ -121,25 +121,32 @@ def _validate_level(level: str) -> str:
     return normalized
 
 
-def pack_id(level: str, segment: str) -> str:
+def pack_id(level: str, segment: str, pack_version: int = PACK_VERSION) -> str:
     level = _validate_level(level)
     if segment not in {"base", "plus"}:
         raise DeployValidationError("segment phải là base hoặc plus.")
-    return f"vocab:3.0:{level}:{segment}:v1"
+    if int(pack_version) < 1:
+        raise DeployValidationError("packVersion phải >= 1.")
+    return f"vocab:3.0:{level}:{segment}:v{int(pack_version)}"
 
 
-def collection_id(level: str, segment: str) -> str:
+def collection_id(level: str, segment: str, pack_version: int = PACK_VERSION) -> str:
     level = _validate_level(level)
     if segment not in {"base", "plus"}:
         raise DeployValidationError("segment phải là base hoặc plus.")
-    return f"vocab_level::3.0::{level}::{segment}::v1"
+    if int(pack_version) < 1:
+        raise DeployValidationError("packVersion phải >= 1.")
+    return f"vocab_level::3.0::{level}::{segment}::v{int(pack_version)}"
 
 
-def pack_object_path(level: str, segment: str) -> str:
+def pack_object_path(level: str, segment: str, pack_version: int = PACK_VERSION) -> str:
     level = _validate_level(level)
     if segment not in {"base", "plus"}:
         raise DeployValidationError("segment phải là base hoặc plus.")
-    return f"vocab/3.0/{level}/{segment}/v1/vocab_{level}_30_{segment}_v1.zip"
+    if int(pack_version) < 1:
+        raise DeployValidationError("packVersion phải >= 1.")
+    version = int(pack_version)
+    return f"vocab/3.0/{level}/{segment}/v{version}/vocab_{level}_30_{segment}_v{version}.zip"
 
 
 def catalog_object_path(revision: int) -> str:
@@ -285,7 +292,11 @@ def validate_local_receipt(result: Mapping[str, object] | None, config: tuple[st
     except Exception as exc:
         raise DeployValidationError(f"BASE/PLUS verify thất bại: {exc}") from exc
     contract = validate_compatibility_contract(packs["base"]["localPath"], packs["plus"]["localPath"], level)
-    return {"status": "PASS", "fingerprint": current, "packs": packs, "compatibility": contract}
+    base_version = int(contract["baseManifest"].get("packVersion", 0) or 0)
+    plus_version = int(contract["plusManifest"].get("packVersion", 0) or 0)
+    if base_version < 1 or base_version != plus_version:
+        raise DeployValidationError("BASE/PLUS packVersion không khớp hoặc không hợp lệ.")
+    return {"status": "PASS", "fingerprint": current, "packs": packs, "packVersion": base_version, "compatibility": contract}
 
 
 def build_plan(result: Mapping[str, object] | None, config: tuple[str, str, str, str], receipt_fingerprint: Mapping[str, object] | None, profile: Mapping[str, object], *, profile_name: str = "") -> DeployPlan:
@@ -298,10 +309,11 @@ def build_plan(result: Mapping[str, object] | None, config: tuple[str, str, str,
     level = str(verified["compatibility"]["level"])
     base, plus = verified["packs"]["base"], verified["packs"]["plus"]
     contract = verified["compatibility"]
+    pack_version = int(verified.get("packVersion", PACK_VERSION))
     return DeployPlan(
-        profile_name=profile_name, project_url=url, bucket=STAGING_BUCKET, level=level, pack_version=PACK_VERSION,
-        base_local_path=base["localPath"], base_bytes=base["bytes"], base_sha256=base["sha256"], base_object_path=pack_object_path(level, "base"),
-        plus_local_path=plus["localPath"], plus_bytes=plus["bytes"], plus_sha256=plus["sha256"], plus_object_path=pack_object_path(level, "plus"),
+        profile_name=profile_name, project_url=url, bucket=STAGING_BUCKET, level=level, pack_version=pack_version,
+        base_local_path=base["localPath"], base_bytes=base["bytes"], base_sha256=base["sha256"], base_object_path=pack_object_path(level, "base", pack_version),
+        plus_local_path=plus["localPath"], plus_bytes=plus["bytes"], plus_sha256=plus["sha256"], plus_object_path=pack_object_path(level, "plus", pack_version),
         compatibility_hash=str(contract["compatibilityHash"]), base_manifest=dict(contract["baseManifest"]), plus_manifest=dict(contract["plusManifest"]),
     )
 
@@ -326,7 +338,8 @@ def _validate_catalog_entries(catalog: Mapping[str, object]) -> list[Mapping[str
     identities = [_identity(entry) for entry in entries]
     pack_ids = [entry.get("packId") for entry in entries]
     collection_ids = [entry.get("collectionId") for entry in entries]
-    if len(identities) != len(set(identities)) or len(pack_ids) != len(set(pack_ids)) or len(collection_ids) != len(set(collection_ids)):
+    object_paths = [entry.get("objectPath") for entry in entries]
+    if len(identities) != len(set(identities)) or len(pack_ids) != len(set(pack_ids)) or len(collection_ids) != len(set(collection_ids)) or len(object_paths) != len(set(object_paths)):
         raise DeployValidationError("Catalog có duplicate identity, packId hoặc collectionId.")
     return entries
 
@@ -363,10 +376,10 @@ def catalog_entry_from_plan(plan: DeployPlan, segment: str) -> dict[str, object]
     manifest = plan.base_manifest if segment == "base" else plan.plus_manifest
     return {
         "version": STANDARD_VERSION, "level": plan.level, "segment": segment,
-        "packId": pack_id(plan.level, segment), "collectionId": collection_id(plan.level, segment),
+        "packId": pack_id(plan.level, segment, plan.pack_version), "collectionId": collection_id(plan.level, segment, plan.pack_version),
         "packVersion": int(manifest.get("packVersion", 0)), "vocabCount": int(manifest.get("vocabCount", 0)),
         "audioCount": sum(1 for resource in manifest.get("resources", []) if isinstance(resource, Mapping) and resource.get("type") == "vocab_audio"),
-        "objectPath": pack_object_path(plan.level, segment), "filename": f"vocab_{plan.level}_30_{segment}_v1.zip",
+        "objectPath": pack_object_path(plan.level, segment, plan.pack_version), "filename": f"vocab_{plan.level}_30_{segment}_v{plan.pack_version}.zip",
         "sha256": plan.base_sha256 if segment == "base" else plan.plus_sha256,
         "zipBytes": plan.base_bytes if segment == "base" else plan.plus_bytes,
         "compatibilityHash": plan.compatibility_hash, "accessTier": "base" if segment == "base" else "vip", "enabled": True,
@@ -379,9 +392,16 @@ def deploy_receipt_path(output_directory: str | Path, level: str) -> Path:
 
 def _write_deploy_receipt(output_directory: str | Path, plan: DeployPlan) -> dict[str, object]:
     base_entry, plus_entry = catalog_entry_from_plan(plan, "base"), catalog_entry_from_plan(plan, "plus")
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    build_report = Path(output_directory) / "vocab" / "3.0" / plan.level / "build_report.json"
+    source_build_sha = sha256_file(build_report) if build_report.is_file() else ""
     receipt = {
-        "schemaVersion": 1, "version": STANDARD_VERSION, "level": plan.level, "packVersion": plan.pack_version,
-        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "compatibilityHash": plan.compatibility_hash,
+        "schemaVersion": 1, "dataVersion": STANDARD_VERSION, "version": STANDARD_VERSION,
+        "level": plan.level, "packVersion": plan.pack_version, "timestamp": now,
+        "remoteVerifiedAt": now, "compatibilityHash": plan.compatibility_hash,
+        "sourceBuildReceiptSha256": source_build_sha,
+        "baseRemoteVerified": True, "plusRemoteVerified": True,
+        "catalogPublished": False,
         "base": {**base_entry, "remoteVerified": True}, "plus": {**plus_entry, "remoteVerified": True},
     }
     path = deploy_receipt_path(output_directory, plan.level)
@@ -391,11 +411,12 @@ def _write_deploy_receipt(output_directory: str | Path, plan: DeployPlan) -> dic
 
 
 def validate_deploy_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
-    if receipt.get("schemaVersion") != 1 or receipt.get("version") != STANDARD_VERSION:
+    if receipt.get("schemaVersion") != 1 or receipt.get("version", receipt.get("dataVersion")) != STANDARD_VERSION:
         raise DeployValidationError("Deploy receipt sai schema/version.")
     level = _validate_level(str(receipt.get("level", "")))
-    if receipt.get("packVersion") != PACK_VERSION:
-        raise DeployValidationError("Deploy receipt packVersion không hỗ trợ.")
+    pack_version = receipt.get("packVersion")
+    if not isinstance(pack_version, int) or pack_version < 1:
+        raise DeployValidationError("Deploy receipt packVersion không hợp lệ.")
     compatibility = receipt.get("compatibilityHash")
     if not isinstance(compatibility, str) or len(compatibility) != 64:
         raise DeployValidationError("Deploy receipt thiếu compatibilityHash.")
@@ -404,7 +425,7 @@ def validate_deploy_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
         entry = receipt.get(segment)
         if not isinstance(entry, Mapping) or entry.get("remoteVerified") is not True:
             raise DeployValidationError(f"Deploy receipt {segment.upper()} chưa remoteVerified.")
-        required = {"packId": pack_id(level, segment), "collectionId": collection_id(level, segment), "objectPath": pack_object_path(level, segment)}
+        required = {"packId": pack_id(level, segment, pack_version), "collectionId": collection_id(level, segment, pack_version), "objectPath": pack_object_path(level, segment, pack_version)}
         if any(entry.get(key) != value for key, value in required.items()):
             raise DeployValidationError(f"Deploy receipt {segment.upper()} identity/path không đúng.")
         if entry.get("compatibilityHash") != compatibility or not isinstance(entry.get("sha256"), str) or not isinstance(entry.get("zipBytes"), int):
@@ -413,13 +434,17 @@ def validate_deploy_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
         entries.append(item)
     if entries[0]["compatibilityHash"] != entries[1]["compatibilityHash"]:
         raise DeployValidationError("Deploy receipt BASE/PLUS compatibilityHash không giống nhau.")
-    return {"level": level, "entries": entries, "receipt": dict(receipt)}
+    if receipt.get("baseRemoteVerified", True) is not True or receipt.get("plusRemoteVerified", True) is not True:
+        raise DeployValidationError("Deploy receipt chưa remoteVerified đủ BASE/PLUS.")
+    return {"level": level, "packVersion": pack_version, "entries": entries, "receipt": dict(receipt)}
 
 
-def collect_deploy_receipts(output_directory: str | Path) -> list[dict[str, object]]:
+def collect_deploy_receipts(output_directory: str | Path, levels: set[str] | None = None) -> list[dict[str, object]]:
     root = Path(output_directory) / "vocab" / "3.0"
     receipts: list[dict[str, object]] = []
     for level in SUPPORTED_LEVELS:
+        if levels is not None and level not in levels:
+            continue
         path = root / level / "deploy_receipt.json"
         if not path.is_file():
             continue
@@ -449,7 +474,10 @@ def load_catalog_source_snapshot(output_directory: str | Path) -> CatalogSnapsho
     if revisions:
         revision, path = max(revisions, key=lambda item: item[0])
     else:
-        revision, path = 1, root / "hsk1" / "deploy_preflight" / "combined_catalog_dry_run.json"
+        revision = 1
+        path = Path(SEED_CATALOG_PATH)
+        if not path.is_file():
+            path = Path(__file__).resolve().parents[1] / SEED_CATALOG_PATH
     try:
         payload = path.read_bytes()
     except OSError as exc:
@@ -459,34 +487,59 @@ def load_catalog_source_snapshot(output_directory: str | Path) -> CatalogSnapsho
 
 
 def merge_catalog(source: Mapping[str, object], additions: list[Mapping[str, object]]) -> dict[str, object]:
-    """Deep-copy source exactly, then append entries that have new identities."""
+    """Deep-copy source, append new identities, or replace a newer pack version."""
     result = copy.deepcopy(dict(source))
     key = _entries_key(result)
     entries = result[key]
     assert isinstance(entries, list)
     if not additions:
         raise DeployValidationError("Không có receipt staged mới để publish catalog.")
-    result[key] = entries + [dict(entry) for entry in additions]
+    merged = [dict(entry) for entry in entries]
+    positions = {_identity(entry): index for index, entry in enumerate(merged)}
+    for addition in additions:
+        identity = _identity(addition)
+        existing_index = positions.get(identity)
+        if existing_index is None:
+            positions[identity] = len(merged)
+            merged.append(dict(addition))
+            continue
+        existing = merged[existing_index]
+        if existing == addition:
+            continue
+        old_version = existing.get("packVersion")
+        new_version = addition.get("packVersion")
+        if not isinstance(old_version, int) or not isinstance(new_version, int) or new_version <= old_version:
+            raise DeployValidationError(f"Catalog identity conflict: {identity}")
+        if existing.get("objectPath") == addition.get("objectPath"):
+            raise DeployValidationError("Rebuild phải dùng objectPath mới.")
+        merged[existing_index] = dict(addition)
+    result[key] = merged
     _validate_catalog_entries(result)
-    if result[key][:len(entries)] != entries:
-        raise DeployValidationError("Catalog nguồn bị thay đổi khi merge.")
+    # Entries unrelated to the requested identities are byte-for-byte stable.
+    touched = {_identity(entry) for entry in additions}
+    for before, after in zip(entries, result[key]):
+        if _identity(before) not in touched and before != after:
+            raise DeployValidationError("Catalog nguồn bị thay đổi khi merge.")
     return result
 
 
-def prepare_catalog_publish(output_directory: str | Path) -> CatalogPublishPlan:
+def prepare_catalog_publish(output_directory: str | Path, levels: set[str] | None = None) -> CatalogPublishPlan:
     source = load_catalog_source_snapshot(output_directory)
     source_entries = _validate_catalog_entries(source.catalog)
     by_identity = {_identity(entry): dict(entry) for entry in source_entries}
     additions: list[dict[str, object]] = []
-    receipts = collect_deploy_receipts(output_directory)
+    receipts = collect_deploy_receipts(output_directory, levels=levels)
     for receipt in receipts:
         for entry in receipt["entries"]:
             identity = _identity(entry)
             existing = by_identity.get(identity)
             if existing is not None:
-                if existing != entry:
+                if existing == entry:
+                    continue
+                old_version = existing.get("packVersion")
+                new_version = entry.get("packVersion")
+                if not isinstance(old_version, int) or not isinstance(new_version, int) or new_version <= old_version:
                     raise DeployValidationError(f"Receipt conflict với catalog hiện hành: {identity}")
-                continue
             if identity in {_identity(value) for value in additions}:
                 raise DeployValidationError(f"Duplicate identity giữa deploy receipt: {identity}")
             additions.append(dict(entry))
@@ -656,6 +709,10 @@ class MemoryStorageClient:
             raise StorageConflict(object_path)
         self.objects[(bucket, object_path)] = bytes(payload)
 
+    def update_object(self, bucket: str, object_path: str, payload: bytes, content_type: str) -> None:
+        self.calls.append(("UPDATE", bucket, object_path))
+        self.objects[(bucket, object_path)] = bytes(payload)
+
 
 class SupabaseStorageRestClient:
     """Create-only storage REST client; network defaults to disabled."""
@@ -720,3 +777,10 @@ class SupabaseStorageRestClient:
 
     def create_object(self, bucket: str, object_path: str, payload: bytes, content_type: str) -> None:
         self._request("POST", self._storage_url(bucket, object_path), payload=payload, content_type=content_type, extra_headers={"x-upsert": "false"})
+
+    def update_object(self, bucket: str, object_path: str, payload: bytes, content_type: str) -> None:
+        # The signed pointer is the sole mutable object.  Callers must never
+        # use this method for ZIPs, immutable catalogs, or pointer archives.
+        if object_path != "catalogs/vocab/current.json":
+            raise DeployValidationError("Chỉ current.json được phép update/upsert.")
+        self._request("PUT", self._storage_url(bucket, object_path), payload=payload, content_type=content_type, extra_headers={"x-upsert": "true"})

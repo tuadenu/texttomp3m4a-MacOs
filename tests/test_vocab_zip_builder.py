@@ -76,6 +76,32 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertFalse(deployment_allowed(result))
         self.assertTrue(Path(result["base"]["zip"]).is_file())
 
+    def test_audio_unchanged_keeps_alias_and_changed_audio_gets_content_identity(self):
+        self._write_excel()
+        out = self.temp_dir / "out"
+        self._seed_audio(out)
+        first = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False)
+        first_vocab = first["base"]["vocab"][0]["audio_url"]
+        second = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False)
+        self.assertEqual(first_vocab, second["base"]["vocab"][0]["audio_url"])
+        from pipelines.vocab_zip_builder import SourceVocab, audio_filename
+        item = SourceVocab(1, "词1", "nghĩa 1", "例子1", "ví dụ 1")
+        (out / "vocab" / "3.0" / "hsk1" / "source_audio" / audio_filename("hsk1_30", item)).write_bytes(b"changed-audio")
+        third = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False)
+        changed_url = third["base"]["vocab"][0]["audio_url"]
+        self.assertNotEqual(first_vocab, changed_url)
+        self.assertRegex(changed_url, r"^vocab://3\.0/hsk1/1/audio/[0-9a-f]{64}$")
+
+    def test_pack_version_changes_immutable_output_paths_and_identity(self):
+        self._write_excel()
+        out = self.temp_dir / "out"
+        self._seed_audio(out)
+        result = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, pack_version=2)
+        self.assertEqual(2, result["packVersion"])
+        self.assertIn("/base/v2/vocab_hsk1_30_base_v2.zip", result["base"]["zip"])
+        self.assertEqual("vocab:3.0:hsk1:base:v2", result["base"]["manifest"]["packId"])
+        self.assertEqual("vocab:3.0:hsk1:plus:v2", result["plus"]["manifest"]["packId"])
+
     def test_index_gap_is_rejected(self):
         rows = list(self.rows)
         rows[4]["index"] = 8
@@ -207,8 +233,20 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertIn('builder_bitrate_var.trace_add("write", refresh_tts_summary)', app_source)
         self.assertIn('textvariable=tts_summary_var', app_source)
         self.assertIn("Compatibility hash:", app_source)
+        self.assertIn('text="Help"', app_source)
+        self.assertIn("open_hsk30_help", app_source)
+        self.assertIn("Cách kích hoạt cấp độ mới trong app", app_source)
+        self.assertIn('text="? Publish Help"', app_source)
+        self.assertIn("Lên đầu", app_source)
+        self.assertIn("Xuống cuối", app_source)
         self.assertIn('state="disabled", command=stage_packs_pending', app_source)
         self.assertIn('state="disabled", command=publish_catalog_pending', app_source)
+        self.assertIn('text="Refresh Pointer Status"', app_source)
+        self.assertIn('read_verified_pointer_status', app_source)
+        self.assertIn('POINTER STATUS UNKNOWN', app_source)
+        self.assertIn('POINTER ALREADY INITIALIZED', app_source)
+        self.assertIn('publish_gate_var', app_source)
+        self.assertIn('publish_controls', app_source)
         self.assertIn('stage_btn.config(state="normal")', app_source)
         self.assertIn('publish_btn.config(state="normal")', app_source)
         self.assertGreaterEqual(app_source.count('text="Chất lượng M4A:"'), 2)

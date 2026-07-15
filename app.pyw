@@ -4650,18 +4650,31 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             CATALOG_PUBLISH_CONFIRMATION,
             DeployValidationError,
             SupabaseStorageRestClient,
+            STAGING_BUCKET,
             build_plan,
+            collect_deploy_receipts,
             input_fingerprint,
             prepare_catalog_publish,
-            publish_catalog_with_client,
             stage_confirmation_phrase,
             stage_packs_with_client,
         )
+        from pipelines.vocab_catalog_publish import (
+            DEFAULT_KEY_ID,
+            DEFAULT_KEY_PATH,
+            initialize_signing_key,
+            initialize_pointer_with_client,
+            publish_signed_catalog_with_client,
+            read_verified_pointer_status,
+            signing_status,
+        )
+        from pipelines.hsk30_help import load_help_text
 
         builder_win = tk.Toplevel(popup)
         set_popup_icon(builder_win)
         builder_win.title("HSK 3.0 Vocab ZIP Builder")
-        builder_win.geometry("820x680")
+        builder_win.geometry("1460x960")
+        builder_win.minsize(1280, 860)
+        builder_win.resizable(True, True)
         builder_win.transient(popup)
         builder_win.grab_set()
 
@@ -4673,21 +4686,131 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             "HSK 5": "hsk5", "HSK 6": "hsk6", "HSK 7–9": "hsk7_9",
         }
         level_display_var = tk.StringVar(value="HSK 1")
+        pack_version_var = tk.StringVar(value="1")
+        pack_version_label_var = tk.StringVar(value="Pack version: v1")
         output_var = tk.StringVar(value=os.path.join(BASE_DIR, "output"))
         builder_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
         status_var = tk.StringVar(value="Sẵn sàng build local. Phase 2 chỉ chạy sau local PASS và xác nhận.")
         summary_var = tk.StringVar(value="Chưa đọc Excel")
         compatibility_var = tk.StringVar(value="Compatibility hash: chưa verify")
+        signing_key_state_var = tk.StringVar(value="SIGNING KEY NOT INITIALIZED")
+        signing_public_key_var = tk.StringVar(value="PUBLIC KEY B64: —")
+        pointer_state_var = tk.StringVar(value="POINTER STATUS NOT REFRESHED")
+        pointer_revision_var = tk.StringVar(value="CURRENT POINTER REVISION: — | CURRENT CATALOG REVISION: —")
+        publish_gate_var = tk.StringVar(value="Publish disabled: pointer status chưa được refresh")
         artifact_state = {"result": None, "fingerprint": None}
+        pointer_status_cache = {"status": "NOT_REFRESHED"}
         build_runtime = {
             "process": None,
+            "preview_process": None,
             "paused": False,
             "cancel_requested": False,
         }
 
+        def open_hsk30_help(anchor_phrase=None):
+            help_text, help_path, loaded = load_help_text(Path(__file__).resolve().parent)
+            help_win = tk.Toplevel(builder_win)
+            set_popup_icon(help_win)
+            help_win.title("Hướng dẫn HSK 3.0 Vocab ZIP Builder")
+            help_win.geometry("900x720")
+            help_win.minsize(620, 420)
+            help_win.transient(builder_win)
+            help_win.grab_set()
+            header = tk.Frame(help_win)
+            header.pack(fill="x", padx=12, pady=(10, 4))
+            tk.Label(header, text="Tài liệu nguồn:", font=("Arial", 10, "bold")).pack(side="left")
+            tk.Label(header, text=str(help_path), fg="#555").pack(side="left", padx=(6, 0))
+            viewer_frame = tk.Frame(help_win)
+            viewer_frame.pack(fill="both", expand=True, padx=12, pady=6)
+            viewer_scroll = tk.Scrollbar(viewer_frame, orient="vertical")
+            viewer_scroll.pack(side="right", fill="y")
+            viewer = tk.Text(
+                viewer_frame,
+                wrap="word",
+                font=("Arial", 11),
+                undo=False,
+                yscrollcommand=viewer_scroll.set,
+            )
+            viewer.pack(side="left", fill="both", expand=True)
+            viewer_scroll.config(command=viewer.yview)
+            viewer.insert("1.0", help_text)
+            viewer.configure(state="disabled")
+
+            def select_all(_event=None):
+                viewer.configure(state="normal")
+                viewer.tag_add("sel", "1.0", "end")
+                viewer.configure(state="disabled")
+                return "break"
+
+            def copy_selection(_event=None):
+                try:
+                    selected = viewer.get("sel.first", "sel.last")
+                except tk.TclError:
+                    return "break"
+                help_win.clipboard_clear()
+                help_win.clipboard_append(selected)
+                return "break"
+
+            def on_mousewheel(event):
+                delta = getattr(event, "delta", 0)
+                if delta:
+                    step = -1 if delta > 0 else 1
+                    viewer.yview_scroll(step, "units")
+                    return "break"
+                return None
+
+            def on_linux_scroll(event):
+                if getattr(event, "num", None) == 4:
+                    viewer.yview_scroll(-1, "units")
+                    return "break"
+                if getattr(event, "num", None) == 5:
+                    viewer.yview_scroll(1, "units")
+                    return "break"
+                return None
+
+            viewer.bind("<Command-a>", select_all)
+            viewer.bind("<Command-c>", copy_selection)
+            viewer.bind("<Control-a>", select_all)
+            viewer.bind("<Control-c>", copy_selection)
+            viewer.bind("<MouseWheel>", on_mousewheel)
+            viewer.bind("<Button-4>", on_linux_scroll)
+            viewer.bind("<Button-5>", on_linux_scroll)
+            help_win.bind("<MouseWheel>", on_mousewheel)
+            help_win.bind("<Button-4>", on_linux_scroll)
+            help_win.bind("<Button-5>", on_linux_scroll)
+
+            if anchor_phrase:
+                marker = viewer.search(anchor_phrase, "1.0", stopindex="end")
+                if marker:
+                    viewer.see(marker)
+                    viewer.tag_remove("sel", "1.0", "end")
+                    viewer.tag_add("sel", marker, f"{marker}+{len(anchor_phrase)}c")
+                    viewer.focus_set()
+
+            def jump_to_top(_event=None):
+                viewer.yview_moveto(0.0)
+                viewer.focus_set()
+                return "break"
+
+            def jump_to_bottom(_event=None):
+                viewer.yview_moveto(1.0)
+                viewer.focus_set()
+                return "break"
+
+            nav_row = tk.Frame(help_win)
+            nav_row.pack(fill="x", padx=12, pady=(0, 4))
+            tk.Button(nav_row, text="Lên đầu", width=12, command=jump_to_top).pack(side="left")
+            tk.Button(nav_row, text="Xuống cuối", width=12, command=jump_to_bottom).pack(side="left", padx=(8, 0))
+            if not loaded:
+                append_log(f"⚠ Không tìm thấy tài liệu Help: {help_path}; đang dùng fallback local.")
+            tk.Button(help_win, text="Đóng", width=12, command=help_win.destroy).pack(anchor="e", padx=12, pady=(0, 10))
+
         frame = tk.Frame(builder_win)
         frame.pack(fill="both", expand=True, padx=14, pady=12)
-        tk.Label(frame, text="HSK 3.0 Vocab ZIP Builder", font=("Arial", 15, "bold")).pack(anchor="w")
+        title_row = tk.Frame(frame)
+        title_row.pack(fill="x")
+        tk.Label(title_row, text="HSK 3.0 Vocab ZIP Builder", font=("Arial", 15, "bold")).pack(side="left")
+        tk.Button(title_row, text="Help", width=10, command=open_hsk30_help).pack(side="right")
         tk.Label(
             frame,
             text="Build local → stage ZIP packs → publish catalog revision riêng. HSK 2.0 legacy không đổi.",
@@ -4762,7 +4885,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         level_row.pack(fill="x", pady=3)
         tk.Label(level_row, text="Level:", width=18, anchor="w").pack(side="left")
         ttk.Combobox(level_row, textvariable=level_display_var, values=list(level_label_to_code), state="readonly", width=20).pack(side="left")
-        tk.Label(level_row, text="Pack version: v1", fg="#245a24").pack(side="left", padx=8)
+        tk.Label(level_row, textvariable=pack_version_label_var, fg="#245a24").pack(side="left", padx=8)
+        tk.Spinbox(level_row, from_=1, to=999, width=5, textvariable=pack_version_var).pack(side="left")
         tk.Label(level_row, text="HSK 7–9 build local dùng canonical code hsk7_9; chưa publish pilot.", fg="#666").pack(side="left", padx=8)
         form_row("Output directory:", output_var, ("Chọn thư mục", choose_output))
 
@@ -4802,6 +4926,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             fg="#666", wraplength=760, justify="left",
         ).pack(anchor="w", pady=(0, 8))
         tk.Label(frame, textvariable=compatibility_var, fg="#245a24", anchor="w").pack(fill="x", pady=(0, 5))
+        signing_box = tk.LabelFrame(frame, text="Signed catalog pointer")
+        signing_box.pack(fill="x", pady=(0, 6))
+        tk.Label(signing_box, textvariable=signing_key_state_var, anchor="w", fg="#245a24").pack(fill="x", padx=8, pady=(4, 0))
+        tk.Label(signing_box, textvariable=signing_public_key_var, anchor="w", justify="left", wraplength=760).pack(fill="x", padx=8)
+        tk.Label(signing_box, textvariable=pointer_state_var, anchor="w", fg="#245a24").pack(fill="x", padx=8)
+        tk.Label(signing_box, textvariable=pointer_revision_var, anchor="w").pack(fill="x", padx=8, pady=(0, 4))
+        tk.Label(signing_box, textvariable=publish_gate_var, anchor="w", fg="#9b1c1c", wraplength=1100).pack(fill="x", padx=8, pady=(0, 4))
 
         phase_box = tk.LabelFrame(frame, text="Trạng thái nấc 1 — Build + Validate Local")
         phase_box.pack(fill="x", pady=(4, 8))
@@ -4813,6 +4944,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         controls = tk.Frame(frame)
         controls.pack(fill="x", pady=(10, 0))
+        pack_controls = tk.Frame(controls)
+        pack_controls.pack(fill="x", pady=(0, 4))
+        pointer_controls = tk.Frame(controls)
+        pointer_controls.pack(fill="x", pady=(0, 4))
+        publish_controls = tk.Frame(controls)
+        publish_controls.pack(fill="x")
 
         def append_log(message):
             log_text.insert("end", message.rstrip() + "\n")
@@ -4887,12 +5024,188 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 raise ValueError("Chọn sheet.")
             if not output:
                 raise ValueError("Chọn output directory.")
+            try:
+                if int(pack_version_var.get()) < 1:
+                    raise ValueError
+            except ValueError:
+                raise ValueError("Pack version phải là số nguyên dương.")
             return excel_path, sheet, level_label_to_code[level_display_var.get()], output
+
+        def refresh_pack_version_label(*_):
+            try:
+                pack_version_label_var.set(f"Pack version: v{int(pack_version_var.get())}")
+            except ValueError:
+                pack_version_label_var.set("Pack version: không hợp lệ")
 
         def clear_build_state(*_):
             artifact_state["result"] = None
             artifact_state["fingerprint"] = None
             stage_btn.config(state="disabled")
+            publish_btn.config(state="disabled")
+
+        def refresh_signing_status():
+            status = signing_status(DEFAULT_KEY_PATH, DEFAULT_KEY_ID)
+            signing_key_state_var.set(str(status.get("status", "SIGNING KEY NOT INITIALIZED")))
+            public_key = status.get("publicKeyB64")
+            signing_public_key_var.set(f"PUBLIC KEY B64: {public_key or '—'}")
+            return status
+
+        def refresh_pointer_status_pending():
+            """GET-verify current.json and its catalog; never performs a write."""
+            if refresh_pointer_btn.winfo_exists():
+                refresh_pointer_btn.config(state="disabled")
+            pointer_state_var.set("POINTER STATUS CHECKING…")
+            publish_gate_var.set("Publish disabled: đang verify pointer production…")
+
+            def worker():
+                try:
+                    profile_name, profile = load_active_supabase_profile()
+                    project_url = str(profile.get("SUPABASE_URL", "") or "").strip()
+                    service_key = str(profile.get("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip()
+                    # HSK 3.0 deploys and the signed pointer always use the
+                    # staging bucket; keep the legacy profile bucket untouched.
+                    bucket = STAGING_BUCKET
+                    if not project_url or not service_key:
+                        raise DeployValidationError("Thiếu Supabase URL hoặc service-role key trong profile hiện tại.")
+                    client = SupabaseStorageRestClient(project_url, service_key, network_enabled=True)
+                    result = read_verified_pointer_status(
+                        client,
+                        bucket=bucket,
+                        private_key_path=DEFAULT_KEY_PATH,
+                        key_id=DEFAULT_KEY_ID,
+                    )
+                    result["profileName"] = profile_name
+                except Exception as exc:
+                    message = str(exc)
+
+                    def show_error():
+                        pointer_status_cache["status"] = "UNKNOWN"
+                        pointer_state_var.set("POINTER STATUS UNKNOWN — chưa thể verify")
+                        pointer_revision_var.set("CURRENT POINTER REVISION: — | CURRENT CATALOG REVISION: —")
+                        publish_gate_var.set("Publish disabled: không verify được pointer; thử Refresh Pointer Status lại")
+                        append_log(f"⚠ Refresh pointer thất bại (không coi là chưa initialize): {message}")
+                        refresh_pointer_btn.config(state="normal")
+                        initialize_pointer_btn.config(state="disabled")
+                        refresh_catalog_gate()
+
+                    builder_win.after(0, show_error)
+                    return
+
+                def show_result():
+                    status = str(result.get("status", ""))
+                    pointer_status_cache.clear()
+                    pointer_status_cache.update(result)
+                    if status == "POINTER ACTIVE":
+                        pointer_state_var.set("POINTER ACTIVE")
+                        pointer_revision_var.set(
+                            f"CURRENT POINTER REVISION: {result['pointerRevision']} | "
+                            f"CURRENT CATALOG REVISION: {result['catalogRevision']} | "
+                            f"CATALOG ENTRIES: {result['entryCount']}"
+                        )
+                        initialize_pointer_btn.config(state="disabled")
+                        append_log(
+                            f"Pointer ACTIVE: pointerRevision={result['pointerRevision']} "
+                            f"catalogRevision={result['catalogRevision']} entries={result['entryCount']}"
+                        )
+                    else:
+                        pointer_state_var.set("POINTER NOT INITIALIZED")
+                        pointer_revision_var.set("CURRENT POINTER REVISION: — | CURRENT CATALOG REVISION: —")
+                        initialize_pointer_btn.config(state="normal")
+                        append_log("Pointer chưa tồn tại: current.json ABSENT")
+                    refresh_pointer_btn.config(state="normal")
+                    refresh_catalog_gate()
+
+                builder_win.after(0, show_result)
+
+            threading.Thread(target=worker, daemon=True).start()
+
+        def initialize_signing_key_pending():
+            confirm = tk.Toplevel(builder_win)
+            set_popup_icon(confirm)
+            confirm.title("Initialize Production Signing Key")
+            confirm.geometry("620x280")
+            confirm.transient(builder_win)
+            confirm.grab_set()
+            tk.Label(confirm, text=(
+                "Tạo Ed25519 raw seed 32 byte ngoài repo tại:\n"
+                f"{DEFAULT_KEY_PATH}\n\n"
+                "Mất seed sẽ không thể ký pointer mới cho app đang tin key này. "
+                "Hãy sao lưu riêng an toàn; tool không log/clipboard/upload seed."
+            ), anchor="w", justify="left", wraplength=580).pack(fill="both", expand=True, padx=14, pady=14)
+            tk.Label(confirm, text="Nhập chính xác: INITIALIZE VOCAB SIGNING KEY", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            phrase_var = tk.StringVar()
+            tk.Entry(confirm, textvariable=phrase_var, width=44).pack(anchor="w", padx=14, pady=6)
+
+            def initialize():
+                try:
+                    result = initialize_signing_key(DEFAULT_KEY_PATH, confirmation=phrase_var.get())
+                except Exception as exc:
+                    messagebox.showerror("Không khởi tạo signing key", str(exc), parent=confirm)
+                    return
+                confirm.destroy()
+                refresh_signing_status()
+                append_log(f"{result['status']} | keyId={result['keyId']} | publicKeyB64={result['publicKeyB64']}")
+                refresh_catalog_gate()
+
+            buttons = tk.Frame(confirm)
+            buttons.pack(fill="x", padx=14, pady=(0, 14))
+            tk.Button(buttons, text="Huỷ", width=12, command=confirm.destroy).pack(side="right", padx=(8, 0))
+            tk.Button(buttons, text="Khởi tạo key", width=18, command=initialize).pack(side="right")
+
+        def initialize_pointer_pending():
+            if pointer_status_cache.get("status") == "POINTER ACTIVE":
+                messagebox.showinfo("Pointer đã tồn tại", "POINTER ALREADY INITIALIZED — không tạo lại revision 1.", parent=builder_win)
+                return
+            if pointer_status_cache.get("status") != "POINTER NOT INITIALIZED":
+                messagebox.showwarning(
+                    "Chưa xác minh pointer",
+                    "Hãy bấm Refresh Pointer Status và chỉ initialize khi current.json thật sự ABSENT.",
+                    parent=builder_win,
+                )
+                return
+            status = refresh_signing_status()
+            if status.get("status") != "SIGNING KEY READY":
+                messagebox.showwarning("Chưa có signing key", "Hãy Initialize Production Signing Key trước.", parent=builder_win)
+                return
+            confirm = tk.Toplevel(builder_win)
+            set_popup_icon(confirm)
+            confirm.title("Initialize Signed Pointer")
+            confirm.geometry("680x330")
+            confirm.transient(builder_win)
+            confirm.grab_set()
+            tk.Label(confirm, text=(
+                "Khởi tạo pointer production cho catalog combined v1 hiện hành.\n"
+                "Thao tác này tạo pointer archive rồi cập nhật current.json cuối cùng; đây là remote write.\n\n"
+                "Catalog: catalogs/vocab/combined/v1/vocab_pack_catalog_20_30_v1.json\n"
+                "Bytes: 7280\nSHA-256: 593d2f8846a6b0ccfca9589512d56b7579f43144814a21ae60509692e9d24413"
+            ), anchor="w", justify="left", wraplength=640).pack(fill="both", expand=True, padx=14, pady=14)
+            tk.Label(confirm, text="Nhập chính xác: INITIALIZE VOCAB POINTER", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            phrase_var = tk.StringVar()
+            tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=6)
+
+            def initialize_pointer():
+                try:
+                    _, profile = load_active_supabase_profile()
+                    client = SupabaseStorageRestClient(str(profile.get("SUPABASE_URL", "") or "").strip(), str(profile.get("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip(), network_enabled=True)
+                    result = initialize_pointer_with_client(
+                        client, catalog_revision=1,
+                        catalog_object="catalogs/vocab/combined/v1/vocab_pack_catalog_20_30_v1.json",
+                        expected_bytes=7280,
+                        expected_sha256="593d2f8846a6b0ccfca9589512d56b7579f43144814a21ae60509692e9d24413",
+                        confirmation=phrase_var.get(), private_key_path=DEFAULT_KEY_PATH,
+                    )
+                except Exception as exc:
+                    messagebox.showerror("Không khởi tạo pointer", str(exc), parent=confirm)
+                    return
+                confirm.destroy()
+                pointer_state_var.set("POINTER ACTIVE")
+                pointer_revision_var.set("CURRENT POINTER REVISION: 1 | CURRENT CATALOG REVISION: 1")
+                append_log(f"Pointer ACTIVE: {result['archivePath']}")
+
+            buttons = tk.Frame(confirm)
+            buttons.pack(fill="x", padx=14, pady=(0, 14))
+            tk.Button(buttons, text="Huỷ", width=12, command=confirm.destroy).pack(side="right", padx=(8, 0))
+            tk.Button(buttons, text="Khởi tạo pointer", width=20, command=initialize_pointer).pack(side="right")
 
         def fingerprint(config):
             excel_path, sheet, level, output = config
@@ -4959,11 +5272,33 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             return True
 
         def refresh_catalog_gate():
-            try:
-                prepare_catalog_publish(output_var.get().strip())
-            except (DeployValidationError, ValueError, OSError):
+            signing = refresh_signing_status()
+            if signing.get("status") != "SIGNING KEY READY":
+                publish_gate_var.set("Publish disabled: SIGNING KEY READY chưa sẵn sàng")
                 publish_btn.config(state="disabled")
                 return False
+            if pointer_status_cache.get("status") != "POINTER ACTIVE":
+                publish_gate_var.set("Publish disabled: pointer status chưa được refresh/ACTIVE")
+                publish_btn.config(state="disabled")
+                return False
+            try:
+                selected_level = level_label_to_code[level_display_var.get()]
+                receipts = collect_deploy_receipts(output_var.get().strip())
+                selected = next((item for item in receipts if item.get("level") == selected_level), None)
+            except (DeployValidationError, ValueError, OSError) as exc:
+                publish_gate_var.set(f"Publish disabled: receipt không hợp lệ ({exc})")
+                publish_btn.config(state="disabled")
+                return False
+            if selected is None:
+                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} chưa REMOTE PACKS VERIFIED")
+                publish_btn.config(state="disabled")
+                return False
+            receipt = selected.get("receipt", {})
+            if receipt.get("catalogPublished") is True:
+                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} đã được publish")
+                publish_btn.config(state="disabled")
+                return False
+            publish_gate_var.set(f"Publish READY: {selected_level.upper()} receipt đã remote verify; nhập PUBLISH VOCAB CATALOG")
             publish_btn.config(state="normal")
             return True
 
@@ -4978,9 +5313,28 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 messagebox.showwarning("Không có audio", "Không tìm thấy M4A local để phát thử.", parent=builder_win)
                 return
             try:
-                pygame.mixer.music.load(str(files[0]))
-                pygame.mixer.music.play()
-                append_log(f"▶ Phát thử local: {files[0].name}")
+                # pygame's bundled SDL_mixer may try to load M4A through
+                # libmodplug on macOS.  That optional dylib is not present in
+                # many installations, while the system afplay utility plays
+                # AAC/M4A directly.  Prefer it for this local preview only;
+                # the export/build pipeline is unchanged.
+                preview_process = build_runtime.get("preview_process")
+                if preview_process is not None and preview_process.poll() is None:
+                    preview_process.terminate()
+                afplay_path = shutil.which("afplay")
+                if not afplay_path and sys.platform == "darwin" and os.path.isfile("/usr/bin/afplay"):
+                    afplay_path = "/usr/bin/afplay"
+                if sys.platform == "darwin" and afplay_path:
+                    build_runtime["preview_process"] = subprocess.Popen(
+                        [afplay_path, str(files[0])],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    append_log(f"▶ Phát thử local (afplay): {files[0].name}")
+                else:
+                    pygame.mixer.music.load(str(files[0]))
+                    pygame.mixer.music.play()
+                    append_log(f"▶ Phát thử local (pygame): {files[0].name}")
             except Exception as exc:
                 messagebox.showerror("Không phát được audio", str(exc), parent=builder_win)
 
@@ -5007,6 +5361,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 command = [
                     sys.executable, "-u", os.path.join(BASE_DIR, "pipelines", "vocab_zip_builder.py"),
                     config[0], "--sheet", config[1], "--level", config[2], "--output", config[3],
+                    "--pack-version", pack_version_var.get(),
                     "--engine", vocab_tts["engine"], "--speed", vocab_tts["speed"],
                     "--voice", vocab_tts["voice"], "--bitrate", vocab_tts["bitrate"],
                     "--languages", ",".join(vocab_tts["languages"]),
@@ -5148,7 +5503,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         def publish_catalog_pending():
             try:
-                publish_plan = prepare_catalog_publish(output_var.get().strip())
+                selected_level = level_label_to_code[level_display_var.get()]
+                publish_plan = prepare_catalog_publish(output_var.get().strip(), levels={selected_level})
                 _, profile = load_active_supabase_profile()
             except Exception as exc:
                 publish_btn.config(state="disabled")
@@ -5186,15 +5542,30 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 def worker():
                     try:
                         client = SupabaseStorageRestClient(str(profile.get("SUPABASE_URL", "") or "").strip(), str(profile.get("SUPABASE_SERVICE_ROLE_KEY", "") or "").strip(), network_enabled=True)
-                        result = publish_catalog_with_client(client, output_directory=output_var.get().strip(), confirmation=confirmation, progress=lambda message: builder_win.after(0, append_log, message))
+                        result = publish_signed_catalog_with_client(
+                            client,
+                            output_directory=output_var.get().strip(),
+                            confirmation=confirmation,
+                            private_key_path=DEFAULT_KEY_PATH,
+                            levels={selected_level},
+                            progress=lambda message: builder_win.after(0, append_log, message),
+                        )
                     except Exception as exc:
                         message = str(exc)
                         builder_win.after(0, lambda: status_var.set(f"CATALOG FAIL — {message}"))
                         builder_win.after(0, append_log, f"✖ Publish catalog thất bại: {message}")
                     else:
                         builder_win.after(0, lambda: status_var.set("CATALOG PUBLISHED"))
-                        builder_win.after(0, append_log, f"Catalog URL: {result['publicUrl']}")
-                        builder_win.after(0, append_log, f"Catalog: {result['bytes']} bytes | SHA {result['sha256']} | entries={result['entryCount']}")
+                        builder_win.after(0, lambda: pointer_state_var.set("POINTER ACTIVE"))
+                        builder_win.after(0, lambda: pointer_revision_var.set(
+                            f"CURRENT POINTER REVISION: {result.get('pointerRevision', '—')} | "
+                            f"CURRENT CATALOG REVISION: {result.get('catalogRevision', '—')} | "
+                            f"CATALOG ENTRIES: {result.get('entryCount', '—')}"
+                        ))
+                        builder_win.after(0, lambda: publish_gate_var.set("CATALOG PUBLISHED | GET VERIFY: PASS | SIGNATURE VERIFY: PASS"))
+                        builder_win.after(0, lambda: publish_btn.config(state="disabled"))
+                        builder_win.after(0, append_log, f"Catalog URL: {result.get('catalogUrl', result.get('publicUrl', '—'))}")
+                        builder_win.after(0, append_log, f"Catalog: {result.get('catalogBytes', result.get('bytes', '—'))} bytes | SHA {result.get('catalogSha256', result.get('sha256', '—'))} | entries={result.get('entryCount', '—')}")
 
                 threading.Thread(target=worker, daemon=True).start()
 
@@ -5203,22 +5574,32 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tk.Button(buttons, text="Huỷ", width=12, command=confirm.destroy).pack(side="right", padx=(8, 0))
             tk.Button(buttons, text="Xác nhận publish catalog", width=23, command=confirm_publish).pack(side="right")
 
-        build_btn = tk.Button(controls, text="1. Build + Validate Local", width=25, bg="#cce6ff", command=run_local_build)
+        build_btn = tk.Button(pack_controls, text="1. Build + Validate Local", width=25, bg="#cce6ff", command=run_local_build)
         build_btn.pack(side="left")
-        pause_btn = tk.Button(controls, text="⏸ Tạm dừng", width=11, state="disabled", command=toggle_pause_build)
+        pause_btn = tk.Button(pack_controls, text="⏸ Tạm dừng", width=11, state="disabled", command=toggle_pause_build)
         pause_btn.pack(side="left", padx=(6, 0))
-        cancel_btn = tk.Button(controls, text="✖ Huỷ build", width=11, state="disabled", command=cancel_build)
+        cancel_btn = tk.Button(pack_controls, text="✖ Huỷ build", width=11, state="disabled", command=cancel_build)
         cancel_btn.pack(side="left", padx=(6, 0))
-        tk.Button(controls, text="▶ Phát thử audio local", width=18, command=play_first_audio).pack(side="left", padx=8)
-        stage_btn = tk.Button(controls, text="2. Upload + Verify Packs", width=24, state="disabled", command=stage_packs_pending)
+        tk.Button(pack_controls, text="▶ Phát thử audio local", width=18, command=play_first_audio).pack(side="left", padx=8)
+        stage_btn = tk.Button(pack_controls, text="2. Upload + Verify Packs", width=24, state="disabled", command=stage_packs_pending)
         stage_btn.pack(side="left")
-        publish_btn = tk.Button(controls, text="3. Publish Combined Catalog", width=27, state="disabled", command=publish_catalog_pending)
-        publish_btn.pack(side="left", padx=(6, 0))
+        tk.Button(pointer_controls, text="Initialize Production Signing Key", width=25, command=initialize_signing_key_pending).pack(side="left")
+        initialize_pointer_btn = tk.Button(pointer_controls, text="Initialize VOCAB POINTER", width=22, command=initialize_pointer_pending)
+        initialize_pointer_btn.pack(side="left", padx=(6, 0))
+        refresh_pointer_btn = tk.Button(pointer_controls, text="Refresh Pointer Status", width=22, command=refresh_pointer_status_pending)
+        refresh_pointer_btn.pack(side="left", padx=(6, 0))
+        publish_btn = tk.Button(publish_controls, text="3. Publish Catalog + Signed Pointer", width=30, state="disabled", command=publish_catalog_pending)
+        publish_btn.pack(side="left")
+        tk.Button(publish_controls, text="? Publish Help", width=14, command=lambda: open_hsk30_help("Cách kích hoạt cấp độ mới trong app")).pack(side="left", padx=(6, 0))
 
-        for var in (excel_var, sheet_var, level_display_var, output_var, builder_bitrate_var):
+        pack_version_var.trace_add("write", refresh_pack_version_label)
+        for var in (excel_var, sheet_var, level_display_var, output_var, builder_bitrate_var, pack_version_var):
             var.trace_add("write", clear_build_state)
+        refresh_pack_version_label()
         refresh_deploy_gate()
+        refresh_signing_status()
         refresh_catalog_gate()
+        refresh_pointer_status_pending()
 
 
             

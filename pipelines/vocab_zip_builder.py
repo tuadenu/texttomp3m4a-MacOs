@@ -164,8 +164,9 @@ def audio_filename(sheet_name: str, item: SourceVocab) -> str:
     return f"{sheet_name}_{item.index:03d}_{_to_pinyin_slug(item.word)}.m4a"
 
 
-def canonical_audio_uri(level: str, item: SourceVocab) -> str:
-    return f"vocab://3.0/{level}/{item.stable_id}/audio"
+def canonical_audio_uri(level: str, item: SourceVocab, content_hash: str | None = None) -> str:
+    base = f"vocab://3.0/{level}/{item.stable_id}/audio"
+    return f"{base}/{content_hash}" if content_hash else base
 
 
 def _ordered_ids_hash(items: Iterable[SourceVocab]) -> str:
@@ -236,7 +237,7 @@ def ensure_audio(
     return reused, generated
 
 
-def _vocab_item(level: str, item: SourceVocab) -> dict[str, object]:
+def _vocab_item(level: str, item: SourceVocab, audio_url: str | None = None) -> dict[str, object]:
     return {
         "id": item.stable_id,
         "level": level,
@@ -244,18 +245,18 @@ def _vocab_item(level: str, item: SourceVocab) -> dict[str, object]:
         "index": item.index,
         "word": item.word,
         "meaning": item.meaning,
-        "audio_url": canonical_audio_uri(level, item),
+        "audio_url": audio_url or canonical_audio_uri(level, item),
         "example": item.example,
         "example_meaning": item.example_meaning,
     }
 
 
-def _manifest(level: str, segment: str, items: list[SourceVocab], resources: list[dict[str, object]], base_hash: str | None) -> dict[str, object]:
-    pack_id = f"vocab:3.0:{level}:{segment}:v{PACK_VERSION}"
+def _manifest(level: str, segment: str, items: list[SourceVocab], resources: list[dict[str, object]], base_hash: str | None, pack_version: int = PACK_VERSION) -> dict[str, object]:
+    pack_id = f"vocab:3.0:{level}:{segment}:v{pack_version}"
     manifest: dict[str, object] = {
         "schemaVersion": 2,
         "packId": pack_id,
-        "packVersion": PACK_VERSION,
+        "packVersion": pack_version,
         "level": level,
         "standardVersion": "3.0",
         "datasetVersion": "3.0",
@@ -276,8 +277,8 @@ def _manifest(level: str, segment: str, items: list[SourceVocab], resources: lis
         assert base_hash is not None
         manifest.update(
             {
-                "requiresPackId": f"vocab:3.0:{level}:base:v{PACK_VERSION}",
-                "compatibleBaseVersion": PACK_VERSION,
+                "requiresPackId": f"vocab:3.0:{level}:base:v{pack_version}",
+                "compatibleBaseVersion": pack_version,
                 "remainingVocabCount": len(items),
                 "baseOrderedVocabIdsSha256": base_hash,
             }
@@ -305,14 +306,32 @@ def _build_one_pack(
     sheet_name: str,
     output_level_root: Path,
     base_hash: str | None,
+    pack_version: int = PACK_VERSION,
 ) -> dict[str, object]:
-    version_root = output_level_root / segment / f"v{PACK_VERSION}"
+    if not isinstance(pack_version, int) or pack_version < 1:
+        raise BuildValidationError("pack_version phải là integer dương.")
+    version_root = output_level_root / segment / f"v{pack_version}"
     unpacked = version_root / "unpacked"
+    previous_audio_urls: dict[str, str] = {}
+    previous_resource_hashes: dict[str, str] = {}
     if unpacked.exists():
+        try:
+            previous_vocab = json.loads((unpacked / "vocab.json").read_text(encoding="utf-8"))
+            previous_manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
+            if isinstance(previous_vocab, list):
+                previous_audio_urls = {str(item.get("id")): str(item.get("audio_url")) for item in previous_vocab if isinstance(item, dict) and item.get("id") and item.get("audio_url")}
+            if isinstance(previous_manifest, dict) and isinstance(previous_manifest.get("resources"), list):
+                for resource in previous_manifest["resources"]:
+                    if isinstance(resource, dict) and resource.get("type") == "vocab_audio":
+                        previous_resource_hashes[str(resource.get("canonicalSource"))] = str(resource.get("sha256"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            previous_audio_urls = {}
+            previous_resource_hashes = {}
         shutil.rmtree(unpacked)
     (unpacked / "audio").mkdir(parents=True)
 
     audio_resources: list[dict[str, object]] = []
+    audio_urls: dict[str, str] = {}
     for item in items:
         source = _source_audio_path(source_audio_root, sheet_name, item)
         if not source.is_file() or source.stat().st_size == 0:
@@ -322,17 +341,25 @@ def _build_one_pack(
         destination = unpacked / relative_path
         if not destination.exists():
             shutil.copyfile(source, destination)
+        stable_id = item.stable_id
+        base_uri = canonical_audio_uri(level, item)
+        old_uri = previous_audio_urls.get(stable_id)
+        if old_uri:
+            audio_uri = old_uri if previous_resource_hashes.get(old_uri) == digest else canonical_audio_uri(level, item, digest)
+        else:
+            audio_uri = base_uri
+        audio_urls[stable_id] = audio_uri
         audio_resources.append(
             {
                 "type": "vocab_audio",
                 "path": relative_path,
                 "sha256": digest,
                 "bytes": source.stat().st_size,
-                "canonicalSource": canonical_audio_uri(level, item),
+                "canonicalSource": audio_uri,
             }
         )
 
-    vocab = [_vocab_item(level, item) for item in items]
+    vocab = [_vocab_item(level, item, audio_urls[item.stable_id]) for item in items]
     vocab_bytes = _write_json(unpacked / "vocab.json", vocab)
     resources = [
         {
@@ -340,14 +367,14 @@ def _build_one_pack(
             "path": "vocab.json",
             "sha256": _sha256_bytes(vocab_bytes),
             "bytes": len(vocab_bytes),
-            "canonicalSource": f"vocab:3.0:{level}:{segment}:v{PACK_VERSION}",
+            "canonicalSource": f"vocab:3.0:{level}:{segment}:v{pack_version}",
         },
         *sorted(audio_resources, key=lambda entry: (str(entry["canonicalSource"]), str(entry["path"]))),
     ]
-    manifest = _manifest(level, segment, items, resources, base_hash)
+    manifest = _manifest(level, segment, items, resources, base_hash, pack_version)
     _write_json(unpacked / "manifest.json", manifest)
 
-    filename = f"vocab_{level}_30_{segment}_v{PACK_VERSION}.zip"
+    filename = f"vocab_{level}_30_{segment}_v{pack_version}.zip"
     zip_path = version_root / filename
     _write_deterministic_zip(unpacked, zip_path)
     digest = sha256_file(zip_path)
@@ -379,7 +406,7 @@ def _read_zip_json(archive: zipfile.ZipFile, name: str) -> object:
         raise BuildValidationError(f"ZIP thiếu {name}") from exc
 
 
-def verify_pack(zip_path: str | Path, expected_level: str | None = None, expected_segment: str | None = None) -> dict[str, object]:
+def verify_pack(zip_path: str | Path, expected_level: str | None = None, expected_segment: str | None = None, expected_pack_version: int | None = None) -> dict[str, object]:
     """Verify the ZIP itself against its manifest, without touching any remote service."""
     path = Path(zip_path)
     errors: list[str] = []
@@ -396,7 +423,7 @@ def verify_pack(zip_path: str | Path, expected_level: str | None = None, expecte
                     break
             manifest = _read_zip_json(archive, "manifest.json")
             vocab = _read_zip_json(archive, "vocab.json")
-            errors.extend(validate_pack_data(manifest, vocab, lambda item_path: archive.read(item_path), names, expected_level, expected_segment))
+            errors.extend(validate_pack_data(manifest, vocab, lambda item_path: archive.read(item_path), names, expected_level, expected_segment, expected_pack_version))
     except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as exc:
         errors.append(f"Không mở/đọc được ZIP: {exc}")
     if errors:
@@ -404,10 +431,10 @@ def verify_pack(zip_path: str | Path, expected_level: str | None = None, expecte
     return {"zip": str(path), "bytes": path.stat().st_size, "sha256": sha256_file(path), "status": "PASS"}
 
 
-def verify_pack_pair(base_zip: str | Path, plus_zip: str | Path, expected_level: str) -> dict[str, object]:
+def verify_pack_pair(base_zip: str | Path, plus_zip: str | Path, expected_level: str, expected_pack_version: int | None = None) -> dict[str, object]:
     """Verify the BASE/PLUS relationship after both individual ZIP checks pass."""
-    base_result = verify_pack(base_zip, expected_level, "base")
-    plus_result = verify_pack(plus_zip, expected_level, "plus")
+    base_result = verify_pack(base_zip, expected_level, "base", expected_pack_version)
+    plus_result = verify_pack(plus_zip, expected_level, "plus", expected_pack_version)
     with zipfile.ZipFile(base_zip, "r") as archive:
         base_manifest = _read_zip_json(archive, "manifest.json")
         base_vocab = _read_zip_json(archive, "vocab.json")
@@ -444,6 +471,7 @@ def validate_pack_data(
     names: Iterable[str],
     expected_level: str | None = None,
     expected_segment: str | None = None,
+    expected_pack_version: int | None = None,
 ) -> list[str]:
     errors: list[str] = []
     if not isinstance(manifest, dict) or not isinstance(vocab, list):
@@ -458,17 +486,18 @@ def validate_pack_data(
         errors.append("schema/version manifest không hợp lệ")
     if manifest.get("createdAt") != FIXED_CREATED_AT or manifest.get("zipSha256") != "":
         errors.append("createdAt/zipSha256 không đúng contract")
-    if manifest.get("packType") != "vocab" or manifest.get("packVersion") != PACK_VERSION:
+    if manifest.get("packType") != "vocab" or (expected_pack_version is not None and manifest.get("packVersion") != expected_pack_version):
         errors.append("packType/packVersion không đúng")
-    expected_pack = f"vocab:3.0:{level}:{segment}:v{PACK_VERSION}"
+    pack_version = int(manifest.get("packVersion", 0) or 0)
+    expected_pack = f"vocab:3.0:{level}:{segment}:v{pack_version}"
     if manifest.get("packId") != expected_pack:
         errors.append("packId không đúng")
     if segment == "base":
         if manifest.get("accessTier") != "base" or manifest.get("vocabCount") != 50 or manifest.get("previewWordCount") != 50:
             errors.append("BASE metadata không đúng")
     elif segment == "plus":
-        base_id = f"vocab:3.0:{level}:base:v{PACK_VERSION}"
-        if manifest.get("accessTier") != "vip" or manifest.get("requiresPackId") != base_id or manifest.get("compatibleBaseVersion") != PACK_VERSION:
+        base_id = f"vocab:3.0:{level}:base:v{pack_version}"
+        if manifest.get("accessTier") != "vip" or manifest.get("requiresPackId") != base_id or manifest.get("compatibleBaseVersion") != pack_version:
             errors.append("PLUS metadata không tương thích BASE")
         if manifest.get("remainingVocabCount") != len(vocab):
             errors.append("PLUS remainingVocabCount không đúng")
@@ -493,7 +522,7 @@ def validate_pack_data(
         if not isinstance(index, int):
             errors.append(f"vocab item {item_id}: index không phải integer")
         expected_uri = f"vocab://3.0/{level}/{item_id}/audio"
-        if audio_url != expected_uri:
+        if audio_url != expected_uri and not re.fullmatch(re.escape(expected_uri) + r"/[0-9a-f]{64}", audio_url):
             errors.append(f"vocab item {item_id}: audio_url không đúng contract")
         ids.append(item_id)
         audio_urls.append(audio_url)
@@ -580,6 +609,7 @@ def build_hsk30(
     bitrate: str = "32k",
     languages: Iterable[str] = ("vi", "zh"),
     config_confirmed: bool = True,
+    pack_version: int = PACK_VERSION,
 ) -> dict[str, object]:
     """Run the complete local-only Build + Validate workflow."""
     _validate_level(level)
@@ -611,17 +641,18 @@ def build_hsk30(
         _write_local_csv(output_root / "source_check.csv", items)
         if progress:
             progress("Đóng BASE deterministic")
-        base = _build_one_pack(level, "base", base_items, audio_root, sheet_name, output_root, None)
+        base = _build_one_pack(level, "base", base_items, audio_root, sheet_name, output_root, None, pack_version)
         if progress:
             progress("Đóng PLUS deterministic")
-        plus = _build_one_pack(level, "plus", plus_items, audio_root, sheet_name, output_root, base["manifest"]["orderedVocabIdsSha256"])
+        plus = _build_one_pack(level, "plus", plus_items, audio_root, sheet_name, output_root, base["manifest"]["orderedVocabIdsSha256"], pack_version)
         if progress:
             progress("Mở lại ZIP và verify")
-        pair_verify = verify_pack_pair(base["zip"], plus["zip"], level)
+        pair_verify = verify_pack_pair(base["zip"], plus["zip"], level, pack_version)
         result: dict[str, object] = {
             "status": "PASS",
             "workflow": "HSK 3.0 local build only; deploy/publish disabled",
             "level": level,
+            "packVersion": pack_version,
             "sheet": sheet_name,
             "sourceExcel": str(Path(excel_path).resolve()),
             "ttsConfig": {
@@ -638,8 +669,8 @@ def build_hsk30(
             "plus": plus,
             "deployEnabled": False,
             "objectPaths": {
-                "base": f"vocab/3.0/{level}/base/v1/vocab_{level}_30_base_v1.zip",
-                "plus": f"vocab/3.0/{level}/plus/v1/vocab_{level}_30_plus_v1.zip",
+                "base": f"vocab/3.0/{level}/base/v{pack_version}/vocab_{level}_30_base_v{pack_version}.zip",
+                "plus": f"vocab/3.0/{level}/plus/v{pack_version}/vocab_{level}_30_plus_v{pack_version}.zip",
             },
         }
         _write_json(report_path, result)
@@ -673,6 +704,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("excel_file")
     parser.add_argument("--sheet", required=True)
     parser.add_argument("--level", required=True, choices=SUPPORTED_LEVELS)
+    parser.add_argument("--pack-version", type=int, default=PACK_VERSION, help="Immutable pack version (default: 1)")
     parser.add_argument("--output", required=True, help="Parent directory for output/vocab/3.0")
     parser.add_argument("--engine", default=os.environ.get("TTS_ENGINE", "gTTS"))
     parser.add_argument("--speed", default=os.environ.get("TTS_SPEED", "Bình thường"))
@@ -705,6 +737,7 @@ def main() -> int:
             bitrate=args.bitrate,
             languages=args.languages.split(","),
             config_confirmed=args.config_confirmed == "true",
+            pack_version=args.pack_version,
         )
         print(f"STATUS: PASS\nBASE_SHA256: {result['base']['sha256']}\nPLUS_SHA256: {result['plus']['sha256']}")
         return 0
