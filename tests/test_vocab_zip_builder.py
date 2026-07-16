@@ -24,7 +24,7 @@ if "pypinyin" not in sys.modules:
     fake_pypinyin.lazy_pinyin = _fake_lazy_pinyin
     sys.modules["pypinyin"] = fake_pypinyin
 
-from pipelines.vocab_zip_builder import BuildValidationError, SourceVocab, audio_cache_key, build_hsk30, build_vocab_pack, deployment_allowed, verify_pack, verify_pack_pair
+from pipelines.vocab_zip_builder import BuildValidationError, SourceVocab, _split_plus1_plus2, audio_cache_key, build_hsk30, build_vocab_pack, deployment_allowed, verify_pack, verify_pack_pair, verify_pack_parts
 from pipelines import vocab_pipeline
 
 
@@ -78,6 +78,30 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertEqual(2, result["plus"]["manifest"]["vocabCount"])
         self.assertFalse(deployment_allowed(result))
         self.assertTrue(Path(result["base"]["zip"]).is_file())
+
+    def test_hsk79_builds_plus1_plus2_and_reuses_all_cached_audio(self):
+        rows = self.rows
+        self._write_excel(rows, sheet="hsk7_9_30")
+        out = self.temp_dir / "out"
+        self._seed_audio(out, level="hsk7_9", sheet="hsk7_9_30")
+        with patch.object(vocab_pipeline, "_build_word_audio", side_effect=AssertionError("TTS must not run")):
+            result = build_vocab_pack(self.excel, "hsk7_9_30", "hsk7_9", out, version="3.0", generate_missing=False)
+        self.assertEqual(0, result["audioGenerated"])
+        self.assertIn("plus1", result)
+        self.assertIn("plus2", result)
+        self.assertNotIn("plus", result)
+        self.assertEqual("PASS", verify_pack_parts(result["base"]["zip"], result["plus1"]["zip"], result["plus2"]["zip"], "hsk7_9")["status"])
+
+    def test_plus_split_selects_closest_cumulative_boundary(self):
+        items = [SourceVocab(i, f"词{i}", f"nghia {i}", "例", "vi") for i in range(1, 7)]
+        audio_root = self.temp_dir / "audio"
+        audio_root.mkdir()
+        for item, size in zip(items, (10, 11, 9, 10, 11, 9)):
+            path = audio_root / (audio_cache_key(item, engine="gTTS", speed="Bình thường", voice="Mặc định", profile="", bitrate="32k", audio_mode="zh_vi") + ".m4a")
+            path.write_bytes(b"x" * size)
+        left, right = _split_plus1_plus2(items, audio_root, "hsk7_9_30", engine="gTTS", speed="Bình thường", voice="Mặc định", profile="", bitrate="32k", audio_mode="zh_vi")
+        self.assertEqual([1, 2, 3], [item.index for item in left])
+        self.assertEqual([4, 5, 6], [item.index for item in right])
 
     def test_audio_unchanged_keeps_alias_and_changed_audio_gets_content_identity(self):
         self._write_excel()

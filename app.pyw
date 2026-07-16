@@ -5620,7 +5620,42 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 profile_name=profile_name,
             )
 
+        def restore_existing_build_report():
+            """Restore a PASS build after the builder window/app was restarted."""
+            if isinstance(artifact_state.get("result"), dict):
+                return True
+            try:
+                config = selected_config()
+                pack_version = int(pack_version_var.get())
+                report_path = os.path.join(
+                    config[4], "vocab", config[2], config[3], "builds",
+                    f"v{pack_version}", "build_report.json",
+                )
+                with open(report_path, "r", encoding="utf-8") as report_file:
+                    result = json.load(report_file)
+                if result.get("status") != "PASS":
+                    return False
+                if str(result.get("version")) != config[2] or str(result.get("level")) != config[3]:
+                    return False
+                if int(result.get("packVersion", 0) or 0) != pack_version:
+                    return False
+                artifact_state["result"] = result
+                artifact_state["fingerprint"] = fingerprint(config)
+                segments = ("base", "plus1", "plus2") if "plus1" in result else ("base", "plus")
+                segment_summary = " | ".join(f"{segment.upper()}={result.get(segment, {}).get('manifest', {}).get('vocabCount', '—')}" for segment in segments)
+                summary_var.set(
+                    f"Version: HSK {result['version']} | Level: {result['level'].upper()} | Pack version: v{result['packVersion']} | "
+                    f"rows={result.get('totalRows', '—')} | audio đã có={result.get('audioReused', '—')} | "
+                    f"audio cần tạo/thiếu ban đầu={result.get('audioGenerated', '—')} | {segment_summary}"
+                )
+                status_var.set("Đã khôi phục local PASS từ build_report.json. Có thể Upload + Verify Packs.")
+                workflow_state_var.set("LOCAL PASS | PACKS NOT VERIFIED | CATALOG NOT PUBLISHED")
+                return True
+            except Exception:
+                return False
+
         def refresh_deploy_gate():
+            restore_existing_build_report()
             try:
                 plan = current_deploy_plan()
             except (DeployValidationError, ValueError, OSError):
@@ -5815,18 +5850,20 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     artifact_state["result"] = result
                     artifact_state["fingerprint"] = fingerprint(config)
                     base = result["base"]
-                    plus = result["plus"]
+                    split_hsk79 = result.get("version") == "3.0" and result.get("level") == "hsk7_9" and "plus1" in result
+                    segments = ("base", "plus1", "plus2") if split_hsk79 else ("base", "plus")
+                    segment_summary = " | ".join(f"{segment.upper()}={result[segment]['manifest']['vocabCount']} ({result[segment]['bytes']} bytes, {result[segment]['sha256']})" for segment in segments)
                     summary_var.set(
                         f"Version: HSK {result['version']} | Level: {result['level'].upper()} | Pack version: v{result['packVersion']} | "
                         f"rows={result['totalRows']} | audio đã có={result['audioReused']} | "
-                        f"audio cần tạo/thiếu ban đầu={result['audioGenerated']} | "
-                        f"BASE={base['manifest']['vocabCount']} | PLUS={plus['manifest']['vocabCount']}"
+                        f"audio cần tạo/thiếu ban đầu={result['audioGenerated']} | {segment_summary}"
                     )
                     status_var.set("Nấc 1 PASS. Nấc 2 Upload + Verify Packs đã mở; Nấc 3 Publish Combined Catalog vẫn pending.")
                     workflow_state_var.set("LOCAL PASS | PACKS NOT VERIFIED | CATALOG NOT PUBLISHED")
                     receipt_state_var.set(f"Receipt: {config[4]}/vocab/{config[2]}/{config[3]}/deploy_receipt.json | Remote verification: chưa upload | Version: HSK {config[2]}")
-                    append_log(f"BASE: {base['zip']} ({base['bytes']} bytes, {base['sha256']})")
-                    append_log(f"PLUS: {plus['zip']} ({plus['bytes']} bytes, {plus['sha256']})")
+                    for segment in segments:
+                        pack = result[segment]
+                        append_log(f"{segment.upper()}: {pack['zip']} ({pack['bytes']} bytes, {pack['sha256']})")
                     refresh_deploy_gate()
                 builder_win.after(0, done)
 
@@ -5847,12 +5884,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             confirm.geometry("760x520")
             confirm.transient(builder_win)
             confirm.grab_set()
+            split_hsk79 = plan.version == "3.0" and plan.level == "hsk7_9" and "plus1" in plan.segment_packs
+            stage_segments = ("base", "plus1", "plus2") if split_hsk79 else ("base", "plus")
+            pack_details = "\n\n".join(f"{segment.upper()}: {plan.segment_packs.get(segment, {}).get('objectPath', plan.base_object_path if segment == 'base' else plan.plus_object_path)}\n{plan.segment_packs.get(segment, {}).get('bytes', plan.base_bytes if segment == 'base' else plan.plus_bytes)} bytes | {plan.segment_packs.get(segment, {}).get('sha256', plan.base_sha256 if segment == 'base' else plan.plus_sha256)}" for segment in stage_segments)
             details = (
                 f"Profile: {plan.profile_name}\nProject URL: {plan.project_url}\nBucket: {plan.bucket}\n"
                 f"Version: {plan.version} | Level: {plan.level} | packVersion: v{plan.pack_version}\n\n"
-                f"BASE: {plan.base_object_path}\n{plan.base_bytes} bytes | {plan.base_sha256}\n\n"
-                f"PLUS: {plan.plus_object_path}\n{plan.plus_bytes} bytes | {plan.plus_sha256}\n\n"
-                "Thao tác này chỉ upload + GET-verify hai ZIP bằng create-only. Catalog không được tạo/publish."
+                f"{pack_details}\n\n"
+                f"Thao tác này chỉ upload + GET-verify {len(stage_segments)} ZIP bằng create-only. Catalog không được tạo/publish."
             )
             tk.Label(confirm, text=details, anchor="w", justify="left", wraplength=720).pack(fill="both", expand=True, padx=14, pady=(14, 8))
             tk.Label(confirm, text="Nhập chính xác (có thể bôi đen và copy):", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)

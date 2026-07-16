@@ -166,11 +166,24 @@ class VocabZipDeployTests(unittest.TestCase):
                 self.assertEqual("REMOTE PACKS VERIFIED", result["status"])
                 self.assertTrue(receipt_path.is_file())
                 self.assertIn("classification=ABSENT", "\n".join(logs))
-                self.assertEqual(4, len([call for call in client.calls if call[0] == "GET"]))
-                self.assertEqual(2, len([call for call in client.calls if call[0] == "CREATE"]))
+                expected_parts = 3 if level == "hsk7_9" else 2
+                self.assertEqual(expected_parts * 2, len([call for call in client.calls if call[0] == "GET"]))
+                self.assertEqual(expected_parts, len([call for call in client.calls if call[0] == "CREATE"]))
                 self.assertEqual(plan.base_object_path, result["receipt"]["base"]["objectPath"])
-                self.assertEqual(plan.plus_object_path, result["receipt"]["plus"]["objectPath"])
+                if level == "hsk7_9":
+                    self.assertIn("plus1", result["receipt"])
+                    self.assertIn("plus2", result["receipt"])
+                    self.assertNotIn("plus", result["receipt"])
+                else:
+                    self.assertEqual(plan.plus_object_path, result["receipt"]["plus"]["objectPath"])
                 self.assertFalse((self.output_root / "vocab" / "catalog_revisions").exists())
+
+    def test_hsk79_missing_plus2_remote_verification_blocks_receipt(self):
+        _, _, _, result = self._stage("hsk7_9")
+        receipt = dict(result["receipt"])
+        receipt["plus2RemoteVerified"] = False
+        with self.assertRaises(deploy.DeployValidationError):
+            deploy.validate_deploy_receipt(receipt)
 
     def test_stage_hsk20_uses_2_0_namespace_and_does_not_cross_versions(self):
         rows = self._rows_for_total(152)
@@ -304,7 +317,7 @@ class VocabZipDeployTests(unittest.TestCase):
         self.assertEqual("CATALOG PUBLISHED", result["status"])
         self.assertEqual(2, result["revision"])
         self.assertEqual(deploy.catalog_object_path(2), result["objectPath"])
-        self.assertEqual(16, result["entryCount"])
+        self.assertEqual(17, result["entryCount"])
         self.assertIn("classification=ABSENT", "\n".join(logs))
         snapshot = deploy.load_catalog_source_snapshot(self.output_root)
         self.assertEqual(2, snapshot.revision)
@@ -312,7 +325,7 @@ class VocabZipDeployTests(unittest.TestCase):
         entries = snapshot.catalog[key]
         seed_catalog = json.loads(source_bytes.decode("utf-8"))
         seed_key = self._entries_key(seed_catalog)
-        self.assertEqual(16, len(entries))
+        self.assertEqual(17, len(entries))
         legacy_entries = entries[:12]
         self.assertEqual(seed_catalog[seed_key], legacy_entries)
         for level in ("hsk2", "hsk7_9"):
@@ -390,15 +403,17 @@ class VocabZipDeployTests(unittest.TestCase):
         client_v4 = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, deploy.catalog_object_path(3)): (self.output_root / "vocab" / "catalog_revisions" / "v3" / "vocab_pack_catalog_20_30_v3.json").read_bytes()})
         result_v4 = deploy.publish_catalog_with_client(client_v4, output_directory=self.output_root, confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION)
         self.assertEqual(4, result_v4["revision"])
-        self.assertEqual(26, result_v4["entryCount"])
+        self.assertEqual(27, result_v4["entryCount"])
         snapshot_v4 = deploy.load_catalog_source_snapshot(self.output_root)
         self.assertEqual(4, snapshot_v4.revision)
-        self.assertEqual(26, snapshot_v4.entry_count)
+        self.assertEqual(27, snapshot_v4.entry_count)
         merged_entries = snapshot_v4.catalog[self._entries_key(snapshot_v4.catalog)]
         self.assertEqual(v2_entries, merged_entries[:14])
         self.assertEqual(seed_catalog[seed_key], merged_entries[:12])
         self.assertEqual(len(merged_entries), len({(e["version"], e["level"], e["segment"]) for e in merged_entries}))
-        self.assertEqual(26, len(merged_entries))
+        hsk79_segments = {(e["version"], e["level"], e["segment"]) for e in merged_entries if e["level"] == "hsk7_9"}
+        self.assertEqual({("3.0", "hsk7_9", "base"), ("3.0", "hsk7_9", "plus1"), ("3.0", "hsk7_9", "plus2")}, hsk79_segments)
+        self.assertEqual(27, len(merged_entries))
 
     def test_publish_reuses_existing_catalog_when_sha_matches(self):
         self._write_source_snapshot()

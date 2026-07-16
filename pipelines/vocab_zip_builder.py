@@ -535,6 +535,39 @@ def verify_pack_pair(base_zip: str | Path, plus_zip: str | Path, expected_level:
     return {"status": "PASS", "base": base_result, "plus": plus_result}
 
 
+def verify_pack_parts(base_zip: str | Path, plus1_zip: str | Path, plus2_zip: str | Path, expected_level: str, expected_pack_version: int | None = None, expected_version: str | None = None) -> dict[str, object]:
+    """Verify BASE + PLUS1 + PLUS2 contiguity for HSK7-9."""
+    paths = (("base", base_zip), ("plus1", plus1_zip), ("plus2", plus2_zip))
+    results = {segment: verify_pack(path, expected_level, segment, expected_pack_version, expected_version) for segment, path in paths}
+    manifests = {}
+    vocabs = {}
+    for segment, path in paths:
+        with zipfile.ZipFile(path, "r") as archive:
+            manifest = _read_zip_json(archive, "manifest.json")
+            vocab = _read_zip_json(archive, "vocab.json")
+        if not isinstance(manifest, dict) or not isinstance(vocab, list):
+            raise BuildValidationError(f"{segment} manifest/vocab không hợp lệ")
+        manifests[segment] = manifest
+        vocabs[segment] = [item for item in vocab if isinstance(item, dict)]
+    all_items = vocabs["base"] + vocabs["plus1"] + vocabs["plus2"]
+    indexes = [item.get("index") for item in all_items]
+    ids = [item.get("id") for item in all_items]
+    errors = []
+    if indexes != list(range(1, len(indexes) + 1)):
+        errors.append("BASE + PLUS1 + PLUS2 index không liên tục")
+    if len(ids) != len(set(ids)):
+        errors.append("BASE/PLUS1/PLUS2 trùng stable ID")
+    base_hash = manifests["base"].get("orderedVocabIdsSha256")
+    for segment in ("plus1", "plus2"):
+        if manifests[segment].get("requiresPackId") != manifests["base"].get("packId"):
+            errors.append(f"{segment} requiresPackId không trỏ tới BASE")
+        if manifests[segment].get("baseOrderedVocabIdsSha256") != base_hash:
+            errors.append(f"{segment} baseOrderedVocabIdsSha256 không khớp BASE")
+    if errors:
+        raise BuildValidationError("; ".join(errors))
+    return {"status": "PASS", **results}
+
+
 def validate_pack_data(
     manifest: object,
     vocab: object,
@@ -570,7 +603,7 @@ def validate_pack_data(
     if segment == "base":
         if manifest.get("accessTier") != "base" or manifest.get("vocabCount") != manifest.get("previewWordCount") or not isinstance(manifest.get("previewWordCount"), int) or manifest.get("previewWordCount", 0) < 1:
             errors.append("BASE metadata không đúng")
-    elif segment == "plus":
+    elif segment in {"plus", "plus1", "plus2"}:
         base_id = f"vocab:{version}:{level}:base:v{pack_version}"
         if manifest.get("accessTier") != "vip" or manifest.get("requiresPackId") != base_id or manifest.get("compatibleBaseVersion") != pack_version:
             errors.append("PLUS metadata không tương thích BASE")
@@ -692,6 +725,29 @@ def split_policy(version: str, level: str) -> dict[str, int | str]:
     return {"source": "tested builder default", "base": 50, "plus": -1, "total": -1}
 
 
+def _split_plus1_plus2(items: list[SourceVocab], audio_root: Path, sheet_name: str, *, engine: str, speed: str, voice: str, profile: str, bitrate: str, audio_mode: str) -> tuple[list[SourceVocab], list[SourceVocab]]:
+    """Split remaining vocab by cumulative cached audio size, preserving order."""
+    if len(items) < 2:
+        raise BuildValidationError("HSK7–9 cần ít nhất hai item trong PLUS để chia PLUS1/PLUS2")
+    sizes = []
+    for item in items:
+        path = _source_audio_path(audio_root, sheet_name, item, engine=engine, speed=speed, voice=voice, profile=profile, bitrate=bitrate, audio_mode=audio_mode)
+        sizes.append(path.stat().st_size if path.is_file() else 0)
+    total = sum(sizes)
+    cumulative = 0
+    split_at = 1
+    best_delta = None
+    # Evaluate every legal boundary.  Do not keep updating after the target;
+    # that was the bug that produced N-1/1 instead of a balanced split.
+    for index, size in enumerate(sizes[:-1], start=1):
+        cumulative += size
+        delta = abs(cumulative - (total - cumulative))
+        if best_delta is None or delta < best_delta:
+            best_delta = delta
+            split_at = index
+    return items[:split_at], items[split_at:]
+
+
 def build_vocab_pack(
     excel_path: str | Path,
     sheet_name: str,
@@ -756,12 +812,32 @@ def build_vocab_pack(
         if progress:
             progress("Đóng BASE deterministic")
         base = _build_one_pack(version, level, "base", base_items, audio_root, sheet_name, level_root, None, base_count, engine, speed, voice, tts_profile, bitrate, audio_mode, pack_version)
-        if progress:
-            progress("Đóng PLUS deterministic")
-        plus = _build_one_pack(version, level, "plus", plus_items, audio_root, sheet_name, level_root, base["manifest"]["orderedVocabIdsSha256"], base_count, engine, speed, voice, tts_profile, bitrate, audio_mode, pack_version)
-        if progress:
-            progress("Mở lại ZIP và verify")
-        pair_verify = verify_pack_pair(base["zip"], plus["zip"], level, pack_version, version)
+        is_split_hsk79 = version == "3.0" and level == "hsk7_9"
+        if is_split_hsk79:
+            plus1_items, plus2_items = _split_plus1_plus2(
+                plus_items, audio_root, sheet_name, engine=engine, speed=speed, voice=voice,
+                profile=tts_profile, bitrate=bitrate, audio_mode=audio_mode,
+            )
+            if progress:
+                progress("Đóng PLUS1 deterministic")
+            plus1 = _build_one_pack(version, level, "plus1", plus1_items, audio_root, sheet_name, level_root, base["manifest"]["orderedVocabIdsSha256"], base_count, engine, speed, voice, tts_profile, bitrate, audio_mode, pack_version)
+            if progress:
+                progress("Đóng PLUS2 deterministic")
+            plus2 = _build_one_pack(version, level, "plus2", plus2_items, audio_root, sheet_name, level_root, base["manifest"]["orderedVocabIdsSha256"], base_count, engine, speed, voice, tts_profile, bitrate, audio_mode, pack_version)
+            for part_name, part in (("PLUS1", plus1), ("PLUS2", plus2)):
+                if int(part["bytes"]) >= 50_000_000:
+                    raise BuildValidationError(f"{part_name} ZIP phải dưới 50,000,000 bytes; hiện tại {part['bytes']} bytes")
+            if progress:
+                progress("Mở lại ZIP và verify")
+            pair_verify = verify_pack_parts(base["zip"], plus1["zip"], plus2["zip"], level, pack_version, version)
+            plus = None
+        else:
+            if progress:
+                progress("Đóng PLUS deterministic")
+            plus = _build_one_pack(version, level, "plus", plus_items, audio_root, sheet_name, level_root, base["manifest"]["orderedVocabIdsSha256"], base_count, engine, speed, voice, tts_profile, bitrate, audio_mode, pack_version)
+            if progress:
+                progress("Mở lại ZIP và verify")
+            pair_verify = verify_pack_pair(base["zip"], plus["zip"], level, pack_version, version)
         result: dict[str, object] = {
             "status": "PASS",
             "workflow": "Generic HSK vocab local build only; deploy/publish disabled",
@@ -784,12 +860,17 @@ def build_vocab_pack(
             "audioReused": reused,
             "audioGenerated": generated,
             "base": base,
-            "plus": plus,
+            **({"plus1": plus1, "plus2": plus2} if is_split_hsk79 else {"plus": plus}),
             "deployEnabled": False,
             "sourceAudioRoot": str(audio_root),
             "objectPaths": {
                 "base": f"vocab/{version}/{level}/base/v{pack_version}/vocab_{level}_{version.replace('.', '')}_base_v{pack_version}.zip",
-                "plus": f"vocab/{version}/{level}/plus/v{pack_version}/vocab_{level}_{version.replace('.', '')}_plus_v{pack_version}.zip",
+                **({
+                    "plus1": f"vocab/{version}/{level}/plus1/v{pack_version}/vocab_{level}_{version.replace('.', '')}_plus1_v{pack_version}.zip",
+                    "plus2": f"vocab/{version}/{level}/plus2/v{pack_version}/vocab_{level}_{version.replace('.', '')}_plus2_v{pack_version}.zip",
+                } if is_split_hsk79 else {
+                    "plus": f"vocab/{version}/{level}/plus/v{pack_version}/vocab_{level}_{version.replace('.', '')}_plus_v{pack_version}.zip",
+                }),
             },
         }
         _write_json(report_path, result)
@@ -814,7 +895,8 @@ def deployment_allowed(result: object) -> bool:
     """The UI may only enable future deploy after an unchanged local PASS artifact."""
     if not isinstance(result, dict) or result.get("status") != "PASS":
         return False
-    for segment in ("base", "plus"):
+    segments = ("base", "plus1", "plus2") if result.get("level") == "hsk7_9" and result.get("version") == "3.0" else ("base", "plus")
+    for segment in segments:
         pack = result.get(segment)
         if not isinstance(pack, dict):
             return False
@@ -872,7 +954,10 @@ def main() -> int:
             tts_profile=args.tts_profile,
             force_regenerate_audio=args.force_regenerate_audio,
         )
-        print(f"STATUS: PASS\nBASE_SHA256: {result['base']['sha256']}\nPLUS_SHA256: {result['plus']['sha256']}")
+        if "plus1" in result:
+            print(f"STATUS: PASS\nBASE_SHA256: {result['base']['sha256']}\nPLUS1_SHA256: {result['plus1']['sha256']}\nPLUS2_SHA256: {result['plus2']['sha256']}")
+        else:
+            print(f"STATUS: PASS\nBASE_SHA256: {result['base']['sha256']}\nPLUS_SHA256: {result['plus']['sha256']}")
         return 0
     except BuildValidationError as exc:
         print(f"STATUS: FAIL\n{exc}")

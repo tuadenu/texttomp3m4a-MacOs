@@ -9,13 +9,17 @@ confirmation; unit tests use ``MemoryStorageClient``.
 from __future__ import annotations
 
 import copy
+import base64
 import hashlib
 import json
+import os
 import re
 import ssl
 import tempfile
 import time
-from dataclasses import dataclass
+import uuid
+import zipfile
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Protocol
@@ -23,7 +27,7 @@ from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
 
-from pipelines.vocab_zip_builder import SUPPORTED_VERSIONS, sha256_file, verify_pack, verify_pack_pair
+from pipelines.vocab_zip_builder import SUPPORTED_VERSIONS, sha256_file, verify_pack, verify_pack_pair, verify_pack_parts
 
 
 SUPPORTED_LEVELS = ("hsk1", "hsk2", "hsk3", "hsk4", "hsk5", "hsk6", "hsk7_9")
@@ -85,6 +89,7 @@ class DeployPlan:
     compatibility_hash: str
     base_manifest: dict[str, object]
     plus_manifest: dict[str, object]
+    segment_packs: dict[str, dict[str, object]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -132,8 +137,8 @@ def _validate_version(version: str) -> str:
 def pack_id(level: str, segment: str, pack_version: int = PACK_VERSION, version: str = STANDARD_VERSION) -> str:
     level = _validate_level(level)
     version = _validate_version(version)
-    if segment not in {"base", "plus"}:
-        raise DeployValidationError("segment phải là base hoặc plus.")
+    if segment not in {"base", "plus", "plus1", "plus2"}:
+        raise DeployValidationError("segment phải là base, plus, plus1 hoặc plus2.")
     if int(pack_version) < 1:
         raise DeployValidationError("packVersion phải >= 1.")
     return f"vocab:{version}:{level}:{segment}:v{int(pack_version)}"
@@ -141,8 +146,8 @@ def pack_id(level: str, segment: str, pack_version: int = PACK_VERSION, version:
 
 def collection_id(level: str, segment: str, pack_version: int = PACK_VERSION, version: str = STANDARD_VERSION) -> str:
     level = _validate_level(level)
-    if segment not in {"base", "plus"}:
-        raise DeployValidationError("segment phải là base hoặc plus.")
+    if segment not in {"base", "plus", "plus1", "plus2"}:
+        raise DeployValidationError("segment phải là base, plus, plus1 hoặc plus2.")
     if int(pack_version) < 1:
         raise DeployValidationError("packVersion phải >= 1.")
     version = _validate_version(version)
@@ -151,8 +156,8 @@ def collection_id(level: str, segment: str, pack_version: int = PACK_VERSION, ve
 
 def pack_object_path(level: str, segment: str, pack_version: int = PACK_VERSION, version: str = STANDARD_VERSION) -> str:
     level = _validate_level(level)
-    if segment not in {"base", "plus"}:
-        raise DeployValidationError("segment phải là base hoặc plus.")
+    if segment not in {"base", "plus", "plus1", "plus2"}:
+        raise DeployValidationError("segment phải là base, plus, plus1 hoặc plus2.")
     if int(pack_version) < 1:
         raise DeployValidationError("packVersion phải >= 1.")
     standard_version = _validate_version(version)
@@ -322,8 +327,10 @@ def validate_local_receipt(result: Mapping[str, object] | None, config: tuple[st
         raise DeployValidationError(f"Không đọc được validation_report.json: {exc}") from exc
     if validation.get("status") != "PASS":
         raise DeployValidationError("validation_report.json không PASS.")
+    split_hsk79 = version == "3.0" and level == "hsk7_9" and "plus1" in result
+    segments = ("base", "plus1", "plus2") if split_hsk79 else ("base", "plus")
     packs: dict[str, dict[str, object]] = {}
-    for segment in ("base", "plus"):
+    for segment in segments:
         pack = result.get(segment)
         if not isinstance(pack, Mapping):
             raise DeployValidationError(f"Thiếu build receipt {segment.upper()}.")
@@ -334,15 +341,25 @@ def validate_local_receipt(result: Mapping[str, object] | None, config: tuple[st
             raise DeployValidationError(f"ZIP {segment.upper()} không khớp bytes/SHA trong receipt.")
         if str(result.get("objectPaths", {}).get(segment, "")) != pack_object_path(level, segment, int(result.get("packVersion", 1) or 1), version):
             raise DeployValidationError(f"Object path {segment.upper()} không đúng level.")
-        packs[segment] = {"localPath": str(local_path), "bytes": actual_bytes, "sha256": actual_sha}
+        with zipfile.ZipFile(local_path, "r") as archive:
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        packs[segment] = {"localPath": str(local_path), "bytes": actual_bytes, "sha256": actual_sha, "manifest": manifest}
     try:
-        verify_pack_pair(packs["base"]["localPath"], packs["plus"]["localPath"], level, expected_version=version)
+        if split_hsk79:
+            verify_pack_parts(packs["base"]["localPath"], packs["plus1"]["localPath"], packs["plus2"]["localPath"], level, expected_version=version)
+        else:
+            verify_pack_pair(packs["base"]["localPath"], packs["plus"]["localPath"], level, expected_version=version)
     except Exception as exc:
         raise DeployValidationError(f"BASE/PLUS verify thất bại: {exc}") from exc
-    contract = validate_compatibility_contract(packs["base"]["localPath"], packs["plus"]["localPath"], level, version)
+    if split_hsk79:
+        with zipfile.ZipFile(packs["base"]["localPath"], "r") as archive:
+            base_manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+        contract = {"version": version, "level": level, "compatibilityHash": str(base_manifest.get("orderedVocabIdsSha256", "")), "baseManifest": base_manifest, "plusManifest": {}}
+    else:
+        contract = validate_compatibility_contract(packs["base"]["localPath"], packs["plus"]["localPath"], level, version)
     base_version = int(contract["baseManifest"].get("packVersion", 0) or 0)
-    plus_version = int(contract["plusManifest"].get("packVersion", 0) or 0)
-    if base_version < 1 or base_version != plus_version:
+    plus_versions = [int(packs[segment].get("manifest", {}).get("packVersion", base_version) or 0) for segment in segments[1:]]
+    if base_version < 1 or any(value != base_version for value in plus_versions):
         raise DeployValidationError("BASE/PLUS packVersion không khớp hoặc không hợp lệ.")
     return {"status": "PASS", "version": version, "fingerprint": current, "packs": packs, "packVersion": base_version, "compatibility": contract}
 
@@ -356,14 +373,20 @@ def build_plan(result: Mapping[str, object] | None, config: tuple[str, ...], rec
         raise DeployValidationError("Supabase profile thiếu URL, bucket hoặc service-role key.")
     level = str(verified["compatibility"]["level"])
     version = str(verified["version"])
-    base, plus = verified["packs"]["base"], verified["packs"]["plus"]
+    base = verified["packs"]["base"]
+    split_hsk79 = version == "3.0" and level == "hsk7_9" and "plus1" in verified["packs"]
+    plus = verified["packs"]["plus1"] if split_hsk79 else verified["packs"]["plus"]
     contract = verified["compatibility"]
     pack_version = int(verified.get("packVersion", PACK_VERSION))
+    segment_packs = {
+        segment: {**dict(pack), "objectPath": pack_object_path(level, segment, pack_version, version)}
+        for segment, pack in verified["packs"].items()
+    }
     return DeployPlan(
         profile_name=profile_name, project_url=url, bucket=STAGING_BUCKET, version=version, level=level, pack_version=pack_version,
         base_local_path=base["localPath"], base_bytes=base["bytes"], base_sha256=base["sha256"], base_object_path=pack_object_path(level, "base", pack_version, version),
         plus_local_path=plus["localPath"], plus_bytes=plus["bytes"], plus_sha256=plus["sha256"], plus_object_path=pack_object_path(level, "plus", pack_version, version),
-        compatibility_hash=str(contract["compatibilityHash"]), base_manifest=dict(contract["baseManifest"]), plus_manifest=dict(contract["plusManifest"]),
+        compatibility_hash=str(contract["compatibilityHash"]), base_manifest=dict(contract["baseManifest"]), plus_manifest=dict(plus.get("manifest", contract.get("plusManifest", {}))), segment_packs=segment_packs,
     )
 
 
@@ -422,15 +445,18 @@ def load_seed_catalog(base_directory: str | Path = ".") -> tuple[bytes, dict[str
 
 
 def catalog_entry_from_plan(plan: DeployPlan, segment: str) -> dict[str, object]:
-    manifest = plan.base_manifest if segment == "base" else plan.plus_manifest
+    pack = plan.segment_packs.get(segment, {})
+    manifest = plan.base_manifest if segment == "base" else (pack.get("manifest") or plan.plus_manifest)
+    sha = plan.base_sha256 if segment == "base" else str(pack.get("sha256", plan.plus_sha256))
+    size = plan.base_bytes if segment == "base" else int(pack.get("bytes", plan.plus_bytes))
     return {
         "version": plan.version, "level": plan.level, "segment": segment,
         "packId": pack_id(plan.level, segment, plan.pack_version, plan.version), "collectionId": collection_id(plan.level, segment, plan.pack_version, plan.version),
         "packVersion": int(manifest.get("packVersion", 0)), "vocabCount": int(manifest.get("vocabCount", 0)),
         "audioCount": sum(1 for resource in manifest.get("resources", []) if isinstance(resource, Mapping) and resource.get("type") == "vocab_audio"),
         "objectPath": pack_object_path(plan.level, segment, plan.pack_version, plan.version), "filename": f"vocab_{plan.level}_{plan.version.replace('.', '')}_{segment}_v{plan.pack_version}.zip",
-        "sha256": plan.base_sha256 if segment == "base" else plan.plus_sha256,
-        "zipBytes": plan.base_bytes if segment == "base" else plan.plus_bytes,
+        "sha256": sha,
+        "zipBytes": size,
         "compatibilityHash": plan.compatibility_hash, "accessTier": "base" if segment == "base" else "vip", "enabled": True,
     }
 
@@ -440,7 +466,8 @@ def deploy_receipt_path(output_directory: str | Path, level: str, version: str =
 
 
 def _write_deploy_receipt(output_directory: str | Path, plan: DeployPlan) -> dict[str, object]:
-    base_entry, plus_entry = catalog_entry_from_plan(plan, "base"), catalog_entry_from_plan(plan, "plus")
+    segments = ("base", "plus1", "plus2") if "plus1" in plan.segment_packs else ("base", "plus")
+    entries = {segment: catalog_entry_from_plan(plan, segment) for segment in segments}
     now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     build_report = Path(output_directory) / "vocab" / plan.version / plan.level / "builds" / f"v{plan.pack_version}" / "build_report.json"
     source_build_sha = sha256_file(build_report) if build_report.is_file() else ""
@@ -458,9 +485,9 @@ def _write_deploy_receipt(output_directory: str | Path, plan: DeployPlan) -> dic
         "remoteVerifiedAt": now, "compatibilityHash": plan.compatibility_hash,
         "sourceBuildReceiptSha256": source_build_sha,
         "ttsConfig": tts_config,
-        "baseRemoteVerified": True, "plusRemoteVerified": True,
+        **{f"{segment}RemoteVerified": True for segment in segments},
         "catalogPublished": False,
-        "base": {**base_entry, "remoteVerified": True}, "plus": {**plus_entry, "remoteVerified": True},
+        **{segment: {**entries[segment], "remoteVerified": True} for segment in segments},
     }
     path = deploy_receipt_path(output_directory, plan.level, plan.version)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -479,8 +506,9 @@ def validate_deploy_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
     compatibility = receipt.get("compatibilityHash")
     if not isinstance(compatibility, str) or len(compatibility) != 64:
         raise DeployValidationError("Deploy receipt thiếu compatibilityHash.")
+    segments = ("base", "plus1", "plus2") if "plus1" in receipt else ("base", "plus")
     entries: list[dict[str, object]] = []
-    for segment in ("base", "plus"):
+    for segment in segments:
         entry = receipt.get(segment)
         if not isinstance(entry, Mapping) or entry.get("remoteVerified") is not True:
             raise DeployValidationError(f"Deploy receipt {segment.upper()} chưa remoteVerified.")
@@ -491,10 +519,10 @@ def validate_deploy_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
             raise DeployValidationError(f"Deploy receipt {segment.upper()} thiếu SHA/bytes/hash.")
         item = {key: value for key, value in entry.items() if key != "remoteVerified"}
         entries.append(item)
-    if entries[0]["compatibilityHash"] != entries[1]["compatibilityHash"]:
+    if any(item["compatibilityHash"] != entries[0]["compatibilityHash"] for item in entries[1:]):
         raise DeployValidationError("Deploy receipt BASE/PLUS compatibilityHash không giống nhau.")
-    if receipt.get("baseRemoteVerified", True) is not True or receipt.get("plusRemoteVerified", True) is not True:
-        raise DeployValidationError("Deploy receipt chưa remoteVerified đủ BASE/PLUS.")
+    if any(receipt.get(f"{segment}RemoteVerified", True) is not True for segment in segments):
+        raise DeployValidationError("Deploy receipt chưa remoteVerified đủ các segment.")
     return {"version": version, "level": level, "packVersion": pack_version, "entries": entries, "receipt": dict(receipt)}
 
 
@@ -659,10 +687,11 @@ def _http_status_from_error(exc: BaseException) -> object:
 
 
 def _ensure_zip_object(client: StorageClient, plan: DeployPlan, segment: str, progress: Callable[[str], None] | None = None) -> None:
-    object_path = plan.base_object_path if segment == "base" else plan.plus_object_path
-    local_path = plan.base_local_path if segment == "base" else plan.plus_local_path
-    expected_sha = plan.base_sha256 if segment == "base" else plan.plus_sha256
-    expected_bytes = plan.base_bytes if segment == "base" else plan.plus_bytes
+    pack = plan.segment_packs.get(segment, {})
+    object_path = pack.get("objectPath") or pack_object_path(plan.level, segment, plan.pack_version, plan.version)
+    local_path = pack.get("localPath") or (plan.base_local_path if segment == "base" else plan.plus_local_path)
+    expected_sha = pack.get("sha256") or (plan.base_sha256 if segment == "base" else plan.plus_sha256)
+    expected_bytes = int(pack.get("bytes") or (plan.base_bytes if segment == "base" else plan.plus_bytes))
     try:
         existing = client.get_object(plan.bucket, object_path)
     except StorageNotFound as exc:
@@ -691,10 +720,10 @@ def stage_packs_with_client(client: StorageClient, plan: DeployPlan, *, confirma
     require_stage_confirmation(plan.level, confirmation, plan.version)
     completed: list[str] = []
     try:
-        _ensure_zip_object(client, plan, "base", progress)
-        completed.append(plan.base_object_path)
-        _ensure_zip_object(client, plan, "plus", progress)
-        completed.append(plan.plus_object_path)
+        segments = ("base", "plus1", "plus2") if "plus1" in plan.segment_packs else ("base", "plus")
+        for segment in segments:
+            _ensure_zip_object(client, plan, segment, progress)
+            completed.append(str(plan.segment_packs.get(segment, {}).get("objectPath") or pack_object_path(plan.level, segment, plan.pack_version, plan.version)))
     except Exception as exc:
         if completed:
             raise PartialDeployError(f"PARTIAL: staged {completed}; catalog chưa publish: {exc}", completed) from exc
@@ -850,7 +879,9 @@ class SupabaseStorageRestClient:
                 if retry_get and exc.code >= 500 and attempt < self.retries:
                     time.sleep(0.25 * (attempt + 1))
                     continue
-                raise DeployValidationError(f"Supabase storage HTTP {exc.code}.") from None
+                detail = (body.decode("utf-8", errors="replace") if isinstance(body, bytes) else str(body)).strip()[:500]
+                suffix = f" body={detail}" if detail else ""
+                raise DeployValidationError(f"Supabase storage HTTP {exc.code}.{suffix}") from None
             except (urlerror.URLError, TimeoutError, OSError) as exc:
                 if retry_get and attempt < self.retries:
                     time.sleep(0.25 * (attempt + 1))
@@ -859,14 +890,81 @@ class SupabaseStorageRestClient:
         raise DeployValidationError("Supabase storage request failed.")
 
     def get_object(self, bucket: str, object_path: str) -> bytes:
-        return self._request("GET", self._storage_url(bucket, object_path), retry_get=True)
+        url = self._storage_url(bucket, object_path)
+        # current.json is the sole mutable object.  Bypass intermediary/CDN
+        # caches after a pointer update so the final GET verifies new bytes.
+        if object_path == "catalogs/vocab/current.json":
+            url += f"?__pointer_verify={uuid.uuid4().hex}"
+        return self._request("GET", url, retry_get=True, extra_headers={"Cache-Control": "no-cache", "Pragma": "no-cache"} if object_path == "catalogs/vocab/current.json" else None)
 
     def create_object(self, bucket: str, object_path: str, payload: bytes, content_type: str) -> None:
+        # Supabase's regular multipart/raw POST is subject to a per-request
+        # size limit.  Use the Storage TUS endpoint for large immutable ZIPs.
+        resumable_threshold = int(os.environ.get("SUPABASE_RESUMABLE_THRESHOLD", str(8 * 1024 * 1024)))
+        if len(payload) >= resumable_threshold:
+            self._create_object_resumable(bucket, object_path, payload, content_type)
+            return
         self._request("POST", self._storage_url(bucket, object_path), payload=payload, content_type=content_type, extra_headers={"x-upsert": "false"})
+
+    def _create_object_resumable(self, bucket: str, object_path: str, payload: bytes, content_type: str) -> None:
+        self._ensure_enabled()
+        headers = {
+            "apikey": self._service_role_key,
+            "Authorization": f"Bearer {self._service_role_key}",
+            "Tus-Resumable": "1.0.0",
+            "Upload-Length": str(len(payload)),
+            "Upload-Metadata": ",".join(
+                f"{key} {base64.b64encode(value.encode('utf-8')).decode('ascii')}"
+                for key, value in (
+                    ("bucketName", bucket),
+                    ("objectName", object_path),
+                    ("contentType", content_type),
+                    ("cacheControl", "3600"),
+                )
+            ),
+            "x-upsert": "false",
+            "Content-Type": "application/offset+octet-stream",
+        }
+        endpoint = f"{self.project_url}/storage/v1/upload/resumable"
+        try:
+            request = urlrequest.Request(endpoint, data=b"", headers=headers, method="POST")
+            with urlrequest.urlopen(request, timeout=self.timeout, context=self._ssl_context()) as response:
+                location = response.headers.get("Location")
+        except urlerror.HTTPError as exc:
+            parsed, body = _http_error_body(exc)
+            if _is_object_not_found_response(exc.code, parsed, body):
+                raise StorageNotFound(endpoint, http_status=exc.code) from None
+            if exc.code == 409:
+                raise StorageConflict(endpoint) from None
+            detail = (body.decode("utf-8", errors="replace") if isinstance(body, bytes) else str(body)).strip()[:500]
+            raise DeployValidationError(f"Supabase resumable upload HTTP {exc.code}: {detail}") from None
+        if not location:
+            raise DeployValidationError("Supabase resumable upload không trả Location.")
+        upload_url = urlparse.urljoin(endpoint, location)
+        offset = 0
+        chunk_size = int(os.environ.get("SUPABASE_RESUMABLE_CHUNK_BYTES", str(8 * 1024 * 1024)))
+        while offset < len(payload):
+            chunk = payload[offset:offset + chunk_size]
+            patch_headers = {
+                "apikey": self._service_role_key,
+                "Authorization": f"Bearer {self._service_role_key}",
+                "Tus-Resumable": "1.0.0",
+                "Upload-Offset": str(offset),
+                "Content-Type": "application/offset+octet-stream",
+            }
+            try:
+                patch_request = urlrequest.Request(upload_url, data=chunk, headers=patch_headers, method="PATCH")
+                with urlrequest.urlopen(patch_request, timeout=self.timeout, context=self._ssl_context()) as response:
+                    returned_offset = response.headers.get("Upload-Offset")
+            except urlerror.HTTPError as exc:
+                raw_detail = exc.read()
+                detail = (raw_detail.decode("utf-8", errors="replace") if isinstance(raw_detail, bytes) else str(raw_detail)).strip()[:500]
+                raise DeployValidationError(f"Supabase resumable PATCH HTTP {exc.code}: {detail}") from None
+            offset = int(returned_offset) if returned_offset is not None else offset + len(chunk)
 
     def update_object(self, bucket: str, object_path: str, payload: bytes, content_type: str) -> None:
         # The signed pointer is the sole mutable object.  Callers must never
         # use this method for ZIPs, immutable catalogs, or pointer archives.
         if object_path != "catalogs/vocab/current.json":
             raise DeployValidationError("Chỉ current.json được phép update/upsert.")
-        self._request("PUT", self._storage_url(bucket, object_path), payload=payload, content_type=content_type, extra_headers={"x-upsert": "true"})
+        self._request("PUT", self._storage_url(bucket, object_path), payload=payload, content_type=content_type, extra_headers={"x-upsert": "true", "Cache-Control": "no-cache"})
