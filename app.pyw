@@ -421,6 +421,36 @@ def _save_hsk30_recent_selection(excel_path, sheet_name):
     except Exception as exc:
         print(f"⚠ Không lưu được Excel/sheet HSK 3.0 gần nhất: {exc}")
 
+
+def _load_hsk30_builder_state():
+    return {
+        "version": str(config.get("HSK30_LAST_VERSION", "HSK 3.0") or "HSK 3.0"),
+        "level": str(config.get("HSK30_LAST_LEVEL", "HSK 1") or "HSK 1"),
+        "pack_version": str(config.get("HSK30_LAST_PACK_VERSION", "1") or "1"),
+        "output_dir": str(config.get("HSK30_LAST_OUTPUT_DIR", os.path.join(BASE_DIR, "output")) or os.path.join(BASE_DIR, "output")),
+        "bitrate": str(config.get("HSK30_LAST_BITRATE", _vocab_bitrate_display(DEFAULT_VOCAB_M4A_BITRATE)) or _vocab_bitrate_display(DEFAULT_VOCAB_M4A_BITRATE)),
+        "audio_mode": str(config.get("HSK30_LAST_AUDIO_MODE", _vocab_audio_mode_display("zh_vi")) or _vocab_audio_mode_display("zh_vi")),
+    }
+
+
+def _save_hsk30_builder_state(*, version=None, level=None, pack_version=None, output_dir=None, bitrate=None, audio_mode=None):
+    try:
+        if version is not None:
+            config["HSK30_LAST_VERSION"] = str(version or "")
+        if level is not None:
+            config["HSK30_LAST_LEVEL"] = str(level or "")
+        if pack_version is not None:
+            config["HSK30_LAST_PACK_VERSION"] = str(pack_version or "")
+        if output_dir is not None:
+            config["HSK30_LAST_OUTPUT_DIR"] = str(output_dir or "")
+        if bitrate is not None:
+            config["HSK30_LAST_BITRATE"] = str(bitrate or "")
+        if audio_mode is not None:
+            config["HSK30_LAST_AUDIO_MODE"] = str(audio_mode or "")
+        _write_app_config()
+    except Exception as exc:
+        print(f"⚠ Không lưu được state HSK 3.0: {exc}")
+
 # === Các hàm validate ví dụ (anh có thể thay bằng logic riêng nếu muốn) ===
 #CHECK ĐÚNG ĐỊNH DẠNG EMAIL, SDT
 def is_valid(val, check_func):
@@ -4819,30 +4849,35 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         builder_win = tk.Toplevel(popup)
         set_popup_icon(builder_win)
         builder_win.title("HSK 2.0 / 3.0 Vocab ZIP Builder")
-        builder_win.geometry("1460x960")
+        # Give the builder enough vertical room for the phase status, receipt,
+        # pointer controls and the three workflow buttons on macOS.
+        builder_win.geometry("1460x1100")
+        builder_win.minsize(1180, 860)
         builder_win.minsize(1280, 860)
         builder_win.resizable(True, True)
         builder_win.transient(popup)
         builder_win.grab_set()
 
         last_hsk30_excel, last_hsk30_sheet = _load_hsk30_recent_selection()
+        last_hsk30_builder_state = _load_hsk30_builder_state()
         excel_var = tk.StringVar(value=last_hsk30_excel if os.path.isfile(last_hsk30_excel) else "")
         sheet_var = tk.StringVar()
         version_label_to_code = {"HSK 2.0": "2.0", "HSK 3.0": "3.0"}
-        version_display_var = tk.StringVar(value="HSK 3.0")
+        version_display_var = tk.StringVar(value=last_hsk30_builder_state["version"] if last_hsk30_builder_state["version"] in version_label_to_code else "HSK 3.0")
         level_label_to_code = {
             "HSK 1": "hsk1", "HSK 2": "hsk2", "HSK 3": "hsk3", "HSK 4": "hsk4",
             "HSK 5": "hsk5", "HSK 6": "hsk6", "HSK 7–9": "hsk7_9",
         }
-        level_display_var = tk.StringVar(value="HSK 1")
-        pack_version_var = tk.StringVar(value="1")
-        pack_version_label_var = tk.StringVar(value="Pack version: v1")
-        output_var = tk.StringVar(value=os.path.join(BASE_DIR, "output"))
-        builder_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
-        builder_audio_mode_var = tk.StringVar(value=_vocab_audio_mode_display(config.get("VOCAB_AUDIO_MODE", "zh_vi")))
+        level_display_var = tk.StringVar(value=last_hsk30_builder_state["level"] if last_hsk30_builder_state["level"] in level_label_to_code else "HSK 1")
+        pack_version_var = tk.StringVar(value=last_hsk30_builder_state["pack_version"] if str(last_hsk30_builder_state["pack_version"]).isdigit() and int(last_hsk30_builder_state["pack_version"]) >= 1 else "1")
+        pack_version_label_var = tk.StringVar(value=f"Pack version: v{pack_version_var.get()}")
+        output_var = tk.StringVar(value=last_hsk30_builder_state["output_dir"] or os.path.join(BASE_DIR, "output"))
+        builder_bitrate_var = tk.StringVar(value=last_hsk30_builder_state["bitrate"] or _vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
+        builder_audio_mode_var = tk.StringVar(value=last_hsk30_builder_state["audio_mode"] or _vocab_audio_mode_display(config.get("VOCAB_AUDIO_MODE", "zh_vi")))
         force_audio_var = tk.BooleanVar(value=False)
         status_var = tk.StringVar(value="Sẵn sàng build local. Phase 2 chỉ chạy sau local PASS và xác nhận.")
         summary_var = tk.StringVar(value="Chưa đọc Excel")
+        workflow_state_var = tk.StringVar(value="LOCAL NOT BUILT | PACKS NOT VERIFIED | CATALOG NOT PUBLISHED")
         compatibility_var = tk.StringVar(value="Compatibility hash: chưa verify")
         signing_key_state_var = tk.StringVar(value="SIGNING KEY NOT INITIALIZED")
         signing_public_key_var = tk.StringVar(value="PUBLIC KEY B64: —")
@@ -5061,8 +5096,6 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(level_row, text="HSK 7–9 build local dùng canonical code hsk7_9; chưa publish pilot.", fg="#666").pack(side="left", padx=8)
         form_row("Output directory:", output_var, ("Chọn thư mục", choose_output))
         sheet_combo.bind("<<ComboboxSelected>>", sync_version_level_from_sheet, add="+")
-        if sheet_var.get():
-            sync_version_level_from_sheet()
 
         quality_row = tk.Frame(frame)
         quality_row.pack(fill="x", pady=3)
@@ -5127,6 +5160,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(phase_box, textvariable=summary_var, anchor="w", justify="left", wraplength=750).pack(fill="x", padx=8, pady=(5, 2))
         tk.Label(phase_box, textvariable=status_var, anchor="w", fg="#1d4f91", justify="left", wraplength=750).pack(fill="x", padx=8, pady=(0, 6))
         tk.Label(phase_box, textvariable=receipt_state_var, anchor="w", fg="#555", justify="left", wraplength=1100).pack(fill="x", padx=8, pady=(0, 6))
+        tk.Label(phase_box, textvariable=workflow_state_var, anchor="w", fg="#245a24", justify="left", wraplength=1100).pack(fill="x", padx=8, pady=(0, 6))
 
         log_text = tk.Text(frame, height=18, wrap="word")
         log_text.pack(fill="both", expand=True)
@@ -5233,17 +5267,45 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             except ValueError:
                 pack_version_label_var.set("Pack version: không hợp lệ")
 
+        def persist_hsk30_builder_state(*_):
+            _save_hsk30_builder_state(
+                version=version_display_var.get().strip(),
+                level=level_display_var.get().strip(),
+                pack_version=pack_version_var.get().strip(),
+                output_dir=output_var.get().strip(),
+                bitrate=builder_bitrate_var.get().strip(),
+                audio_mode=builder_audio_mode_var.get().strip(),
+            )
+
+        stage_btn = None
+        publish_btn = None
+
         def clear_build_state(*_):
             artifact_state["result"] = None
             artifact_state["fingerprint"] = None
             receipt_state_var.set("Receipt: chưa có | Remote verification: chưa có")
+            workflow_state_var.set("LOCAL NOT BUILT | PACKS NOT VERIFIED | CATALOG NOT PUBLISHED")
             summary_var.set("Chưa đọc Excel")
             status_var.set("Sẵn sàng build local. Phase 2 chỉ chạy sau local PASS và xác nhận.")
-            stage_btn.config(state="disabled")
-            publish_btn.config(state="disabled")
+            if stage_btn is not None:
+                stage_btn.config(state="disabled")
+            if publish_btn is not None:
+                publish_btn.config(state="disabled")
 
         version_display_var.trace_add("write", clear_build_state)
         level_display_var.trace_add("write", clear_build_state)
+        version_display_var.trace_add("write", persist_hsk30_builder_state)
+        level_display_var.trace_add("write", persist_hsk30_builder_state)
+        pack_version_var.trace_add("write", lambda *_: (refresh_pack_version_label(), persist_hsk30_builder_state()))
+        output_var.trace_add("write", persist_hsk30_builder_state)
+        builder_bitrate_var.trace_add("write", persist_hsk30_builder_state)
+        builder_audio_mode_var.trace_add("write", persist_hsk30_builder_state)
+
+        if sheet_var.get():
+            sync_version_level_from_sheet()
+
+        refresh_pack_version_label()
+        persist_hsk30_builder_state()
 
         def refresh_signing_status():
             status = signing_status(DEFAULT_KEY_PATH, DEFAULT_KEY_ID)
@@ -5494,14 +5556,33 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             try:
                 selected_version = version_label_to_code[version_display_var.get()]
                 selected_level = level_label_to_code[level_display_var.get()]
-                receipts = collect_deploy_receipts(output_var.get().strip())
-                selected = next((item for item in receipts if item.get("version") == selected_version and item.get("level") == selected_level), None)
+                # Do not let an unrelated legacy receipt block the selected
+                # HSK 3.0 pack.  The publish gate is scoped to the current
+                # version/level; legacy HSK 2.0 receipts are handled by their
+                # own workflow.
+                receipts = collect_deploy_receipts(
+                    output_var.get().strip(),
+                    levels={selected_level},
+                    versions={selected_version},
+                )
+                # A level can have multiple immutable pack versions.  The
+                # catalog gate must only consider the receipt for the exact
+                # build currently selected in the window, never a stale
+                # receipt from another pack version.
+                selected_pack_version = int(pack_version_var.get())
+                selected = next((item for item in receipts
+                                 if item.get("version") == selected_version
+                                 and item.get("level") == selected_level
+                                 and int(item.get("packVersion", -1)) == selected_pack_version), None)
             except (DeployValidationError, ValueError, OSError) as exc:
                 publish_gate_var.set(f"Publish disabled: receipt không hợp lệ ({exc})")
                 publish_btn.config(state="disabled")
                 return False
             if selected is None:
-                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} {selected_version} chưa REMOTE PACKS VERIFIED")
+                publish_gate_var.set(
+                    f"Publish disabled: chưa có receipt remote-verified cho "
+                    f"{selected_level.upper()} {selected_version} pack v{selected_pack_version}"
+                )
                 publish_btn.config(state="disabled")
                 return False
             receipt = selected.get("receipt", {})
@@ -5654,6 +5735,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         f"BASE={base['manifest']['vocabCount']} | PLUS={plus['manifest']['vocabCount']}"
                     )
                     status_var.set("Nấc 1 PASS. Nấc 2 Upload + Verify Packs đã mở; Nấc 3 Publish Combined Catalog vẫn pending.")
+                    workflow_state_var.set("LOCAL PASS | PACKS NOT VERIFIED | CATALOG NOT PUBLISHED")
                     receipt_state_var.set(f"Receipt: {config[4]}/vocab/{config[2]}/{config[3]}/deploy_receipt.json | Remote verification: chưa upload | Version: HSK {config[2]}")
                     append_log(f"BASE: {base['zip']} ({base['bytes']} bytes, {base['sha256']})")
                     append_log(f"PLUS: {plus['zip']} ({plus['bytes']} bytes, {plus['sha256']})")
@@ -5685,9 +5767,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 "Thao tác này chỉ upload + GET-verify hai ZIP bằng create-only. Catalog không được tạo/publish."
             )
             tk.Label(confirm, text=details, anchor="w", justify="left", wraplength=720).pack(fill="both", expand=True, padx=14, pady=(14, 8))
-            tk.Label(confirm, text=f"Nhập chính xác: {phrase}", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            tk.Label(confirm, text="Nhập chính xác (có thể bôi đen và copy):", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            phrase_entry = tk.Entry(confirm, width=42, fg="#9b1c1c", readonlybackground="#f8eeee")
+            phrase_entry.insert(0, phrase)
+            phrase_entry.configure(state="readonly")
+            phrase_entry.pack(anchor="w", padx=14, pady=(4, 10))
             phrase_var = tk.StringVar()
-            tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=(4, 10))
+            tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=(0, 10))
 
             def confirm_stage():
                 if phrase_var.get() != phrase:
@@ -5710,6 +5796,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         builder_win.after(0, append_log, f"✖ Stage thất bại: {message}")
                     else:
                         builder_win.after(0, lambda: status_var.set("REMOTE PACKS VERIFIED | CATALOG NOT PUBLISHED"))
+                        builder_win.after(0, lambda: workflow_state_var.set("LOCAL PASS | REMOTE PACKS VERIFIED | CATALOG NOT PUBLISHED (không upload lại nếu SHA đã khớp)"))
                         builder_win.after(0, append_log, f"Receipt: {result['receiptPath']}")
                         builder_win.after(0, lambda: receipt_state_var.set(f"Receipt: {result['receiptPath']} | Remote verification: BASE+PLUS PASS"))
                         builder_win.after(0, lambda: summary_var.set(
@@ -5717,6 +5804,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                             f"Receipt: {result['receiptPath']} | Remote verification: BASE+PLUS PASS"
                         ))
                         builder_win.after(0, refresh_catalog_gate)
+                        # Pointer refresh and receipt write complete on
+                        # separate UI callbacks. Re-evaluate once more after
+                        # the callbacks have settled so the Publish button
+                        # cannot remain visually stale after a successful
+                        # stage.
+                        builder_win.after(300, refresh_catalog_gate)
                     finally:
                         builder_win.after(0, lambda: build_btn.config(state="normal"))
 
@@ -5752,9 +5845,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 "CẢNH BÁO: remote write tạo catalog revision mới bằng create-only. Catalog cũ không bị overwrite."
             )
             tk.Label(confirm, text=details, anchor="w", justify="left", wraplength=720).pack(fill="both", expand=True, padx=14, pady=(14, 8))
-            tk.Label(confirm, text=f"Nhập chính xác: {CATALOG_PUBLISH_CONFIRMATION}", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            tk.Label(confirm, text="Nhập chính xác (có thể bôi đen và copy):", fg="#9b1c1c", font=("Arial", 10, "bold")).pack(anchor="w", padx=14)
+            phrase_entry = tk.Entry(confirm, width=42, fg="#9b1c1c", readonlybackground="#f8eeee")
+            phrase_entry.insert(0, CATALOG_PUBLISH_CONFIRMATION)
+            phrase_entry.configure(state="readonly")
+            phrase_entry.pack(anchor="w", padx=14, pady=(4, 10))
             phrase_var = tk.StringVar()
-            tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=(4, 10))
+            tk.Entry(confirm, textvariable=phrase_var, width=42).pack(anchor="w", padx=14, pady=(0, 10))
 
             def confirm_publish():
                 if phrase_var.get() != CATALOG_PUBLISH_CONFIRMATION:
@@ -5784,6 +5881,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         builder_win.after(0, append_log, f"✖ Publish catalog thất bại: {message}")
                     else:
                         builder_win.after(0, lambda: status_var.set("CATALOG PUBLISHED"))
+                        builder_win.after(0, lambda: workflow_state_var.set("LOCAL PASS | REMOTE PACKS VERIFIED | CATALOG PUBLISHED"))
                         builder_win.after(0, lambda: pointer_state_var.set("POINTER ACTIVE"))
                         builder_win.after(0, lambda: pointer_revision_var.set(
                             f"CURRENT POINTER REVISION: {result.get('pointerRevision', '—')} | "
