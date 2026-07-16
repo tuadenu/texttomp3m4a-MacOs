@@ -146,6 +146,9 @@ def read_verified_pointer_status(client: StorageClient, *, bucket: str = "vocab-
         "catalogSha256": str(pointer["catalogSha256"]),
         "catalogObjectPath": catalog_object,
         "entryCount": entry_count,
+        # Keep the verified catalog available to the local UI so it can
+        # reconcile a receipt after a publish retry without another write.
+        "catalog": catalog,
         "pointer": pointer,
     }
 
@@ -243,6 +246,14 @@ def publish_signed_catalog_with_client(client: StorageClient, *, output_director
     current = _load_verified_current_pointer(client, bucket=bucket, public_key=private_key.public_key(), expected_key_id=key_id)
     expected_url = public_catalog_url
     if current and int(current["catalogRevision"]) == plan.target_revision and current.get("catalogSha256") == _sha256_bytes(catalog_payload) and current.get("catalogBytes") == len(catalog_payload) and current.get("catalogUrl") == expected_url:
+        # The remote publish may have completed before a client/UI crash.  A
+        # verified matching pointer is enough to reconcile local receipts; do
+        # not create a new catalog or pointer revision.
+        mark_receipts_catalog_published(
+            plan.receipts,
+            catalog_revision=plan.target_revision,
+            pointer_revision=int(current["pointerRevision"]),
+        )
         return {
             "status": "ALREADY PUBLISHED", "catalogRevision": plan.target_revision,
             "pointerRevision": int(current["pointerRevision"]), "catalogObjectPath": target_object,

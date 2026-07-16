@@ -526,6 +526,21 @@ def validate_deploy_receipt(receipt: Mapping[str, object]) -> dict[str, object]:
     return {"version": version, "level": level, "packVersion": pack_version, "entries": entries, "receipt": dict(receipt)}
 
 
+def catalog_matches_receipt(receipt: Mapping[str, object], catalog: Mapping[str, object]) -> bool:
+    """Check that all receipt segments are the descriptors active in catalog."""
+    try:
+        validated = validate_deploy_receipt(receipt)
+        active = {_identity(entry): entry for entry in _validate_catalog_entries(catalog)}
+    except (DeployValidationError, TypeError, KeyError):
+        return False
+    fields = ("packId", "collectionId", "packVersion", "objectPath", "sha256", "zipBytes", "vocabCount", "compatibilityHash")
+    return all(
+        (actual := active.get(_identity(expected))) is not None
+        and all(actual.get(field) == expected.get(field) for field in fields)
+        for expected in validated["entries"]
+    )
+
+
 def collect_deploy_receipts(output_directory: str | Path, levels: set[str] | None = None, versions: set[str] | None = None) -> list[dict[str, object]]:
     receipts: list[dict[str, object]] = []
     for version in SUPPORTED_VERSIONS:
@@ -555,7 +570,9 @@ def mark_receipts_catalog_published(receipts: tuple[Mapping[str, object], ...] |
     for receipt in receipts:
         version = _validate_version(str(receipt.get("version", "")))
         level = _validate_level(str(receipt.get("level", "")))
-        path_hint = receipt.get("_receiptPath")
+        path_hint = receipt.get("_receiptPath") or receipt.get("path")
+        if not path_hint and isinstance(receipt.get("receipt"), Mapping):
+            path_hint = receipt["receipt"].get("_receiptPath")
         path = Path(str(path_hint)) if path_hint else None
         if path is None or not path.is_file():
             raise DeployValidationError(f"Không tìm thấy receipt để đánh dấu published: HSK {version} {level}")

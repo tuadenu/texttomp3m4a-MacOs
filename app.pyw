@@ -4912,6 +4912,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             STAGING_BUCKET,
             build_plan,
             collect_deploy_receipts,
+            catalog_matches_receipt,
             input_fingerprint,
             prepare_catalog_publish,
             stage_confirmation_phrase,
@@ -5709,8 +5710,40 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 publish_btn.config(state="disabled")
                 return False
             receipt = selected.get("receipt", {})
+            # A previous publish may have completed remotely but crashed while
+            # writing the local receipt.  The pointer refresh already fetched
+            # and verified the active catalog; reconcile that local bookkeeping
+            # only when every selected descriptor matches exactly.
+            active_catalog = pointer_status_cache.get("catalog")
+            if receipt.get("catalogPublished") is not True and isinstance(active_catalog, dict):
+                if catalog_matches_receipt(receipt, active_catalog):
+                    pointer_revision = pointer_status_cache.get("pointerRevision")
+                    catalog_revision = pointer_status_cache.get("catalogRevision")
+                    try:
+                        from pipelines.vocab_zip_deploy import mark_receipts_catalog_published
+                        mark_receipts_catalog_published(
+                            [selected],
+                            catalog_revision=int(catalog_revision),
+                            pointer_revision=int(pointer_revision),
+                        )
+                        receipt = dict(receipt)
+                        receipt["catalogPublished"] = True
+                        receipt["catalogRevision"] = int(catalog_revision)
+                        receipt["pointerRevision"] = int(pointer_revision)
+                        selected["receipt"] = receipt
+                        selected["reconciled"] = True
+                    except (DeployValidationError, ValueError, OSError):
+                        # Never enable/disable publish based on a failed local
+                        # bookkeeping write; the verified remote state remains
+                        # authoritative and the operator can retry refresh.
+                        pass
             if receipt.get("catalogPublished") is True:
-                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} {selected_version} đã được publish")
+                revision = pointer_status_cache.get("catalogRevision", receipt.get("catalogRevision", "—"))
+                publish_gate_var.set(
+                    f"ALREADY PUBLISHED: {selected_level.upper()} {selected_version} v{receipt.get('packVersion', '—')} "
+                    f"| catalogRevision={revision} | không cần Publish lại"
+                )
+                workflow_state_var.set("LOCAL PASS | REMOTE PACKS VERIFIED | CATALOG PUBLISHED")
                 publish_btn.config(state="disabled")
                 return False
             publish_gate_var.set(f"Publish READY: {selected_level.upper()} {selected_version} v{receipt.get('packVersion', '—')} receipt đã remote verify; nhập PUBLISH VOCAB CATALOG")
@@ -5948,6 +5981,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tk.Button(buttons, text="Xác nhận stage packs", width=20, command=confirm_stage).pack(side="right")
 
         def publish_catalog_pending():
+            # Re-check the local/remote readiness gate at click time.  This
+            # closes the race where a stale enabled button survives a pointer
+            # refresh and would otherwise open a new-revision confirmation.
+            if not refresh_catalog_gate():
+                if str(publish_gate_var.get()).startswith("ALREADY PUBLISHED"):
+                    messagebox.showinfo("Catalog đã publish", publish_gate_var.get(), parent=builder_win)
+                return
             try:
                 selected_version = version_label_to_code[version_display_var.get()]
                 selected_level = level_label_to_code[level_display_var.get()]
@@ -6007,7 +6047,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         builder_win.after(0, lambda: status_var.set(f"CATALOG FAIL — {message}"))
                         builder_win.after(0, append_log, f"✖ Publish catalog thất bại: {message}")
                     else:
-                        builder_win.after(0, lambda: status_var.set("CATALOG PUBLISHED"))
+                        result_status = str(result.get("status", "PUBLISHED"))
+                        already = result_status == "ALREADY PUBLISHED"
+                        builder_win.after(0, lambda: status_var.set("CATALOG ALREADY PUBLISHED" if already else "CATALOG PUBLISHED"))
                         builder_win.after(0, lambda: workflow_state_var.set("LOCAL PASS | REMOTE PACKS VERIFIED | CATALOG PUBLISHED"))
                         builder_win.after(0, lambda: pointer_state_var.set("POINTER ACTIVE"))
                         builder_win.after(0, lambda: pointer_revision_var.set(
@@ -6015,7 +6057,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                             f"CURRENT CATALOG REVISION: {result.get('catalogRevision', '—')} | "
                             f"CATALOG ENTRIES: {result.get('entryCount', '—')}"
                         ))
-                        builder_win.after(0, lambda: publish_gate_var.set("CATALOG PUBLISHED | GET VERIFY: PASS | SIGNATURE VERIFY: PASS"))
+                        builder_win.after(0, lambda: publish_gate_var.set(
+                            "ALREADY PUBLISHED | GET VERIFY: PASS | SIGNATURE VERIFY: PASS" if already
+                            else "CATALOG PUBLISHED | GET VERIFY: PASS | SIGNATURE VERIFY: PASS"
+                        ))
                         builder_win.after(0, lambda: publish_btn.config(state="disabled"))
                         builder_win.after(0, append_log, f"Catalog URL: {result.get('catalogUrl', result.get('publicUrl', '—'))}")
                         builder_win.after(0, append_log, f"Catalog: {result.get('catalogBytes', result.get('bytes', '—'))} bytes | SHA {result.get('catalogSha256', result.get('sha256', '—'))} | entries={result.get('entryCount', '—')}")
