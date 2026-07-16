@@ -14,6 +14,7 @@ import sys
 import json
 import base64
 import shutil
+import requests
 from openai import OpenAI
 from google import genai
 import tempfile
@@ -428,28 +429,65 @@ def _load_hsk30_builder_state():
         "level": str(config.get("HSK30_LAST_LEVEL", "HSK 1") or "HSK 1"),
         "pack_version": str(config.get("HSK30_LAST_PACK_VERSION", "1") or "1"),
         "output_dir": str(config.get("HSK30_LAST_OUTPUT_DIR", os.path.join(BASE_DIR, "output")) or os.path.join(BASE_DIR, "output")),
-        "bitrate": str(config.get("HSK30_LAST_BITRATE", _vocab_bitrate_display(DEFAULT_VOCAB_M4A_BITRATE)) or _vocab_bitrate_display(DEFAULT_VOCAB_M4A_BITRATE)),
-        "audio_mode": str(config.get("HSK30_LAST_AUDIO_MODE", _vocab_audio_mode_display("zh_vi")) or _vocab_audio_mode_display("zh_vi")),
+        "bitrate": str(config.get("HSK30_LAST_BITRATE", "32 kbps") or "32 kbps"),
+        "audio_mode": str(config.get("HSK30_LAST_AUDIO_MODE", "Đọc tiếng Trung + Tiếng Việt") or "Đọc tiếng Trung + Tiếng Việt"),
     }
 
 
 def _save_hsk30_builder_state(*, version=None, level=None, pack_version=None, output_dir=None, bitrate=None, audio_mode=None):
     try:
+        changed = False
         if version is not None:
-            config["HSK30_LAST_VERSION"] = str(version or "")
+            new_value = str(version or "")
+            if config.get("HSK30_LAST_VERSION", "") != new_value:
+                config["HSK30_LAST_VERSION"] = new_value
+                changed = True
         if level is not None:
-            config["HSK30_LAST_LEVEL"] = str(level or "")
+            new_value = str(level or "")
+            if config.get("HSK30_LAST_LEVEL", "") != new_value:
+                config["HSK30_LAST_LEVEL"] = new_value
+                changed = True
         if pack_version is not None:
-            config["HSK30_LAST_PACK_VERSION"] = str(pack_version or "")
+            new_value = str(pack_version or "")
+            if config.get("HSK30_LAST_PACK_VERSION", "") != new_value:
+                config["HSK30_LAST_PACK_VERSION"] = new_value
+                changed = True
         if output_dir is not None:
-            config["HSK30_LAST_OUTPUT_DIR"] = str(output_dir or "")
+            new_value = str(output_dir or "")
+            if config.get("HSK30_LAST_OUTPUT_DIR", "") != new_value:
+                config["HSK30_LAST_OUTPUT_DIR"] = new_value
+                changed = True
         if bitrate is not None:
-            config["HSK30_LAST_BITRATE"] = str(bitrate or "")
+            new_value = str(bitrate or "")
+            if config.get("HSK30_LAST_BITRATE", "") != new_value:
+                config["HSK30_LAST_BITRATE"] = new_value
+                changed = True
         if audio_mode is not None:
-            config["HSK30_LAST_AUDIO_MODE"] = str(audio_mode or "")
-        _write_app_config()
+            new_value = str(audio_mode or "")
+            if config.get("HSK30_LAST_AUDIO_MODE", "") != new_value:
+                config["HSK30_LAST_AUDIO_MODE"] = new_value
+                changed = True
+        if changed:
+            _write_app_config()
     except Exception as exc:
         print(f"⚠ Không lưu được state HSK 3.0: {exc}")
+
+
+def _guess_hsk30_sheet_from_state(sheet_names, version, level):
+    try:
+        from pipelines.vocab_zip_builder import SHEET_SELECTIONS, _normalize_sheet_name
+    except Exception:
+        return ""
+    wanted_version = str(version or "").strip()
+    wanted_level = str(level or "").strip().lower()
+    for sheet_name in sheet_names or []:
+        mapped = SHEET_SELECTIONS.get(_normalize_sheet_name(sheet_name))
+        if not mapped:
+            continue
+        mapped_version, mapped_level = mapped
+        if mapped_version == wanted_version and mapped_level == wanted_level:
+            return sheet_name
+    return ""
 
 # === Các hàm validate ví dụ (anh có thể thay bằng logic riêng nếu muốn) ===
 #CHECK ĐÚNG ĐỊNH DẠNG EMAIL, SDT
@@ -477,7 +515,7 @@ is_email = lambda e: "@" in e and "." in e
 is_token = lambda t: ":" in t
 is_chat_id = lambda c: str(c).lstrip("-").isdigit()
 is_webhook = lambda u: "api/webhooks/" in u
-is_gpt = lambda k: k.startswith("sk-")
+is_github_models_token = lambda k: k.startswith(("ghp_", "github_pat_")) and len(k) >= 20
 is_gemini = lambda k: k.startswith("AIza")
 is_weather = lambda k: len(k) > 15
 
@@ -910,11 +948,36 @@ def thong_bao_loi_cauhinh(loai, chi_tiet="", hien_popup=True):
 
 #==================
 
-# === Lấy API KEY ===
-GPT_API_KEY = config.get("GPT_API_KEY", "").strip()
-if not is_valid(GPT_API_KEY, is_gpt):
-    thong_bao_loi_cauhinh("GPT API Key", "Sai định dạng hoặc rỗng → dùng mặc định.", hien_popup=False)
-    GPT_API_KEY = config_default.get("GPT_API_KEY", "")
+# === GitHub Models ===
+# GitHub Models exposes an OpenAI-compatible chat-completions endpoint.  This is
+# intentionally separate from the old OpenAI key so an `sk-...` key is never
+# sent to GitHub by accident.
+GITHUB_MODELS_BASE_URL = "https://models.github.ai/inference"
+GITHUB_MODELS_CATALOG_URL = "https://models.github.ai/catalog/models"
+GITHUB_MODELS_API_VERSION = "2022-11-28"
+GITHUB_MODELS_MODEL = "openai/gpt-4.1"
+
+
+def _create_github_models_client(token):
+    """Return a client only after a token has been configured.
+
+    Recent OpenAI SDK versions reject an empty api_key during construction, so
+    the app must remain usable before the user opens Settings for the first
+    time.
+    """
+    if not token:
+        return None
+    return OpenAI(base_url=GITHUB_MODELS_BASE_URL, api_key=token)
+
+
+GITHUB_MODELS_TOKEN = config.get("GITHUB_MODELS_TOKEN", "").strip()
+if not is_valid(GITHUB_MODELS_TOKEN, is_github_models_token):
+    thong_bao_loi_cauhinh(
+        "GitHub Models token",
+        "Sai định dạng hoặc rỗng. Hãy nhập GitHub PAT (ghp_... hoặc github_pat_...).",
+        hien_popup=False,
+    )
+    GITHUB_MODELS_TOKEN = ""
 
 GEMINI_API_KEY = config.get("GEMINI_API_KEY", "").strip()
 if not is_valid(GEMINI_API_KEY, is_gemini):
@@ -930,7 +993,7 @@ if not is_valid(DISCORD_WEBHOOK_URL, is_webhook):
     DISCORD_WEBHOOK_URL = config_default.get("DISCORD_WEBHOOK_URL", "")
 
 #===========================BIẾN TOÀN CỤC ============================================================BIẾN TOÀN CỤC===============
-client = OpenAI(api_key=GPT_API_KEY) # Đối tượng API GPT
+client = _create_github_models_client(GITHUB_MODELS_TOKEN)
 #Biến điều khiển đọc âm thanh
 doc_thread = None
 dang_doc = False
@@ -1411,18 +1474,22 @@ Cảm ơn bạn đã sử dụng ứng dụng.
     ask_password_with_keyboard(thuc_hien)
 
 #=======================NHÓM  - HỎI A.I , ĐỌC ĐỀ, XUẤT MP3====
-#hàm hỏi A.I
-def goi_gpt_cau_hoi(prompt):
-    from openai import OpenAI
+#hàm hỏi A.I qua GitHub Models
+def goi_github_models_cau_hoi(prompt):
     try:
+        if client is None:
+            raise RuntimeError(
+                "GitHub Models API key chưa được cấu hình. "
+                "Mở Cài đặt → Sửa GitHub Models Token để nhập GitHub PAT."
+            )
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
+            model=GITHUB_MODELS_MODEL,
             messages=[{"role": "user", "content": prompt}]
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        thong_bao_loi_api(e, "GPT")
-        return f"Lỗi GPT: {e}"
+        thong_bao_loi_api(e, "GitHub Models")
+        return f"Lỗi GitHub Models: {e}"
 ##có chọn ngôn ngữ
 def goi_gemini_cau_hoi(prompt):
     from langdetect import detect
@@ -1479,26 +1546,26 @@ Nội dung yêu cầu là:
 
 
 
-def gui_hoi_gpt():
+def gui_hoi_github_models():
     cau_hoi = entry_cau_hoi.get().strip()
     if not cau_hoi:
         messagebox.showwarning("Chưa nhập câu hỏi", "Hãy nhập nội dung để hỏi.")
         return
 
     txt_de.delete("1.0", tk.END)
-    txt_de.insert(tk.END, "⏳ Đang gửi hỏi Bố ...\n")
+    txt_de.insert(tk.END, "⏳ Đang gửi tới GitHub Models ...\n")
 
     def call():
         try:
-            ket_qua = goi_gpt_cau_hoi(cau_hoi)
-            if any(x in ket_qua.lower() for x in ["Bố", "quota", "error", "api key", "invalid", "401", "403"]):
-                raise Exception("Bố có thể đang bận")
+            ket_qua = goi_github_models_cau_hoi(cau_hoi)
+            if any(x in ket_qua.lower() for x in ["github models", "quota", "error", "api key", "invalid", "401", "403"]):
+                raise Exception("GitHub Models có thể đang bận")
 
             txt_de.delete("1.0", tk.END)
             txt_de.insert(tk.END, ket_qua)
         except:
             txt_de.delete("1.0", tk.END)
-            txt_de.insert(tk.END, "⚠ Có thể Bố đang bận, chuyển sang hỏi Mẹ -  ...\n⏳ Đang hỏi mẹ- ...\n")
+            txt_de.insert(tk.END, "⚠ GitHub Models có thể đang bận, chuyển sang Gemini ...\n⏳ Đang hỏi Gemini ...\n")
             ket_qua = goi_gemini_cau_hoi(cau_hoi)
             txt_de.delete("1.0", tk.END)
             txt_de.insert(tk.END, ket_qua)
@@ -1700,7 +1767,7 @@ def nhap_giong_noi_advanced(entry_cau_hoi, on_text_got=None, root=None):
                     if content and "⏳" not in content:
                         break
                     if time.time() - bat_dau > 20:  # Sau 20 giây vẫn chưa có thì bỏ
-                        print("⚠ Quá thời gian chờ nội dung GPT/Gemini.")
+                        print("⚠ Quá thời gian chờ nội dung GitHub Models/Gemini.")
                         return
                     time.sleep(0.2)
 
@@ -2485,7 +2552,16 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     combo_toc_do_popup.pack(fill="x", padx=10, pady=2)
 
     tk.Label(option_frame, text="Giọng đọc:", bg="#f8fff8").pack(anchor="w", padx=10, pady=(10, 2))
-    combo_giong_popup = ttk.Combobox(option_frame, values=["Nam", "Nữ", "Hội thoại 1 câu nam - 1 câu nữ"], state="readonly")
+    def _dialogue_voice_pair(voice_value):
+        if voice_value == "Hội thoại 1 câu nữ - 1 câu nam":
+            return ("Nữ", "Nam")
+        return ("Nam", "Nữ")
+
+    combo_giong_popup = ttk.Combobox(
+        option_frame,
+        values=["Nam", "Nữ", "Hội thoại 1 câu nam - 1 câu nữ", "Hội thoại 1 câu nữ - 1 câu nam"],
+        state="readonly",
+    )
     combo_giong_popup.set(config.get("VOCAB_TTS_VOICE", "Hội thoại 1 câu nam - 1 câu nữ"))
     combo_giong_popup.pack(fill="x", padx=10, pady=2)
 
@@ -2959,8 +3035,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 if dung_doc_ngay: break
                 try:
                     dong_sach = lam_sach_van_ban(dong)
-                    voice = "Nam" if (giong == "Hội thoại 1 câu nam - 1 câu nữ" and count % 2 == 0) else "Nữ" if giong == "Hội thoại 1 câu nam - 1 câu nữ" else giong
-                    if giong == "Hội thoại 1 câu nam - 1 câu nữ": count += 1
+                    if giong in {"Hội thoại 1 câu nam - 1 câu nữ", "Hội thoại 1 câu nữ - 1 câu nam"}:
+                        first_voice, second_voice = _dialogue_voice_pair(giong)
+                        voice = first_voice if count % 2 == 0 else second_voice
+                        count += 1
+                    else:
+                        voice = giong
 
                     print(f"📢 Đọc ({lang}) [{voice}] Engine: {engine}")
                     temp_mp3 = os.path.join(tempfile.gettempdir(), f"temp_{uuid.uuid4().hex}.mp3")
@@ -3399,8 +3479,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     dong_sach = lam_sach_van_ban(dong)
 
                     # Giọng
-                    if giong == "Hội thoại 1 câu nam - 1 câu nữ":
-                        voice = "Nam" if count % 2 == 0 else "Nữ"
+                    if giong in {"Hội thoại 1 câu nam - 1 câu nữ", "Hội thoại 1 câu nữ - 1 câu nam"}:
+                        first_voice, second_voice = _dialogue_voice_pair(giong)
+                        voice = first_voice if count % 2 == 0 else second_voice
                         count += 1
                     else:
                         voice = giong
@@ -3658,8 +3739,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     dong_sach = lam_sach_van_ban(dong)
 
                     # Chọn giọng
-                    if giong == "Hội thoại 1 câu nam - 1 câu nữ":
-                        voice_video = "Nam" if count % 2 == 0 else "Nữ"
+                    if giong in {"Hội thoại 1 câu nam - 1 câu nữ", "Hội thoại 1 câu nữ - 1 câu nam"}:
+                        first_voice, second_voice = _dialogue_voice_pair(giong)
+                        voice_video = first_voice if count % 2 == 0 else second_voice
                         count += 1
                     else:
                         voice_video = giong
@@ -5064,14 +5146,21 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             try:
                 recent_sheets = read_sheets(excel_var.get())
                 sheet_combo["values"] = recent_sheets
-                sheet_var.set(last_hsk30_sheet if last_hsk30_sheet in recent_sheets else (recent_sheets[0] if recent_sheets else ""))
+                preferred_sheet = last_hsk30_sheet if last_hsk30_sheet in recent_sheets else ""
+                if not preferred_sheet:
+                    preferred_sheet = _guess_hsk30_sheet_from_state(
+                        recent_sheets,
+                        last_hsk30_builder_state["version"],
+                        last_hsk30_builder_state["level"],
+                    )
+                sheet_var.set(preferred_sheet if preferred_sheet in recent_sheets else (recent_sheets[0] if recent_sheets else ""))
             except Exception:
                 excel_var.set("")
                 sheet_var.set("")
 
         def sync_version_level_from_sheet(*_):
-            from pipelines.vocab_zip_builder import SHEET_SELECTIONS
-            selected = sheet_var.get().strip().lower()
+            from pipelines.vocab_zip_builder import SHEET_SELECTIONS, _normalize_sheet_name
+            selected = _normalize_sheet_name(sheet_var.get())
             mapped = SHEET_SELECTIONS.get(selected)
             if not mapped:
                 return
@@ -5305,7 +5394,6 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             sync_version_level_from_sheet()
 
         refresh_pack_version_label()
-        persist_hsk30_builder_state()
 
         def refresh_signing_status():
             status = signing_status(DEFAULT_KEY_PATH, DEFAULT_KEY_ID)
@@ -7141,8 +7229,9 @@ def phat_da_ngon_ngu(danh_sach_cau, giong="Nam", toc_do="Bình thường", close
                     lang = "vi"
 
                 # Nếu hội thoại thì xen kẽ giọng nam/nữ
-                if giong == "Hội thoại 1 câu nam - 1 câu nữ":
-                    voice = "Nam" if count % 2 == 0 else "Nữ"
+                if giong in {"Hội thoại 1 câu nam - 1 câu nữ", "Hội thoại 1 câu nữ - 1 câu nam"}:
+                    first_voice, second_voice = _dialogue_voice_pair(giong)
+                    voice = first_voice if count % 2 == 0 else second_voice
                     count += 1
                 else:
                     voice = giong
@@ -8143,16 +8232,16 @@ def create_frame_noi_dung(parent):
 
     scrollbar.config(command=txt_de.yview)
 
-    # Khung hỏi GPT/Gemini sát mép dưới trái (dưới txt_de)
-    frame_hoi_gpt = tk.LabelFrame(frame_noi_dung, text="🧠 Gửi Câu Hỏi Cho Hỏi Bố Mẹ", font=("Arial", 10, "bold"), bg="#f0fff0", fg="darkgreen")
+    # Khung hỏi GitHub Models/Gemini sát mép dưới trái (dưới txt_de)
+    frame_hoi_gpt = tk.LabelFrame(frame_noi_dung, text="🧠 Hỏi GitHub Models hoặc Gemini", font=("Arial", 10, "bold"), bg="#f0fff0", fg="darkgreen")
     frame_hoi_gpt.place(x=10, y=560, width=620, height=105)
 
     entry_cau_hoi = tk.Entry(frame_hoi_gpt, font=("Arial", 9))
     entry_cau_hoi.place(x=8, y=8, width=395, height=28)
     attach_mouse_text_menu(entry_cau_hoi)
     
-    tk.Button(frame_hoi_gpt, text="Hỏi Bố", bg="#ffe6e6", fg="red", font=("Arial", 10, "bold"),
-              command=gui_hoi_gpt).place(x=410, y=8, width=65, height=28)
+    tk.Button(frame_hoi_gpt, text="Hỏi GitHub", bg="#ffe6e6", fg="red", font=("Arial", 10, "bold"),
+              command=gui_hoi_github_models).place(x=410, y=8, width=65, height=28)
     tk.Button(frame_hoi_gpt, text="Hỏi Mẹ", bg="#e6ffe6", fg="green", font=("Arial", 10, "bold"),
               command=gui_hoi_gemini).place(x=480, y=8, width=65, height=28)
     tk.Button(frame_hoi_gpt, text="🎙Nói", font=("Arial", 8),
@@ -8780,7 +8869,7 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
             top.protocol("WM_DELETE_WINDOW", top.destroy)
             set_popup_icon(top)
             top.title(f"Sửa {loai}")
-            top.geometry("560x260")
+            top.geometry("560x340" if key_field == "GITHUB_MODELS_TOKEN" else "560x260")
             top.grab_set()
             top.resizable(False, False)
 
@@ -8794,6 +8883,25 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
             ent_new = tk.Entry(top, font=("Arial", 11), width=60, show="*" if show_pw else None)
             ent_new.pack(pady=2)
 
+            if key_field == "GITHUB_MODELS_TOKEN":
+                tk.Label(
+                    top,
+                    text=(
+                        "Dùng GitHub Personal Access Token (PAT).\n"
+                        "Fine-grained PAT cần quyền Models: Read; classic PAT cần scope models.\n"
+                        "Không chia sẻ token cho người khác."
+                    ),
+                    justify="left",
+                    wraplength=510,
+                    fg="#444444",
+                ).pack(padx=18, pady=(8, 2), anchor="w")
+                tk.Button(
+                    top,
+                    text="Mở GitHub để tạo token",
+                    command=lambda: open_path_cross_platform("https://github.com/settings/personal-access-tokens/new"),
+                    fg="blue",
+                ).pack(pady=(0, 2))
+
             def luu():
                 new_value = _normalize_secret_text(ent_new.get())
                 if not new_value:
@@ -8806,10 +8914,10 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                     unprotect_file(CONFIG_FILE)  # Gỡ bảo vệ
                     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                         json.dump(config, f, indent=2, ensure_ascii=False)
-                    global GPT_API_KEY, GEMINI_API_KEY, GOOGLE_TTS_API_KEY, DISCORD_WEBHOOK_URL, client
-                    if key_field == "GPT_API_KEY":
-                        GPT_API_KEY = new_value
-                        client = OpenAI(api_key=GPT_API_KEY)
+                    global GITHUB_MODELS_TOKEN, GEMINI_API_KEY, GOOGLE_TTS_API_KEY, DISCORD_WEBHOOK_URL, client
+                    if key_field == "GITHUB_MODELS_TOKEN":
+                        GITHUB_MODELS_TOKEN = new_value
+                        client = _create_github_models_client(GITHUB_MODELS_TOKEN)
                     elif key_field == "GEMINI_API_KEY":
                         GEMINI_API_KEY = new_value
                     elif key_field == "GOOGLE_TTS_API_KEY":
@@ -8837,22 +8945,35 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                         return
                     try:
                         import requests
-                        if key_field == "GPT_API_KEY":
-                            if not new_value.startswith("sk-"):
-                                raise Exception("❌ GPT Key không đúng định dạng. Phải bắt đầu bằng 'sk-'")
+                        if key_field == "GITHUB_MODELS_TOKEN":
+                            if not is_github_models_token(new_value):
+                                raise Exception("❌ Token GitHub không đúng định dạng. Token PAT phải bắt đầu bằng 'ghp_' hoặc 'github_pat_'.")
                             try:
-                                temp_client = OpenAI(api_key=new_value)
-                                # Chỉ xác thực key, không gửi nội dung và không phụ thuộc model chat cũ.
-                                next(iter(temp_client.models.list()), None)
+                                response = requests.get(
+                                    GITHUB_MODELS_CATALOG_URL,
+                                    headers={
+                                        "Accept": "application/vnd.github+json",
+                                        "Authorization": f"Bearer {new_value}",
+                                        "X-GitHub-Api-Version": GITHUB_MODELS_API_VERSION,
+                                    },
+                                    timeout=15,
+                                )
+                                if response.status_code == 401:
+                                    raise Exception("❌ Token GitHub không hợp lệ hoặc đã bị thu hồi.")
+                                if response.status_code == 403:
+                                    raise Exception("❌ Token chưa có quyền GitHub Models. Fine-grained PAT cần Models: Read; classic PAT cần scope 'models'.")
+                                if response.status_code == 429:
+                                    raise Exception("❌ GitHub Models đang giới hạn lượt dùng. Hãy chờ quota được làm mới rồi thử lại.")
+                                response.raise_for_status()
                             except Exception as e:
                                 msg = str(e)
-                                if "insufficient_quota" in msg or "You exceeded your current quota" in msg:
-                                    raise Exception("❌ GPT Key hợp lệ nhưng đã hết quota.\nVui lòng kiểm tra và nạp tiền tại:\nhttps://platform.openai.com/account/billing")
-                                elif "invalid_api_key" in msg or "Incorrect API key" in msg:
-                                    raise Exception("❌ GPT Key không hợp lệ hoặc đã bị thu hồi.")
+                                if "quota" in msg.lower() or "rate limit" in msg.lower():
+                                    raise Exception("❌ Token hợp lệ nhưng GitHub Models đã hết lượt miễn phí / bị giới hạn. Hãy chờ rồi thử lại.")
+                                elif "Token GitHub" in msg or "quyền GitHub Models" in msg:
+                                    raise
                                 else:
-                                    raise Exception(f"❌ Lỗi GPT: {e}")
-                            messagebox.showinfo("OK", "✅ GPT API key hoạt động!", parent=top)
+                                    raise Exception(f"❌ Không kiểm tra được GitHub Models: {e}")
+                            messagebox.showinfo("OK", "✅ GitHub Models token hoạt động!", parent=top)
 
                         elif key_field == "GEMINI_API_KEY":
                             temp_client = genai.Client(api_key=new_value)
@@ -8913,7 +9034,7 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
 
 
 API_KEY_SETTINGS = {
-    "GPT": ("GPT API Key", "GPT_API_KEY", "GPT Key hiện tại:", "Nhập GPT Key mới:"),
+    "GitHub Models": ("GitHub Models Token", "GITHUB_MODELS_TOKEN", "GitHub PAT hiện tại:", "Nhập GitHub PAT mới:"),
     "Gemini": ("Gemini API KEY cho khung chat", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:"),
     "Google TTS": ("API key cho Google TTS", "GOOGLE_TTS_API_KEY", "Google TTS Key hiện tại:", "Nhập Google TTS Key mới:"),
     "Discord": ("Discord Webhook", "DISCORD_WEBHOOK_URL", "Webhook Discord hiện tại:", "Nhập Webhook Discord mới:"),
@@ -8936,8 +9057,8 @@ def _api_key_service_from_error(error_text, context=""):
         return "Gemini"
     if any(word in text for word in ("text-to-speech", "texttospeech", "google cloud tts", "google tts")):
         return "Google TTS"
-    if any(word in text for word in ("openai", "gpt", "insufficient_quota", "incorrect api key")):
-        return "GPT"
+    if any(word in text for word in ("github models", "models.github.ai", "github pat", "github token")):
+        return "GitHub Models"
     if any(word in text for word in ("discord", "webhook")):
         return "Discord"
     if any(word in text for word in ("smtp", "email", "app password", "535")):
@@ -8980,10 +9101,13 @@ def hien_popup_loi_api_key(service, error_text, context=""):
         guidance = "Hãy kiểm tra lại key bạn copy có bị dính khoảng trắng, xuống dòng, dấu nháy, hoặc bị dán nhầm sang key khác."
     elif hint == "quota":
         headline = f"Key của {service} hợp lệ nhưng đã hết quota / billing."
-        guidance = "Hãy kiểm tra hạn mức, thanh toán và quyền dùng API trong tài khoản Google/OpenAI."
+        guidance = "Hãy kiểm tra hạn mức, thanh toán và quyền dùng API trong tài khoản dịch vụ."
     elif hint == "restricted":
         headline = f"Key của {service} hợp lệ nhưng đang bị chặn quyền truy cập."
-        guidance = "Hãy kiểm tra API đã bật đúng chưa, key có bị giới hạn sai dịch vụ, IP, referrer hoặc project không."
+        if service == "GitHub Models":
+            guidance = "Hãy tạo lại GitHub PAT: fine-grained cần Models: Read, còn classic cần scope 'models'; rồi dán vào Cài đặt."
+        else:
+            guidance = "Hãy kiểm tra API đã bật đúng chưa, key có bị giới hạn sai dịch vụ, IP, referrer hoặc project không."
     elif hint == "expired":
         headline = f"Key của {service} có thể đã bị xoá, thu hồi hoặc hết hạn."
         guidance = "Hãy tạo key mới hoặc kiểm tra lại key đang dùng có còn tồn tại không."
@@ -9073,7 +9197,7 @@ def gioi_thieu_ung_dung():
      Link tải exe : https://tuadenu.github.io/smartlearning/latest.html
     - Hẹn giờ tự động thông minh file nghe, bài đọc cho từng học viên các khung giờ khác nhau, có chuông thông báo và gọi đúng tên học viên
     - Tạo đề thông minh luyện tập: Toán, Ngoại ngữ, Tự luận, Trắc nghiệm...Đa ngôn ngữ các trình độ , phạm vi tuỳ chọn
-    - Tích hợp AI GPT & Gemini Tương tác thông minh với học viên, có thể in ra trực tiếp 1 click
+    - Tích hợp GitHub Models & Gemini tương tác thông minh với học viên, có thể in ra trực tiếp 1 click
     - Hẹn giờ phát nhạc - kết hợp camera gửi ảnh
     - Điều khiển thiết bị Broadlink ,nhà thông minh, học lệnh điều khiển với 1 nút nhấn
     - Gửi ảnh ở bàn học 3 phút/lần (hoặc tuỳ chọn với 3 camera) qua Telegram, Discord cho giáo viên, phụ huynh học viên hoặc chính học viên thông minh
@@ -9304,7 +9428,7 @@ menu_cai_dat.add_command(label="ℹ️ Giới thiệu Ứng dụng", command=gio
 menu_cai_dat.add_separator()
 menu_cai_dat.add_separator()
 menu_cai_dat.add_command(label="🔑 Đổi mật khẩu toàn ứng dụng", command=doi_mat_khau)
-menu_cai_dat.add_command(label="🔧 Sửa GPT API Key", command=lambda: sua_key_don("GPT API Key", "GPT_API_KEY", "GPT Key hiện tại:", "Nhập GPT Key mới:"))
+menu_cai_dat.add_command(label="🔧 Sửa GitHub Models Token", command=lambda: sua_key_don("GitHub Models Token", "GITHUB_MODELS_TOKEN", "GitHub PAT hiện tại:", "Nhập GitHub PAT mới:", show_pw=True))
 menu_cai_dat.add_command(label="🔧 Gemini API KEY cho khung chat", command=lambda: sua_key_don("Gemini API KEY cho khung chat", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:", show_pw=True))
 menu_cai_dat.add_command(label="🔧 API key cho Google TTS", command=lambda: sua_key_don("API key cho Google TTS", "GOOGLE_TTS_API_KEY", "Google TTS Key hiện tại:", "Nhập Google TTS Key mới:", show_pw=True))
 menu_cai_dat.add_command(label="🔧 Sửa Discord Webhook", command=lambda: sua_key_don("Discord Webhook", "DISCORD_WEBHOOK_URL", "Webhook Discord hiện tại:", "Nhập Webhook Discord mới:"))

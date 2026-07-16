@@ -246,6 +246,18 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertEqual(2, tts.call_count)
         self.assertEqual(["zh-CN", "vi"], [call.args[1] for call in tts.call_args_list])
 
+    def test_dialogue_voice_pair_reverse_order_maps_zh_to_female_and_vi_to_male(self):
+        segment = AudioSegment.silent(duration=100)
+        with patch.object(vocab_pipeline, "_tts_segment", return_value=(segment, None)) as tts:
+            vocab_pipeline._build_word_audio(
+                "爱",
+                "yêu",
+                "gTTS",
+                voice="Hội thoại 1 câu nữ - 1 câu nam",
+                audio_mode="zh_vi",
+            )
+        self.assertEqual(["Nữ", "Nam"], [call.args[5] for call in tts.call_args_list])
+
     def test_hsk7_9_identity_is_never_split_into_hsk7_hsk8_hsk9(self):
         self._write_excel(sheet="hsk7_9_30")
         out = self.temp_dir / "out"
@@ -282,6 +294,10 @@ class VocabZipBuilderTests(unittest.TestCase):
     def test_hsk6_20_mapping_is_canonical(self):
         from pipelines.vocab_zip_builder import resolve_sheet_selection
         self.assertEqual(("2.0", "hsk6"), resolve_sheet_selection("hsk6_20"))
+
+    def test_hsk7_9_alias_sheet_name_maps_to_canonical_level(self):
+        from pipelines.vocab_zip_builder import resolve_sheet_selection
+        self.assertEqual(("3.0", "hsk7_9"), resolve_sheet_selection("hsk7-9_30"))
 
     def test_changed_voice_uses_distinct_audio_cache_identity(self):
         item = SourceVocab(1, "词1", "nghĩa 1", "例子1", "ví dụ 1")

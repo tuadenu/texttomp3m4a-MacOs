@@ -39,6 +39,7 @@ SHEET_SELECTIONS = {
     **{f"hsk{number}_20": ("2.0", f"hsk{number}") for number in range(1, 7)},
     **{f"hsk{number}_30": ("3.0", f"hsk{number}") for number in range(1, 7)},
     "hsk7_9_30": ("3.0", "hsk7_9"),
+    "hsk7-9_30": ("3.0", "hsk7_9"),
 }
 FIXED_CREATED_AT = "2000-01-01T00:00:00Z"
 FIXED_ZIP_DATE = (2000, 1, 1, 0, 0, 0)
@@ -187,6 +188,10 @@ def _validate_level(level: str) -> None:
         raise BuildValidationError("Level không hỗ trợ: " + level)
 
 
+def _normalize_sheet_name(sheet_name: str) -> str:
+    return str(sheet_name or "").strip().lower().replace("-", "_")
+
+
 def _validate_version(version: str) -> str:
     value = str(version or "").strip()
     if value not in SUPPORTED_VERSIONS:
@@ -197,7 +202,7 @@ def _validate_version(version: str) -> str:
 def resolve_sheet_selection(sheet_name: str, version: str | None = None, level: str | None = None) -> tuple[str, str]:
     """Return the canonical version/level and reject every mismatched tuple."""
     try:
-        expected_version, expected_level = SHEET_SELECTIONS[str(sheet_name).strip().lower()]
+        expected_version, expected_level = SHEET_SELECTIONS[_normalize_sheet_name(sheet_name)]
     except KeyError as exc:
         raise BuildValidationError("Sheet vocab không hỗ trợ: " + str(sheet_name)) from exc
     if version is not None and _validate_version(version) != expected_version:

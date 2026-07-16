@@ -10,6 +10,14 @@ import time
 import hashlib
 import random
 import threading
+import io
+
+# macOS may fork a child process when pydub invokes ffmpeg.  Google Cloud
+# TTS uses gRPC background pollers; enabling fork support prevents the child
+# from inheriting an inconsistent gRPC poll set (which otherwise aborts with
+# ``wakeup_fd_->ConsumeWakeup``).
+os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "1")
+os.environ.setdefault("GRPC_POLL_STRATEGY", "poll")
 
 import pandas as pd
 from gtts import gTTS
@@ -40,6 +48,9 @@ _TTS_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".tts_
 os.makedirs(_TTS_CACHE_DIR, exist_ok=True)
 _gtts_lock = threading.Lock()
 _last_gtts_time = 0.0
+_google_client_lock = threading.Lock()
+_google_client = None
+_google_client_identity = None
 
 
 class TTSGenerationError(RuntimeError):
@@ -200,13 +211,64 @@ def _get_google_profile(lang):
 
 def _google_tts_client():
     """Create a Cloud TTS client using the dedicated API key when configured."""
+    global _google_client, _google_client_identity
     api_key = os.environ.get("GOOGLE_TTS_API_KEY", "").strip()
-    if api_key:
-        from google.api_core.client_options import ClientOptions
-        return texttospeech.TextToSpeechClient(
-            client_options=ClientOptions(api_key=api_key)
-        )
-    return texttospeech.TextToSpeechClient()
+    identity = api_key or "adc"
+    with _google_client_lock:
+        if _google_client is not None and _google_client_identity == identity:
+            return _google_client
+        if _google_client is not None:
+            try:
+                _google_client.close()
+            except Exception:
+                pass
+        if api_key:
+            from google.api_core.client_options import ClientOptions
+            _google_client = texttospeech.TextToSpeechClient(
+                client_options=ClientOptions(api_key=api_key)
+            )
+        else:
+            _google_client = texttospeech.TextToSpeechClient()
+        _google_client_identity = identity
+        return _google_client
+
+
+def _reset_google_tts_client() -> None:
+    """Close and forget a broken shared client before a retry."""
+    global _google_client, _google_client_identity
+    with _google_client_lock:
+        client = _google_client
+        _google_client = None
+        _google_client_identity = None
+        if client is not None:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+
+def _audio_segment_from_mp3_spawn(path: str) -> AudioSegment:
+    """Decode an MP3 without forking a gRPC-threaded parent on macOS.
+
+    pydub's default Popen settings select ``fork_exec`` on some Python/macOS
+    combinations.  Google Cloud TTS leaves gRPC poller threads behind, and a
+    forked ffmpeg child can then abort in grpc_event_engine.  ``close_fds=False``
+    allows CPython to use posix_spawn; ffmpeg writes WAV to stdout, which is
+    parsed in-process without another child.
+    """
+    command = [AudioSegment.converter, "-y", "-i", path, "-vn", "-f", "wav", "-"]
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        close_fds=False,
+    )
+    wav_data, stderr = process.communicate()
+    if process.returncode != 0 or not wav_data:
+        detail = stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"ffmpeg decode failed ({process.returncode}): {detail}")
+    return AudioSegment.from_wav(io.BytesIO(wav_data))
 
 
 def _tts_segment_gtts(text, lang, temp_dir, speed="Bình thường"):
@@ -221,7 +283,7 @@ def _tts_segment_gtts(text, lang, temp_dir, speed="Bình thường"):
     cache_path = os.path.join(_TTS_CACHE_DIR, f"{key}.mp3")
     if os.path.exists(cache_path):
         try:
-            return AudioSegment.from_mp3(cache_path), cache_path
+            return _audio_segment_from_mp3_spawn(cache_path), cache_path
         except Exception:
             # fall through to regenerate if cache corrupted
             pass
@@ -243,7 +305,7 @@ def _tts_segment_gtts(text, lang, temp_dir, speed="Bình thường"):
                 shutil.copyfile(temp_mp3, cache_path)
             except Exception:
                 pass
-            return AudioSegment.from_mp3(temp_mp3), temp_mp3
+            return _audio_segment_from_mp3_spawn(temp_mp3), temp_mp3
         except gTTSError as exc:
             message = str(exc)
             rate_limited = "429" in message or "Too Many Requests" in message
@@ -356,13 +418,13 @@ def _tts_segment_google(text, lang, temp_dir, speed="Bình thường", voice="M�
             response = client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
             with open(temp_mp3, "wb") as f:
                 f.write(response.audio_content)
-            return AudioSegment.from_mp3(temp_mp3), temp_mp3
+            return _audio_segment_from_mp3_spawn(temp_mp3), temp_mp3
         except Exception as exc:
             last_exc = exc
             _log(f"[Pipeline] Google Cloud TTS attempt {attempt}/{max_retries} failed for lang={lang}: {exc}")
+            _reset_google_tts_client()
             if attempt < max_retries:
                 time.sleep(base_delay * (2 ** (attempt - 1)))
-
     # all retries exhausted
     raise last_exc
 
@@ -411,8 +473,11 @@ def _build_word_audio(word, meaning, engine_mode, speed="Bình thường", voice
     temp_dir = tempfile.gettempdir()
     created_files = []
     try:
-        zh_voice = "Nam" if voice == "Hội thoại 1 câu nam - 1 câu nữ" else voice
-        vi_voice = "Nữ" if voice == "Hội thoại 1 câu nam - 1 câu nữ" else voice
+        dialogue_pairs = {
+            "Hội thoại 1 câu nam - 1 câu nữ": ("Nam", "Nữ"),
+            "Hội thoại 1 câu nữ - 1 câu nam": ("Nữ", "Nam"),
+        }
+        zh_voice, vi_voice = dialogue_pairs.get(voice, (voice, voice))
         zh_seg, zh_path = _tts_segment(word, "zh-CN", temp_dir, engine_mode, speed, zh_voice)
         if zh_path:
             created_files.append(zh_path)
@@ -435,13 +500,47 @@ def _build_word_audio(word, meaning, engine_mode, speed="Bình thường", voice
 
 def _export_m4a(audio, file_path, bitrate=None):
     normalized = audio.set_channels(TARGET_CHANNELS).set_frame_rate(TARGET_SAMPLE_RATE)
-    normalized.export(
-        file_path,
-        format="ipod",
-        codec="aac",
-        bitrate=_resolve_m4a_bitrate(bitrate),
-        parameters=["-ac", str(TARGET_CHANNELS), "-ar", str(TARGET_SAMPLE_RATE)],
-    )
+    resolved_bitrate = _resolve_m4a_bitrate(bitrate)
+    # Write WAV directly (no child process), then invoke ffmpeg with
+    # close_fds=False so CPython/macOS can use posix_spawn instead of
+    # fork_exec.  The latter can crash when Google gRPC poller threads exist.
+    wav_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_file:
+            wav_path = wav_file.name
+        normalized.export(wav_path, format="wav")
+        command = [
+            AudioSegment.converter,
+            "-y",
+            "-f", "wav",
+            "-i", wav_path,
+            "-acodec", "aac",
+            "-b:a", resolved_bitrate,
+            "-ac", str(TARGET_CHANNELS),
+            "-ar", str(TARGET_SAMPLE_RATE),
+            "-f", "ipod",
+            str(file_path),
+        ]
+        process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=False,
+        )
+        _, stderr = process.communicate()
+        if process.returncode != 0:
+            detail = stderr.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"Encoding failed. ffmpeg/avlib returned error code: {process.returncode}\n"
+                f"Command:{command}\n\nOutput from ffmpeg/avlib:\n\n{detail}"
+            )
+    finally:
+        if wav_path:
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
 
 
 def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
