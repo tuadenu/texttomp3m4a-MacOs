@@ -64,7 +64,25 @@ import uuid
 import boto3
 from pydub import AudioSegment
 
-APP_BUILD_TIME = datetime.fromtimestamp(os.path.getmtime(__file__)).strftime("%Y-%m-%d %H:%M:%S")
+def _resolve_app_build_time():
+    try:
+        repo_root = Path(__file__).resolve().parent
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%cI", "--", Path(__file__).name],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        raw = (result.stdout or "").strip()
+        if raw:
+            return datetime.fromisoformat(raw).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        pass
+    return datetime.fromtimestamp(os.path.getmtime(__file__)).strftime("%Y-%m-%d %H:%M:%S")
+
+
+APP_BUILD_TIME = _resolve_app_build_time()
 APP_BUILD_TAG = f"Code mới nhất: {APP_BUILD_TIME}"
 # Vocab M4A uses 32 kbps unless the user explicitly selects 26 kbps.
 DEFAULT_VOCAB_M4A_BITRATE = "32k"
@@ -352,15 +370,15 @@ def _load_google_tts_profiles_from_config():
         if not isinstance(profile, dict):
             continue
         normalized = _normalize_lang_code(lang_code)
-        GOOGLE_TTS_PROFILES[normalized] = {
-            "gender": profile.get("gender", "Mặc định") or "Mặc định",
-            "voice_name": profile.get("voice_name", "") or "",
-        }
+        GOOGLE_TTS_PROFILES[normalized] = _google_tts_normalize_profile(profile)
 
 
 def _save_google_tts_profiles_to_config():
     try:
-        config["GOOGLE_TTS_PROFILES"] = GOOGLE_TTS_PROFILES
+        config["GOOGLE_TTS_PROFILES"] = {
+            lang_code: _google_tts_normalize_profile(profile)
+            for lang_code, profile in GOOGLE_TTS_PROFILES.items()
+        }
         os.makedirs(APPDATA_ROOT, exist_ok=True)
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
@@ -655,16 +673,100 @@ def _google_tts_gender_enum(label):
     return mapping.get(label, texttospeech.SsmlVoiceGender.SSML_VOICE_GENDER_UNSPECIFIED)
 
 
+GOOGLE_TTS_SLOT_LABELS = ("Mặc định", "Nam", "Nữ", "Trung tính")
+
+
+def _google_tts_default_profile():
+    return {
+        "gender": "Mặc định",
+        "voice_name": "",
+        "slots": {label: {"gender": label, "voice_name": ""} for label in GOOGLE_TTS_SLOT_LABELS},
+    }
+
+
+def _google_tts_slot_label(label):
+    normalized = (label or "Mặc định").strip()
+    return normalized if normalized in GOOGLE_TTS_SLOT_LABELS else "Mặc định"
+
+
+def _google_tts_normalize_profile(profile):
+    normalized = _google_tts_default_profile()
+    if not isinstance(profile, dict):
+        return normalized
+
+    raw_slots = profile.get("slots", {})
+    if isinstance(raw_slots, dict):
+        for slot_label in GOOGLE_TTS_SLOT_LABELS:
+            slot_profile = raw_slots.get(slot_label, {})
+            if isinstance(slot_profile, dict):
+                normalized["slots"][slot_label] = {
+                    "gender": _google_tts_slot_label(slot_profile.get("gender", slot_label)),
+                    "voice_name": slot_profile.get("voice_name", "") or "",
+                }
+
+    legacy_gender = _google_tts_slot_label(profile.get("gender", "Mặc định"))
+    legacy_voice_name = profile.get("voice_name", "") or ""
+    if legacy_voice_name:
+        normalized["slots"][legacy_gender] = {
+            "gender": legacy_gender,
+            "voice_name": legacy_voice_name,
+        }
+        normalized["gender"] = legacy_gender
+        normalized["voice_name"] = legacy_voice_name
+    else:
+        normalized["gender"] = legacy_gender
+        normalized["voice_name"] = ""
+
+    if normalized["slots"]["Mặc định"]["voice_name"] == "" and normalized["gender"] == "Mặc định":
+        normalized["slots"]["Mặc định"]["gender"] = "Mặc định"
+
+    return normalized
+
+
 def _google_tts_get_profile(lang_code):
     lang_clean = _normalize_lang_code(lang_code)
-    return GOOGLE_TTS_PROFILES.setdefault(lang_clean, {"gender": "Mặc định", "voice_name": ""})
+    profile = GOOGLE_TTS_PROFILES.setdefault(lang_clean, _google_tts_default_profile())
+    normalized = _google_tts_normalize_profile(profile)
+    GOOGLE_TTS_PROFILES[lang_clean] = normalized
+    return normalized
+
+
+def _google_tts_get_profile_slot(lang_code, gender="Mặc định"):
+    profile = _google_tts_get_profile(lang_code)
+    slot_label = _google_tts_slot_label(gender)
+    slot = profile.setdefault("slots", {}).setdefault(slot_label, {"gender": slot_label, "voice_name": ""})
+    slot["gender"] = _google_tts_slot_label(slot.get("gender", slot_label))
+    slot["voice_name"] = slot.get("voice_name", "") or ""
+    return slot
 
 
 def _google_tts_set_profile(lang_code, gender="Mặc định", voice_name=""):
     profile = _google_tts_get_profile(lang_code)
-    profile["gender"] = gender or "Mặc định"
+    slot_label = _google_tts_slot_label(gender)
+    slot = profile.setdefault("slots", {}).setdefault(slot_label, {"gender": slot_label, "voice_name": ""})
+    slot["gender"] = slot_label
+    slot["voice_name"] = voice_name or ""
+    profile["gender"] = slot_label
     profile["voice_name"] = voice_name or ""
     return profile
+
+
+def _google_tts_resolve_selection(lang_code, requested_gender="Mặc định"):
+    profile = _google_tts_get_profile(lang_code)
+    requested_label = _google_tts_slot_label(requested_gender)
+    slots = profile.get("slots", {})
+    slot = slots.get(requested_label, {})
+    voice_name = (slot.get("voice_name") or "").strip()
+    resolved_gender = _google_tts_slot_label(slot.get("gender", requested_label))
+
+    if not voice_name and requested_label == "Mặc định":
+        voice_name = (profile.get("voice_name") or "").strip()
+        resolved_gender = _google_tts_slot_label(profile.get("gender", "Mặc định"))
+
+    return {
+        "gender": resolved_gender or requested_label,
+        "voice_name": voice_name,
+    }
 
 
 def _google_tts_client(texttospeech_module):
@@ -716,11 +818,14 @@ def tao_file_google_mp3(text, lang="vi", gender="Mặc định", voice_name="", 
         print(f"⏭️ Dòng rỗng → tạo im lặng: {file_out}")
         return
 
-    profile = _google_tts_get_profile(lang)
-    profile_gender = (profile.get("gender") or "Mặc định").strip()
-    profile_voice_name = (profile.get("voice_name") or "").strip()
+    requested_gender = _google_tts_slot_label(gender)
+    profile_selection = _google_tts_resolve_selection(lang, requested_gender)
+    profile_gender = (profile_selection.get("gender") or requested_gender).strip()
+    profile_voice_name = (profile_selection.get("voice_name") or "").strip()
     voice_name = (voice_name or profile_voice_name or "").strip()
-    gender = (profile_gender if profile_gender and profile_gender != "Mặc định" else gender) or "Mặc định"
+    gender = requested_gender if requested_gender else "Mặc định"
+    if not voice_name:
+        gender = profile_gender if profile_gender and profile_gender != "Mặc định" else gender
     lang_code = _google_tts_lang_code(lang)
 
     client = _google_tts_client(texttospeech)
@@ -2374,13 +2479,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         try:
             summary = []
             for code, label in [("vi", "VI"), ("en", "EN"), ("ja", "JA"), ("zh", "ZH")]:
-                profile = GOOGLE_TTS_PROFILES.get(code, {})
-                gender = profile.get("gender", "Mặc định")
-                voice_name = profile.get("voice_name", "")
-                if voice_name:
-                    summary.append(f"{label}:{gender}/{voice_name}")
-                else:
-                    summary.append(f"{label}:{gender}/mặc định")
+                profile = _google_tts_get_profile(code)
+                active_gender = profile.get("gender", "Mặc định")
+                slot_bits = []
+                for slot_label in GOOGLE_TTS_SLOT_LABELS:
+                    slot_profile = profile.get("slots", {}).get(slot_label, {})
+                    slot_voice = (slot_profile.get("voice_name") or "").strip()
+                    slot_bits.append(f"{slot_label}={slot_voice or 'mặc định'}")
+                summary.append(f"{label}[{active_gender}]: " + "; ".join(slot_bits))
             google_voice_status_var.set(" | ".join(summary))
         except Exception as exc:
             google_voice_status_var.set(f"Google Cloud TTS: không đọc được trạng thái ({exc})")
@@ -2389,8 +2495,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         popup_google = tk.Toplevel(option_frame)
         set_popup_icon(popup_google)
         popup_google.title("Giọng Google Cloud TTS")
-        popup_google.geometry("650x430")
-        popup_google.resizable(False, False)
+        popup_google.geometry("940x650")
+        popup_google.resizable(True, True)
         popup_google.transient(root)
         popup_google.grab_set()
         popup_google.attributes("-topmost", True)
@@ -2398,12 +2504,20 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         popup_google.update_idletasks()
         x = root.winfo_x() + 80
         y = root.winfo_y() + 80
-        popup_google.geometry(f"650x430+{x}+{y}")
+        popup_google.geometry(f"940x650+{x}+{y}")
 
         main = tk.Frame(popup_google, bg="white")
-        main.pack(fill="both", expand=True, padx=12, pady=12)
+        main.pack(fill="both", expand=True, padx=16, pady=16)
 
         tk.Label(main, text="Chọn giọng Google Cloud TTS", font=("Arial", 14, "bold"), bg="white").pack(anchor="w")
+        tk.Label(
+            main,
+            text="Mỗi ngôn ngữ có thể lưu riêng giọng Nam/Nữ/Trung tính. Nếu chưa chọn thì dùng mặc định của Google.",
+            bg="white",
+            fg="#555",
+            wraplength=880,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 10))
 
         controls = tk.Frame(main, bg="white")
         controls.pack(fill="x", pady=(10, 6))
@@ -2411,7 +2525,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(controls, text="Ngôn ngữ", bg="white").grid(row=0, column=0, sticky="w")
         google_lang_var = tk.StringVar(value="Tiếng Việt")
         google_lang_combo = ttk.Combobox(controls, textvariable=google_lang_var,
-                                         values=["Tiếng Việt", "Tiếng Anh", "Tiếng Nhật", "Tiếng Trung"], state="readonly", width=22)
+                                         values=["Tiếng Việt", "Tiếng Anh", "Tiếng Nhật", "Tiếng Trung"], state="readonly", width=28)
         google_lang_combo.grid(row=1, column=0, sticky="we", padx=(0, 10), pady=(2, 8))
 
         tk.Label(controls, text="Giới tính", bg="white").grid(row=0, column=1, sticky="w")
@@ -2423,7 +2537,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(controls, text="Giọng cụ thể", bg="white").grid(row=0, column=2, sticky="w")
         google_voice_name_var = tk.StringVar(value="(Mặc định)")
         google_voice_name_combo = ttk.Combobox(controls, textvariable=google_voice_name_var,
-                                               values=["(Mặc định)"], state="readonly", width=30)
+                                               values=["(Mặc định)"], state="readonly", width=42)
         google_voice_name_combo.grid(row=1, column=2, sticky="we", pady=(2, 8))
 
         controls.grid_columnconfigure(0, weight=1)
@@ -2476,6 +2590,23 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 google_voice_name_var.set("(Mặc định)")
                 info_var.set(f"Không tải được danh sách giọng: {exc}")
                 thong_bao_loi_api(exc, "Google Cloud TTS")
+
+        def sync_google_voice_selection():
+            code = _lang_code_from_label(google_lang_var.get())
+            profile = _google_tts_get_profile(code)
+            slot_label = _google_tts_slot_label(google_gender_var.get())
+            stored_voice = ""
+            if slot_label == "Mặc định":
+                stored_voice = (profile.get("slots", {}).get("Mặc định", {}).get("voice_name") or profile.get("voice_name", "") or "").strip()
+            else:
+                stored_voice = (profile.get("slots", {}).get(slot_label, {}).get("voice_name") or "").strip()
+            load_google_voices()
+            if stored_voice:
+                for display, actual_name in voice_map.items():
+                    if actual_name == stored_voice:
+                        google_voice_name_var.set(display)
+                        return
+            google_voice_name_var.set("(Mặc định)")
 
         def save_google_profile():
             code = _lang_code_from_label(google_lang_var.get())
@@ -2531,20 +2662,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         def on_language_change(event=None):
             code = _lang_code_from_label(google_lang_var.get())
             profile = _google_tts_get_profile(code)
-            google_gender_var.set(profile.get("gender", "Mặc định"))
-            current_voice = profile.get("voice_name", "")
-            load_google_voices()
-            if current_voice:
-                for display, actual_name in voice_map.items():
-                    if actual_name == current_voice:
-                        google_voice_name_var.set(display)
-                        break
-
+            google_gender_var.set(_google_tts_slot_label(profile.get("gender", "Mặc định")))
             sample_var.set(google_tts_sample_texts.get(code, google_tts_sample_texts["vi"]))
+            sync_google_voice_selection()
 
         def on_gender_change(event=None):
-            google_voice_name_var.set("(Mặc định)")
-            load_google_voices()
+            sync_google_voice_selection()
 
         def sync_from_selected_lines():
             try:
@@ -2574,7 +2697,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         btn_row = tk.Frame(main, bg="white")
         btn_row.pack(fill="x", pady=(6, 0))
 
-        tk.Button(btn_row, text="Tải giọng", command=load_google_voices, width=12).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Tải giọng", command=sync_google_voice_selection, width=12).pack(side="left", padx=(0, 8))
         tk.Button(btn_row, text="Nghe thử", command=test_google_voice, width=12).pack(side="left", padx=(0, 8))
         tk.Button(btn_row, text="Lấy theo dòng hiện tại", command=sync_from_selected_lines, width=18).pack(side="left", padx=(0, 8))
         tk.Button(btn_row, text="Lưu", command=save_google_profile, width=12).pack(side="left", padx=(0, 8))
@@ -4669,7 +4792,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
 
     def hsk30_vocab_zip_builder():
-        """Local-only HSK 3.0 builder.  It never invokes the legacy deploy script."""
+        """Local-only generic HSK 2.0/3.0 vocab pack builder."""
         from pipelines.vocab_zip_deploy import (
             CATALOG_PUBLISH_CONFIRMATION,
             DeployValidationError,
@@ -4695,7 +4818,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         builder_win = tk.Toplevel(popup)
         set_popup_icon(builder_win)
-        builder_win.title("HSK 3.0 Vocab ZIP Builder")
+        builder_win.title("HSK 2.0 / 3.0 Vocab ZIP Builder")
         builder_win.geometry("1460x960")
         builder_win.minsize(1280, 860)
         builder_win.resizable(True, True)
@@ -4705,6 +4828,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         last_hsk30_excel, last_hsk30_sheet = _load_hsk30_recent_selection()
         excel_var = tk.StringVar(value=last_hsk30_excel if os.path.isfile(last_hsk30_excel) else "")
         sheet_var = tk.StringVar()
+        version_label_to_code = {"HSK 2.0": "2.0", "HSK 3.0": "3.0"}
+        version_display_var = tk.StringVar(value="HSK 3.0")
         level_label_to_code = {
             "HSK 1": "hsk1", "HSK 2": "hsk2", "HSK 3": "hsk3", "HSK 4": "hsk4",
             "HSK 5": "hsk5", "HSK 6": "hsk6", "HSK 7–9": "hsk7_9",
@@ -4715,6 +4840,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         output_var = tk.StringVar(value=os.path.join(BASE_DIR, "output"))
         builder_bitrate_var = tk.StringVar(value=_vocab_bitrate_display(config.get("VOCAB_M4A_BITRATE", DEFAULT_VOCAB_M4A_BITRATE)))
         builder_audio_mode_var = tk.StringVar(value=_vocab_audio_mode_display(config.get("VOCAB_AUDIO_MODE", "zh_vi")))
+        force_audio_var = tk.BooleanVar(value=False)
         status_var = tk.StringVar(value="Sẵn sàng build local. Phase 2 chỉ chạy sau local PASS và xác nhận.")
         summary_var = tk.StringVar(value="Chưa đọc Excel")
         compatibility_var = tk.StringVar(value="Compatibility hash: chưa verify")
@@ -4723,6 +4849,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         pointer_state_var = tk.StringVar(value="POINTER STATUS NOT REFRESHED")
         pointer_revision_var = tk.StringVar(value="CURRENT POINTER REVISION: — | CURRENT CATALOG REVISION: —")
         publish_gate_var = tk.StringVar(value="Publish disabled: pointer status chưa được refresh")
+        receipt_state_var = tk.StringVar(value="Receipt: chưa có | Remote verification: chưa có")
         artifact_state = {"result": None, "fingerprint": None}
         pointer_status_cache = {"status": "NOT_REFRESHED"}
         build_runtime = {
@@ -4736,7 +4863,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             help_text, help_path, loaded = load_help_text(Path(__file__).resolve().parent)
             help_win = tk.Toplevel(builder_win)
             set_popup_icon(help_win)
-            help_win.title("Hướng dẫn HSK 3.0 Vocab ZIP Builder")
+            help_win.title("Hướng dẫn HSK 2.0 / 3.0 Vocab ZIP Builder")
             help_win.geometry("900x720")
             help_win.minsize(620, 420)
             help_win.transient(builder_win)
@@ -4834,11 +4961,11 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         frame.pack(fill="both", expand=True, padx=14, pady=12)
         title_row = tk.Frame(frame)
         title_row.pack(fill="x")
-        tk.Label(title_row, text="HSK 3.0 Vocab ZIP Builder", font=("Arial", 15, "bold")).pack(side="left")
+        tk.Label(title_row, text="HSK 2.0 / 3.0 Vocab ZIP Builder", font=("Arial", 15, "bold")).pack(side="left")
         tk.Button(title_row, text="Help", width=10, command=open_hsk30_help).pack(side="right")
         tk.Label(
             frame,
-            text="Build local → stage ZIP packs → publish catalog revision riêng. HSK 2.0 legacy không đổi.",
+            text="Build local → stage ZIP packs → publish catalog revision riêng. Dữ liệu HSK 2.0/3.0 dùng namespace độc lập.",
             fg="#555",
         ).pack(anchor="w", pady=(2, 12))
 
@@ -4861,7 +4988,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         def choose_excel():
             selected = filedialog.askopenfilename(
                 parent=builder_win,
-                title="Chọn Excel HSK 3.0",
+                title="Chọn Excel vocab HSK 2.0 / 3.0",
                 filetypes=[("Excel files", "*.xlsx;*.xlsm;*.xls")],
             )
             if not selected:
@@ -4875,6 +5002,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             sheet_combo["values"] = sheets
             if sheets:
                 sheet_var.set(sheets[0])
+                sync_version_level_from_sheet()
             _save_hsk30_recent_selection(excel_var.get(), sheet_var.get())
             clear_build_state()
 
@@ -4906,6 +5034,24 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 excel_var.set("")
                 sheet_var.set("")
 
+        def sync_version_level_from_sheet(*_):
+            from pipelines.vocab_zip_builder import SHEET_SELECTIONS
+            selected = sheet_var.get().strip().lower()
+            mapped = SHEET_SELECTIONS.get(selected)
+            if not mapped:
+                return
+            mapped_version, mapped_level = mapped
+            version_display_var.set("HSK 2.0" if mapped_version == "2.0" else "HSK 3.0")
+            label = next((name for name, code in level_label_to_code.items() if code == mapped_level), "HSK 1")
+            level_display_var.set(label)
+            clear_build_state()
+
+        version_row = tk.Frame(frame)
+        version_row.pack(fill="x", pady=3)
+        tk.Label(version_row, text="Vocab version:", width=18, anchor="w").pack(side="left")
+        ttk.Combobox(version_row, textvariable=version_display_var, values=list(version_label_to_code), state="readonly", width=20).pack(side="left")
+        tk.Label(version_row, text="Sheet sẽ tự đồng bộ version/level; build vẫn hard-fail nếu tuple không khớp.", fg="#666").pack(side="left", padx=8)
+
         level_row = tk.Frame(frame)
         level_row.pack(fill="x", pady=3)
         tk.Label(level_row, text="Level:", width=18, anchor="w").pack(side="left")
@@ -4914,6 +5060,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Spinbox(level_row, from_=1, to=999, width=5, textvariable=pack_version_var).pack(side="left")
         tk.Label(level_row, text="HSK 7–9 build local dùng canonical code hsk7_9; chưa publish pilot.", fg="#666").pack(side="left", padx=8)
         form_row("Output directory:", output_var, ("Chọn thư mục", choose_output))
+        sheet_combo.bind("<<ComboboxSelected>>", sync_version_level_from_sheet, add="+")
+        if sheet_var.get():
+            sync_version_level_from_sheet()
 
         quality_row = tk.Frame(frame)
         quality_row.pack(fill="x", pady=3)
@@ -4937,6 +5086,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             state="readonly",
             width=30,
         ).pack(side="left")
+        tk.Checkbutton(audio_mode_row, text="Force regenerate audio for selected level", variable=force_audio_var).pack(side="left", padx=12)
 
         tts_summary_var = tk.StringVar()
 
@@ -4976,6 +5126,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         phase_box.pack(fill="x", pady=(4, 8))
         tk.Label(phase_box, textvariable=summary_var, anchor="w", justify="left", wraplength=750).pack(fill="x", padx=8, pady=(5, 2))
         tk.Label(phase_box, textvariable=status_var, anchor="w", fg="#1d4f91", justify="left", wraplength=750).pack(fill="x", padx=8, pady=(0, 6))
+        tk.Label(phase_box, textvariable=receipt_state_var, anchor="w", fg="#555", justify="left", wraplength=1100).pack(fill="x", padx=8, pady=(0, 6))
 
         log_text = tk.Text(frame, height=18, wrap="word")
         log_text.pack(fill="both", expand=True)
@@ -5036,7 +5187,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 return
             if not messagebox.askyesno(
                 "Huỷ build?",
-                "Dừng build HSK 3.0 hiện tại? Pack chưa hoàn tất sẽ không được coi là PASS.",
+                "Dừng build vocab hiện tại? Pack chưa hoàn tất sẽ không được coi là PASS.",
                 parent=builder_win,
             ):
                 return
@@ -5053,6 +5204,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             append_log("✖ Yêu cầu huỷ build local")
 
         def selected_config():
+            from pipelines.vocab_zip_builder import resolve_sheet_selection
             excel_path = excel_var.get().strip()
             sheet = sheet_var.get().strip()
             output = output_var.get().strip()
@@ -5067,7 +5219,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     raise ValueError
             except ValueError:
                 raise ValueError("Pack version phải là số nguyên dương.")
-            return excel_path, sheet, level_label_to_code[level_display_var.get()], output
+            version = version_label_to_code[version_display_var.get()]
+            level = level_label_to_code[level_display_var.get()]
+            try:
+                version, level = resolve_sheet_selection(sheet, version, level)
+            except Exception as exc:
+                raise ValueError(str(exc)) from exc
+            return excel_path, sheet, version, level, output
 
         def refresh_pack_version_label(*_):
             try:
@@ -5078,8 +5236,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         def clear_build_state(*_):
             artifact_state["result"] = None
             artifact_state["fingerprint"] = None
+            receipt_state_var.set("Receipt: chưa có | Remote verification: chưa có")
+            summary_var.set("Chưa đọc Excel")
+            status_var.set("Sẵn sàng build local. Phase 2 chỉ chạy sau local PASS và xác nhận.")
             stage_btn.config(state="disabled")
             publish_btn.config(state="disabled")
+
+        version_display_var.trace_add("write", clear_build_state)
+        level_display_var.trace_add("write", clear_build_state)
 
         def refresh_signing_status():
             status = signing_status(DEFAULT_KEY_PATH, DEFAULT_KEY_ID)
@@ -5246,13 +5410,21 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tk.Button(buttons, text="Khởi tạo pointer", width=20, command=initialize_pointer).pack(side="right")
 
         def fingerprint(config):
-            excel_path, sheet, level, output = config
+            excel_path, sheet, version, level, output = config
+            pack_version = 1
+            if isinstance(artifact_state.get("result"), dict):
+                try:
+                    pack_version = int(artifact_state["result"].get("packVersion", 1) or 1)
+                except Exception:
+                    pack_version = 1
             return input_fingerprint(
                 excel_path,
                 sheet,
                 level,
                 output,
+                version=version,
                 bitrate=_canonical_vocab_bitrate(builder_bitrate_var.get()),
+                pack_version=pack_version,
             )
 
         def load_active_supabase_profile():
@@ -5320,23 +5492,24 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 publish_btn.config(state="disabled")
                 return False
             try:
+                selected_version = version_label_to_code[version_display_var.get()]
                 selected_level = level_label_to_code[level_display_var.get()]
                 receipts = collect_deploy_receipts(output_var.get().strip())
-                selected = next((item for item in receipts if item.get("level") == selected_level), None)
+                selected = next((item for item in receipts if item.get("version") == selected_version and item.get("level") == selected_level), None)
             except (DeployValidationError, ValueError, OSError) as exc:
                 publish_gate_var.set(f"Publish disabled: receipt không hợp lệ ({exc})")
                 publish_btn.config(state="disabled")
                 return False
             if selected is None:
-                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} chưa REMOTE PACKS VERIFIED")
+                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} {selected_version} chưa REMOTE PACKS VERIFIED")
                 publish_btn.config(state="disabled")
                 return False
             receipt = selected.get("receipt", {})
             if receipt.get("catalogPublished") is True:
-                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} đã được publish")
+                publish_gate_var.set(f"Publish disabled: {selected_level.upper()} {selected_version} đã được publish")
                 publish_btn.config(state="disabled")
                 return False
-            publish_gate_var.set(f"Publish READY: {selected_level.upper()} receipt đã remote verify; nhập PUBLISH VOCAB CATALOG")
+            publish_gate_var.set(f"Publish READY: {selected_level.upper()} {selected_version} v{receipt.get('packVersion', '—')} receipt đã remote verify; nhập PUBLISH VOCAB CATALOG")
             publish_btn.config(state="normal")
             return True
 
@@ -5345,7 +5518,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             if not result:
                 messagebox.showinfo("Chưa có audio", "Hãy build local trước.", parent=builder_win)
                 return
-            audio_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(result["base"]["unpacked"]))), "source_audio")
+            audio_dir = result.get("sourceAudioRoot") or os.path.join(
+                os.path.dirname(os.path.dirname(os.path.dirname(result["base"]["unpacked"]))),
+                "source_audio",
+            )
             files = sorted(Path(audio_dir).glob("*.m4a"))
             if not files:
                 messagebox.showwarning("Không có audio", "Không tìm thấy M4A local để phát thử.", parent=builder_win)
@@ -5393,12 +5569,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             build_runtime["paused"] = False
             build_runtime["cancel_requested"] = False
             status_var.set("Đang chạy build local…")
-            append_log("=== HSK 3.0 BUILD + VALIDATE LOCAL ===")
+            append_log(f"=== HSK {config[2]} {config[3].upper()} BUILD + VALIDATE LOCAL ===")
 
             def worker():
                 command = [
                     sys.executable, "-u", os.path.join(BASE_DIR, "pipelines", "vocab_zip_builder.py"),
-                    config[0], "--sheet", config[1], "--level", config[2], "--output", config[3],
+                    config[0], "--sheet", config[1], "--version", config[2], "--level", config[3], "--output", config[4],
                     "--pack-version", pack_version_var.get(),
                     "--engine", vocab_tts["engine"], "--speed", vocab_tts["speed"],
                     "--voice", vocab_tts["voice"], "--bitrate", vocab_tts["bitrate"],
@@ -5406,6 +5582,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     "--languages", ",".join(vocab_tts["languages"]),
                     "--config-confirmed", "true",
                 ]
+                if force_audio_var.get():
+                    command.append("--force-regenerate-audio")
+                command.extend(["--tts-profile", json.dumps(vocab_tts, ensure_ascii=False, sort_keys=True)])
                 env = os.environ.copy()
                 env.update({
                     "GOOGLE_TTS_PROFILES_JSON": json.dumps(GOOGLE_TTS_PROFILES, ensure_ascii=False),
@@ -5453,7 +5632,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         status_var.set("FAIL — không có upload/publish nào được chạy.")
                         summary_var.set("Build local thất bại. Xem log và build_report.json.")
                         return
-                    report_path = os.path.join(config[3], "vocab", "3.0", config[2], "build_report.json")
+                    pack_version = int(pack_version_var.get())
+                    report_path = os.path.join(config[4], "vocab", config[2], config[3], "builds", f"v{pack_version}", "build_report.json")
                     try:
                         with open(report_path, "r", encoding="utf-8") as report_file:
                             result = json.load(report_file)
@@ -5468,11 +5648,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     base = result["base"]
                     plus = result["plus"]
                     summary_var.set(
-                        f"PASS | rows={result['totalRows']} | audio đã có={result['audioReused']} | "
+                        f"Version: HSK {result['version']} | Level: {result['level'].upper()} | Pack version: v{result['packVersion']} | "
+                        f"rows={result['totalRows']} | audio đã có={result['audioReused']} | "
                         f"audio cần tạo/thiếu ban đầu={result['audioGenerated']} | "
                         f"BASE={base['manifest']['vocabCount']} | PLUS={plus['manifest']['vocabCount']}"
                     )
                     status_var.set("Nấc 1 PASS. Nấc 2 Upload + Verify Packs đã mở; Nấc 3 Publish Combined Catalog vẫn pending.")
+                    receipt_state_var.set(f"Receipt: {config[4]}/vocab/{config[2]}/{config[3]}/deploy_receipt.json | Remote verification: chưa upload | Version: HSK {config[2]}")
                     append_log(f"BASE: {base['zip']} ({base['bytes']} bytes, {base['sha256']})")
                     append_log(f"PLUS: {plus['zip']} ({plus['bytes']} bytes, {plus['sha256']})")
                     refresh_deploy_gate()
@@ -5488,16 +5670,16 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 stage_btn.config(state="disabled")
                 messagebox.showwarning("Stage chưa đủ điều kiện", str(exc), parent=builder_win)
                 return
-            phrase = stage_confirmation_phrase(plan.level)
+            phrase = stage_confirmation_phrase(plan.level, plan.version)
             confirm = tk.Toplevel(builder_win)
             set_popup_icon(confirm)
-            confirm.title(f"Xác nhận stage {plan.level.upper()} 3.0")
+            confirm.title(f"Xác nhận stage {plan.level.upper()} {plan.version}")
             confirm.geometry("760x520")
             confirm.transient(builder_win)
             confirm.grab_set()
             details = (
                 f"Profile: {plan.profile_name}\nProject URL: {plan.project_url}\nBucket: {plan.bucket}\n"
-                f"Level: {plan.level} | packVersion: v{plan.pack_version}\n\n"
+                f"Version: {plan.version} | Level: {plan.level} | packVersion: v{plan.pack_version}\n\n"
                 f"BASE: {plan.base_object_path}\n{plan.base_bytes} bytes | {plan.base_sha256}\n\n"
                 f"PLUS: {plan.plus_object_path}\n{plan.plus_bytes} bytes | {plan.plus_sha256}\n\n"
                 "Thao tác này chỉ upload + GET-verify hai ZIP bằng create-only. Catalog không được tạo/publish."
@@ -5515,8 +5697,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 confirm.destroy()
                 stage_btn.config(state="disabled")
                 build_btn.config(state="disabled")
-                status_var.set(f"Đang stage {plan.level.upper()} ZIP packs…")
-                append_log(f"=== STAGE {plan.level.upper()} 3.0 ===")
+                status_var.set(f"Đang stage {plan.level.upper()} {plan.version} ZIP packs…")
+                append_log(f"=== STAGE {plan.level.upper()} {plan.version} ===")
 
                 def worker():
                     try:
@@ -5529,6 +5711,11 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     else:
                         builder_win.after(0, lambda: status_var.set("REMOTE PACKS VERIFIED | CATALOG NOT PUBLISHED"))
                         builder_win.after(0, append_log, f"Receipt: {result['receiptPath']}")
+                        builder_win.after(0, lambda: receipt_state_var.set(f"Receipt: {result['receiptPath']} | Remote verification: BASE+PLUS PASS"))
+                        builder_win.after(0, lambda: summary_var.set(
+                            f"Version: HSK {plan.version} | Level: {plan.level.upper()} | Pack version: v{plan.pack_version} | "
+                            f"Receipt: {result['receiptPath']} | Remote verification: BASE+PLUS PASS"
+                        ))
                         builder_win.after(0, refresh_catalog_gate)
                     finally:
                         builder_win.after(0, lambda: build_btn.config(state="normal"))
@@ -5542,8 +5729,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         def publish_catalog_pending():
             try:
+                selected_version = version_label_to_code[version_display_var.get()]
                 selected_level = level_label_to_code[level_display_var.get()]
-                publish_plan = prepare_catalog_publish(output_var.get().strip(), levels={selected_level})
+                publish_plan = prepare_catalog_publish(output_var.get().strip(), levels={selected_level}, versions={selected_version})
                 _, profile = load_active_supabase_profile()
             except Exception as exc:
                 publish_btn.config(state="disabled")
@@ -5560,7 +5748,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 f"Source SHA: {publish_plan.source.sha256}\n"
                 f"Catalog target: {publish_plan.target_object_path}\n"
                 f"Entries source: {publish_plan.source.entry_count}\n"
-                f"Entries thêm từ deploy receipt: {len(publish_plan.additions)}\n\n"
+                f"Descriptors replace/add từ HSK {selected_version} {selected_level.upper()}: {len(publish_plan.additions)}\n\n"
                 "CẢNH BÁO: remote write tạo catalog revision mới bằng create-only. Catalog cũ không bị overwrite."
             )
             tk.Label(confirm, text=details, anchor="w", justify="left", wraplength=720).pack(fill="both", expand=True, padx=14, pady=(14, 8))
@@ -5587,6 +5775,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                             confirmation=confirmation,
                             private_key_path=DEFAULT_KEY_PATH,
                             levels={selected_level},
+                            versions={selected_version},
                             progress=lambda message: builder_win.after(0, append_log, message),
                         )
                     except Exception as exc:
@@ -6765,7 +6954,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         # Disabled: game/video/background/subtitle features removed in audio-tool version.
         # ("🎮 Game Đoán Chữ", "#ccffcc", bat_dau_game_popup),
         ("📥 Import Excel + Deploy Supabase", "#e8ffe8", import_excel_va_deploy_supabase),
-        ("📦 HSK 3.0 Vocab ZIP Builder", "#d9eaff", hsk30_vocab_zip_builder),
+        ("📦 HSK 2.0 / 3.0 Vocab ZIP Builder", "#d9eaff", hsk30_vocab_zip_builder),
         ("▶️ Đọc nội dung", "lightgreen", doc_popup),
         ("🎯 Đồng bộ ngôn ngữ dòng", "#ffe6cc", lambda: ep_toan_bo_dong_ve_lang()),
         ("⏸ Dừng đọc", "orange", dung_doc),
@@ -8483,6 +8672,7 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
     def thuc_hien(ok):
         if not ok:
             return
+        global config
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 config = json.load(f)
@@ -8810,6 +9000,7 @@ def sua_key_nhom(loai, key_fields, labels, show_pws=None):
     def thuc_hien(ok):
         if not ok:
             return
+        global config
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 config = json.load(f)

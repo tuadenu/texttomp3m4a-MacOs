@@ -37,6 +37,7 @@ from pipelines.vocab_zip_deploy import (
     _sha256_bytes,
     _validate_catalog_entries,
     catalog_object_path,
+    mark_receipts_catalog_published,
     prepare_catalog_publish,
     verify_catalog_payload,
 )
@@ -166,8 +167,8 @@ def _verify_object(client: StorageClient, bucket: str, object_path: str, expecte
     return payload
 
 
-def _catalog_payload_for_plan(output_directory: str | Path, levels: set[str] | None = None):
-    plan = prepare_catalog_publish(output_directory, levels=levels)
+def _catalog_payload_for_plan(output_directory: str | Path, levels: set[str] | None = None, versions: set[str] | None = None):
+    plan = prepare_catalog_publish(output_directory, levels=levels, versions=versions)
     combined = copy.deepcopy(plan.source.catalog)
     entries_key = next(key for key in ("entries", "packs", "collections") if isinstance(combined.get(key), list))
     entries = combined[entries_key]
@@ -203,6 +204,7 @@ def publish_signed_catalog_with_client(client: StorageClient, *, output_director
                                        confirmation: str, private_key_path: str | Path = DEFAULT_KEY_PATH,
                                        key_id: str = DEFAULT_KEY_ID, min_app_build: int = 1,
                                        levels: set[str] | None = None,
+                                       versions: set[str] | None = None,
                                        published_at: str | None = None,
                                        progress: Callable[[str], None] | None = None) -> dict[str, object]:
     """Publish immutable catalog, archive signed pointer, then update current."""
@@ -215,7 +217,7 @@ def publish_signed_catalog_with_client(client: StorageClient, *, output_director
     current_before = _load_verified_current_pointer(client, bucket=bucket, public_key=private_key.public_key(), expected_key_id=key_id)
     _sync_current_catalog_snapshot(client, output_directory=output_directory, bucket=bucket, public_key=private_key.public_key(), key_id=key_id)
     try:
-        plan, combined, catalog_payload = _catalog_payload_for_plan(output_directory, levels=levels)
+        plan, combined, catalog_payload = _catalog_payload_for_plan(output_directory, levels=levels, versions=versions)
     except DeployValidationError as exc:
         if current_before is not None and "Chưa có deploy receipt mới" in str(exc):
             return {
@@ -280,6 +282,13 @@ def publish_signed_catalog_with_client(client: StorageClient, *, output_director
         updater(bucket, POINTER_CURRENT_OBJECT, pointer_payload, "application/json")
     verified_current = _verify_object(client, bucket, POINTER_CURRENT_OBJECT, pointer_payload)
     verify_pointer(json.loads(verified_current.decode("utf-8")), private_key.public_key())
+    # This is deliberately last: a receipt is never marked published before
+    # immutable catalog, pointer archive, mutable current.json and GET verify.
+    mark_receipts_catalog_published(
+        plan.receipts,
+        catalog_revision=plan.target_revision,
+        pointer_revision=pointer_revision,
+    )
     if progress:
         progress(f"POINTER ACTIVE: pointerRevision={pointer_revision} catalogRevision={plan.target_revision}")
     return {

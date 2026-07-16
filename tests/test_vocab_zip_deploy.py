@@ -26,7 +26,7 @@ if "pypinyin" not in sys.modules:
     sys.modules["pypinyin"] = fake_pypinyin
 
 from pipelines import vocab_zip_deploy as deploy
-from pipelines.vocab_zip_builder import SourceVocab, audio_filename, build_hsk30
+from pipelines.vocab_zip_builder import SourceVocab, audio_cache_key, build_hsk30, build_vocab_pack
 
 
 class VocabZipDeployTests(unittest.TestCase):
@@ -40,18 +40,8 @@ class VocabZipDeployTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = Path(tempfile.mkdtemp(prefix="vocab-deploy-test-"))
         self.excel = self.temp_dir / "source.xlsx"
-        rows = [
-            {
-                "index": i,
-                "word": f"词{i}",
-                "meaning_vi": f"nghia {i}",
-                "example_zh": f"例子{i}",
-                "example_vi": f"vi du {i}",
-            }
-            for i in range(1, 53)
-        ]
-        pd.DataFrame(rows).to_excel(self.excel, sheet_name="hsk1_30", index=False)
-        self.rows = rows
+        self.rows = self._rows_for_total(52)
+        pd.DataFrame(self.rows).to_excel(self.excel, sheet_name="hsk1_30", index=False)
         self.output_root = self.temp_dir / "output"
         self.profile = {
             "SUPABASE_URL": "https://example.supabase.co",
@@ -69,41 +59,63 @@ class VocabZipDeployTests(unittest.TestCase):
                 return key
         raise AssertionError("catalog thiếu field entry list")
 
-    def _seed_audio(self, level):
-        audio_root = self.output_root / "vocab" / "3.0" / level / "source_audio"
-        audio_root.mkdir(parents=True, exist_ok=True)
-        for row in self.rows:
-            item = SourceVocab(row["index"], row["word"], row["meaning_vi"], row["example_zh"], row["example_vi"])
-            (audio_root / audio_filename("hsk1_30", item)).write_bytes(f"audio-{level}-{row['index']}".encode("utf-8"))
+    def _rows_for_total(self, total):
+        return [
+            {
+                "index": i,
+                "word": f"词{i}",
+                "meaning_vi": f"nghia {i}",
+                "example_zh": f"例子{i}",
+                "example_vi": f"vi du {i}",
+            }
+            for i in range(1, total + 1)
+        ]
 
-    def _build(self, level):
-        if level in self._build_cache:
-            return self._build_cache[level]
-        self._seed_audio(level)
-        result = build_hsk30(self.excel, "hsk1_30", level, self.output_root, generate_missing=False)
-        self._build_cache[level] = result
+    def _sheet_name(self, level, version):
+        return f"{level}_{'20' if version == '2.0' else '30'}"
+
+    def _seed_audio(self, level, version="3.0", sheet=None, rows=None):
+        sheet = sheet or self._sheet_name(level, version)
+        rows = rows or self.rows
+        audio_root = self.output_root / "vocab" / version / level / "audio_cache"
+        audio_root.mkdir(parents=True, exist_ok=True)
+        for row in rows:
+            item = SourceVocab(row["index"], row["word"], row["meaning_vi"], row["example_zh"], row["example_vi"])
+            name = audio_cache_key(item, engine="gTTS", speed="Bình thường", voice="Mặc định", profile="", bitrate="32k", audio_mode="zh_vi") + ".m4a"
+            (audio_root / name).write_bytes(f"audio-{version}-{level}-{row['index']}".encode("utf-8"))
+
+    def _build(self, level, version="3.0", rows=None):
+        cache_key = (version, level, len(rows or self.rows))
+        if cache_key in self._build_cache:
+            return self._build_cache[cache_key]
+        rows = rows or self.rows
+        sheet = self._sheet_name(level, version)
+        pd.DataFrame(rows).to_excel(self.excel, sheet_name=sheet, index=False)
+        self._seed_audio(level, version=version, sheet=sheet, rows=rows)
+        result = build_vocab_pack(self.excel, sheet, level, self.output_root, version=version, generate_missing=False)
+        self._build_cache[cache_key] = result
         return result
 
-    def _plan(self, level):
-        result = self._build(level)
+    def _plan(self, level, version="3.0", rows=None):
+        result = self._build(level, version=version, rows=rows)
         bitrate = str(result.get("ttsConfig", {}).get("m4a", {}).get("bitrate", "32k"))
-        receipt_fingerprint = deploy.input_fingerprint(self.excel, "hsk1_30", level, self.output_root, bitrate=bitrate)
+        receipt_fingerprint = deploy.input_fingerprint(self.excel, self._sheet_name(level, version), level, self.output_root, version=version, bitrate=bitrate)
         return deploy.build_plan(
             result,
-            (str(self.excel), "hsk1_30", level, str(self.output_root)),
+            (str(self.excel), self._sheet_name(level, version), version, level, str(self.output_root)),
             receipt_fingerprint,
             self.profile,
             profile_name="dev",
         )
 
     def _write_source_snapshot(self):
-        source_snapshot = self.output_root / "vocab" / "3.0" / "catalog_revisions" / "v1" / "vocab_pack_catalog_20_30_v1.json"
+        source_snapshot = self.output_root / "vocab" / "catalog_revisions" / "v1" / "vocab_pack_catalog_20_30_v1.json"
         source_snapshot.parent.mkdir(parents=True, exist_ok=True)
         source_snapshot.write_bytes(self.seed_catalog_bytes)
         return source_snapshot
 
     def _write_revision_snapshot(self, revision: int, payload: bytes):
-        snapshot = self.output_root / "vocab" / "3.0" / "catalog_revisions" / f"v{revision}" / f"vocab_pack_catalog_20_30_v{revision}.json"
+        snapshot = self.output_root / "vocab" / "catalog_revisions" / f"v{revision}" / f"vocab_pack_catalog_20_30_v{revision}.json"
         snapshot.parent.mkdir(parents=True, exist_ok=True)
         snapshot.write_bytes(payload)
         return snapshot
@@ -158,7 +170,33 @@ class VocabZipDeployTests(unittest.TestCase):
                 self.assertEqual(2, len([call for call in client.calls if call[0] == "CREATE"]))
                 self.assertEqual(plan.base_object_path, result["receipt"]["base"]["objectPath"])
                 self.assertEqual(plan.plus_object_path, result["receipt"]["plus"]["objectPath"])
-                self.assertFalse((self.output_root / "vocab" / "3.0" / "catalog_revisions").exists())
+                self.assertFalse((self.output_root / "vocab" / "catalog_revisions").exists())
+
+    def test_stage_hsk20_uses_2_0_namespace_and_does_not_cross_versions(self):
+        rows = self._rows_for_total(152)
+        self._write_source_snapshot()
+        plan = self._plan("hsk1", version="2.0", rows=rows)
+        client = deploy.MemoryStorageClient()
+        logs = []
+        result = deploy.stage_packs_with_client(
+            client,
+            plan,
+            confirmation=deploy.stage_confirmation_phrase("hsk1", "2.0"),
+            output_directory=self.output_root,
+            progress=logs.append,
+        )
+        self.assertEqual("REMOTE PACKS VERIFIED", result["status"])
+        self.assertEqual("vocab/2.0/hsk1/base/v1/vocab_hsk1_20_base_v1.zip", plan.base_object_path)
+        self.assertEqual("vocab/2.0/hsk1/plus/v1/vocab_hsk1_20_plus_v1.zip", plan.plus_object_path)
+        self.assertEqual(self.output_root / "vocab" / "2.0" / "hsk1" / "deploy_receipt.json", deploy.deploy_receipt_path(self.output_root, "hsk1", "2.0"))
+        self.assertTrue(deploy.deploy_receipt_path(self.output_root, "hsk1", "2.0").is_file())
+        self.assertIn("GET verify HSK1 2.0 BASE: PASS", "\n".join(logs))
+        self.assertEqual(4, len([call for call in client.calls if call[0] == "GET"]))
+        self.assertEqual(2, len([call for call in client.calls if call[0] == "CREATE"]))
+        self.assertTrue(all(path.startswith(("vocab/2.0/",)) for path in (result["receipt"]["base"]["objectPath"], result["receipt"]["plus"]["objectPath"])))
+        receipts = deploy.collect_deploy_receipts(self.output_root, versions={"2.0"})
+        self.assertEqual(1, len(receipts))
+        self.assertEqual("2.0", receipts[0]["version"])
 
     def test_stage_bad_confirmation_does_not_call_network(self):
         plan = self._plan("hsk2")
@@ -219,7 +257,7 @@ class VocabZipDeployTests(unittest.TestCase):
                 output_directory=self.output_root,
             )
         self.assertFalse(deploy.deploy_receipt_path(self.output_root, "hsk2").exists())
-        self.assertFalse(any(path.name.startswith("vocab_pack_catalog") for path in (self.output_root / "vocab" / "3.0").rglob("*.json")))
+        self.assertFalse(any(path.name.startswith("vocab_pack_catalog") for path in (self.output_root / "vocab").rglob("*.json")))
 
     def test_http_400_not_found_and_404_are_absent(self):
         client = deploy.SupabaseStorageRestClient("https://example.supabase.co", "secret", network_enabled=True, retries=0)
@@ -277,6 +315,9 @@ class VocabZipDeployTests(unittest.TestCase):
         self.assertEqual(16, len(entries))
         legacy_entries = entries[:12]
         self.assertEqual(seed_catalog[seed_key], legacy_entries)
+        for level in ("hsk2", "hsk7_9"):
+            receipt = json.loads(deploy.deploy_receipt_path(self.output_root, level).read_text(encoding="utf-8"))
+            self.assertTrue(receipt["catalogPublished"])
 
     def test_publish_does_not_upload_zip_objects(self):
         self._write_source_snapshot()
@@ -346,7 +387,7 @@ class VocabZipDeployTests(unittest.TestCase):
         self._stage("hsk5")
         self._stage("hsk6")
         self._stage("hsk7_9")
-        client_v4 = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, deploy.catalog_object_path(3)): (self.output_root / "vocab" / "3.0" / "catalog_revisions" / "v3" / "vocab_pack_catalog_20_30_v3.json").read_bytes()})
+        client_v4 = deploy.MemoryStorageClient(objects={(deploy.STAGING_BUCKET, deploy.catalog_object_path(3)): (self.output_root / "vocab" / "catalog_revisions" / "v3" / "vocab_pack_catalog_20_30_v3.json").read_bytes()})
         result_v4 = deploy.publish_catalog_with_client(client_v4, output_directory=self.output_root, confirmation=deploy.CATALOG_PUBLISH_CONFIRMATION)
         self.assertEqual(4, result_v4["revision"])
         self.assertEqual(26, result_v4["entryCount"])

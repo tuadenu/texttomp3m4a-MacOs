@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Local-only deterministic HSK 3.0 vocabulary ZIP builder.
+"""Local-only deterministic HSK 2.0/3.0 vocabulary ZIP builder.
 
 This module intentionally has no Supabase client and performs no network I/O.
-It is separate from the legacy HSK 2.0 pipeline so that the existing import
-and deploy behaviour remains unchanged.
+It produces the same catalog contract for both vocabulary standards without
+touching the legacy row-import workflow.
 """
 
 from __future__ import annotations
@@ -33,7 +33,13 @@ except ModuleNotFoundError:
     from vocab_pipeline import _build_word_audio, _export_m4a, _to_pinyin_slug
 
 
+SUPPORTED_VERSIONS = ("2.0", "3.0")
 SUPPORTED_LEVELS = ("hsk1", "hsk2", "hsk3", "hsk4", "hsk5", "hsk6", "hsk7_9")
+SHEET_SELECTIONS = {
+    **{f"hsk{number}_20": ("2.0", f"hsk{number}") for number in range(1, 7)},
+    **{f"hsk{number}_30": ("3.0", f"hsk{number}") for number in range(1, 7)},
+    "hsk7_9_30": ("3.0", "hsk7_9"),
+}
 FIXED_CREATED_AT = "2000-01-01T00:00:00Z"
 FIXED_ZIP_DATE = (2000, 1, 1, 0, 0, 0)
 PACK_VERSION = 1
@@ -164,8 +170,8 @@ def audio_filename(sheet_name: str, item: SourceVocab) -> str:
     return f"{sheet_name}_{item.index:03d}_{_to_pinyin_slug(item.word)}.m4a"
 
 
-def canonical_audio_uri(level: str, item: SourceVocab, content_hash: str | None = None) -> str:
-    base = f"vocab://3.0/{level}/{item.stable_id}/audio"
+def canonical_audio_uri(version: str, level: str, item: SourceVocab, content_hash: str | None = None) -> str:
+    base = f"vocab://{version}/{level}/{item.stable_id}/audio"
     return f"{base}/{content_hash}" if content_hash else base
 
 
@@ -181,8 +187,34 @@ def _validate_level(level: str) -> None:
         raise BuildValidationError("Level không hỗ trợ: " + level)
 
 
-def _source_audio_path(audio_root: Path, sheet_name: str, item: SourceVocab) -> Path:
-    return audio_root / audio_filename(sheet_name, item)
+def _validate_version(version: str) -> str:
+    value = str(version or "").strip()
+    if value not in SUPPORTED_VERSIONS:
+        raise BuildValidationError("Vocab version không hỗ trợ: " + value)
+    return value
+
+
+def resolve_sheet_selection(sheet_name: str, version: str | None = None, level: str | None = None) -> tuple[str, str]:
+    """Return the canonical version/level and reject every mismatched tuple."""
+    try:
+        expected_version, expected_level = SHEET_SELECTIONS[str(sheet_name).strip().lower()]
+    except KeyError as exc:
+        raise BuildValidationError("Sheet vocab không hỗ trợ: " + str(sheet_name)) from exc
+    if version is not None and _validate_version(version) != expected_version:
+        raise BuildValidationError(f"Sheet {sheet_name} thuộc HSK {expected_version}, không phải HSK {version}.")
+    if level is not None and str(level).strip().lower() != expected_level:
+        raise BuildValidationError(f"Sheet {sheet_name} thuộc level {expected_level}, không phải {level}.")
+    return expected_version, expected_level
+
+
+def audio_cache_key(item: SourceVocab, *, engine: str, speed: str, voice: str, profile: str, bitrate: str, audio_mode: str) -> str:
+    """Content-address cache identity: a changed voice/profile/text cannot reuse M4A."""
+    value = "\0".join((engine, voice, speed, profile, bitrate, audio_mode, item.word, item.meaning))
+    return _sha256_bytes(value.encode("utf-8"))
+
+
+def _source_audio_path(audio_root: Path, sheet_name: str, item: SourceVocab, *, engine: str, speed: str, voice: str, profile: str, bitrate: str, audio_mode: str) -> Path:
+    return audio_root / f"{audio_cache_key(item, engine=engine, speed=speed, voice=voice, profile=profile, bitrate=bitrate, audio_mode=audio_mode)}.m4a"
 
 
 def ensure_audio(
@@ -196,13 +228,15 @@ def ensure_audio(
     generate_missing: bool,
     progress: Callable[[str], None] | None = None,
     audio_mode: str = "zh_vi",
+    profile: str = "",
+    force_regenerate: bool = False,
 ) -> tuple[int, int]:
     """Reuse non-empty M4A files or generate them through the existing TTS core."""
     audio_root.mkdir(parents=True, exist_ok=True)
     reused = generated = 0
     for position, item in enumerate(items, start=1):
-        target = _source_audio_path(audio_root, sheet_name, item)
-        if target.is_file() and target.stat().st_size > 0:
+        target = _source_audio_path(audio_root, sheet_name, item, engine=engine, speed=speed, voice=voice, profile=profile, bitrate=bitrate, audio_mode=audio_mode)
+        if not force_regenerate and target.is_file() and target.stat().st_size > 0:
             reused += 1
             if progress:
                 progress(f"Audio {position}/{len(items)}: dùng lại {target.name}")
@@ -238,29 +272,29 @@ def ensure_audio(
     return reused, generated
 
 
-def _vocab_item(level: str, item: SourceVocab, audio_url: str | None = None) -> dict[str, object]:
+def _vocab_item(version: str, level: str, item: SourceVocab, audio_url: str | None = None) -> dict[str, object]:
     return {
         "id": item.stable_id,
         "level": level,
-        "version": "3.0",
+        "version": version,
         "index": item.index,
         "word": item.word,
         "meaning": item.meaning,
-        "audio_url": audio_url or canonical_audio_uri(level, item),
+        "audio_url": audio_url or canonical_audio_uri(version, level, item),
         "example": item.example,
         "example_meaning": item.example_meaning,
     }
 
 
-def _manifest(level: str, segment: str, items: list[SourceVocab], resources: list[dict[str, object]], base_hash: str | None, pack_version: int = PACK_VERSION) -> dict[str, object]:
-    pack_id = f"vocab:3.0:{level}:{segment}:v{pack_version}"
+def _manifest(version: str, level: str, segment: str, items: list[SourceVocab], resources: list[dict[str, object]], base_hash: str | None, base_count: int, pack_version: int = PACK_VERSION) -> dict[str, object]:
+    pack_id = f"vocab:{version}:{level}:{segment}:v{pack_version}"
     manifest: dict[str, object] = {
         "schemaVersion": 2,
         "packId": pack_id,
         "packVersion": pack_version,
         "level": level,
-        "standardVersion": "3.0",
-        "datasetVersion": "3.0",
+        "standardVersion": version,
+        "datasetVersion": version,
         "zipSha256": "",
         "resources": resources,
         "createdAt": FIXED_CREATED_AT,
@@ -273,18 +307,53 @@ def _manifest(level: str, segment: str, items: list[SourceVocab], resources: lis
         "resourceCount": len(resources),
     }
     if segment == "base":
-        manifest["previewWordCount"] = 50
+        manifest["previewWordCount"] = base_count
     else:
         assert base_hash is not None
         manifest.update(
             {
-                "requiresPackId": f"vocab:3.0:{level}:base:v{pack_version}",
+                "requiresPackId": f"vocab:{version}:{level}:base:v{pack_version}",
                 "compatibleBaseVersion": pack_version,
                 "remainingVocabCount": len(items),
                 "baseOrderedVocabIdsSha256": base_hash,
             }
         )
     return manifest
+
+
+def _load_previous_audio_state(segment_root: Path, current_pack_version: int) -> tuple[dict[str, str], dict[str, str]]:
+    """Return the newest prior audio URI/hash map for the same level segment."""
+    candidates: list[tuple[int, Path]] = []
+    if segment_root.is_dir():
+        for path in segment_root.glob("v*/unpacked"):
+            match = re.fullmatch(r"v(\d+)", path.parent.name)
+            if not match:
+                continue
+            version = int(match.group(1))
+            if version < 1 or version > current_pack_version:
+                continue
+            candidates.append((version, path))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    for _, unpacked in candidates:
+        try:
+            previous_vocab = json.loads((unpacked / "vocab.json").read_text(encoding="utf-8"))
+            previous_manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        previous_audio_urls: dict[str, str] = {}
+        previous_resource_hashes: dict[str, str] = {}
+        if isinstance(previous_vocab, list):
+            previous_audio_urls = {
+                str(item.get("id")): str(item.get("audio_url"))
+                for item in previous_vocab
+                if isinstance(item, dict) and item.get("id") and item.get("audio_url")
+            }
+        if isinstance(previous_manifest, dict) and isinstance(previous_manifest.get("resources"), list):
+            for resource in previous_manifest["resources"]:
+                if isinstance(resource, dict) and resource.get("type") == "vocab_audio":
+                    previous_resource_hashes[str(resource.get("canonicalSource"))] = str(resource.get("sha256"))
+        return previous_audio_urls, previous_resource_hashes
+    return {}, {}
 
 
 def _write_deterministic_zip(unpacked: Path, zip_path: Path) -> None:
@@ -300,6 +369,7 @@ def _write_deterministic_zip(unpacked: Path, zip_path: Path) -> None:
 
 
 def _build_one_pack(
+    version: str,
     level: str,
     segment: str,
     items: list[SourceVocab],
@@ -307,34 +377,28 @@ def _build_one_pack(
     sheet_name: str,
     output_level_root: Path,
     base_hash: str | None,
+    base_count: int,
+    engine: str,
+    speed: str,
+    voice: str,
+    profile: str,
+    bitrate: str,
+    audio_mode: str,
     pack_version: int = PACK_VERSION,
 ) -> dict[str, object]:
     if not isinstance(pack_version, int) or pack_version < 1:
         raise BuildValidationError("pack_version phải là integer dương.")
     version_root = output_level_root / segment / f"v{pack_version}"
     unpacked = version_root / "unpacked"
-    previous_audio_urls: dict[str, str] = {}
-    previous_resource_hashes: dict[str, str] = {}
+    previous_audio_urls, previous_resource_hashes = _load_previous_audio_state(output_level_root / segment, pack_version)
     if unpacked.exists():
-        try:
-            previous_vocab = json.loads((unpacked / "vocab.json").read_text(encoding="utf-8"))
-            previous_manifest = json.loads((unpacked / "manifest.json").read_text(encoding="utf-8"))
-            if isinstance(previous_vocab, list):
-                previous_audio_urls = {str(item.get("id")): str(item.get("audio_url")) for item in previous_vocab if isinstance(item, dict) and item.get("id") and item.get("audio_url")}
-            if isinstance(previous_manifest, dict) and isinstance(previous_manifest.get("resources"), list):
-                for resource in previous_manifest["resources"]:
-                    if isinstance(resource, dict) and resource.get("type") == "vocab_audio":
-                        previous_resource_hashes[str(resource.get("canonicalSource"))] = str(resource.get("sha256"))
-        except (OSError, ValueError, json.JSONDecodeError):
-            previous_audio_urls = {}
-            previous_resource_hashes = {}
         shutil.rmtree(unpacked)
     (unpacked / "audio").mkdir(parents=True)
 
     audio_resources: list[dict[str, object]] = []
     audio_urls: dict[str, str] = {}
     for item in items:
-        source = _source_audio_path(source_audio_root, sheet_name, item)
+        source = _source_audio_path(source_audio_root, sheet_name, item, engine=engine, speed=speed, voice=voice, profile=profile, bitrate=bitrate, audio_mode=audio_mode)
         if not source.is_file() or source.stat().st_size == 0:
             raise BuildValidationError(f"Audio thiếu hoặc 0 byte: {source}")
         digest = sha256_file(source)
@@ -343,10 +407,10 @@ def _build_one_pack(
         if not destination.exists():
             shutil.copyfile(source, destination)
         stable_id = item.stable_id
-        base_uri = canonical_audio_uri(level, item)
+        base_uri = canonical_audio_uri(version, level, item)
         old_uri = previous_audio_urls.get(stable_id)
         if old_uri:
-            audio_uri = old_uri if previous_resource_hashes.get(old_uri) == digest else canonical_audio_uri(level, item, digest)
+            audio_uri = old_uri if previous_resource_hashes.get(old_uri) == digest else canonical_audio_uri(version, level, item, digest)
         else:
             audio_uri = base_uri
         audio_urls[stable_id] = audio_uri
@@ -360,7 +424,7 @@ def _build_one_pack(
             }
         )
 
-    vocab = [_vocab_item(level, item, audio_urls[item.stable_id]) for item in items]
+    vocab = [_vocab_item(version, level, item, audio_urls[item.stable_id]) for item in items]
     vocab_bytes = _write_json(unpacked / "vocab.json", vocab)
     resources = [
         {
@@ -368,14 +432,14 @@ def _build_one_pack(
             "path": "vocab.json",
             "sha256": _sha256_bytes(vocab_bytes),
             "bytes": len(vocab_bytes),
-            "canonicalSource": f"vocab:3.0:{level}:{segment}:v{pack_version}",
+            "canonicalSource": f"vocab:{version}:{level}:{segment}:v{pack_version}",
         },
         *sorted(audio_resources, key=lambda entry: (str(entry["canonicalSource"]), str(entry["path"]))),
     ]
-    manifest = _manifest(level, segment, items, resources, base_hash, pack_version)
+    manifest = _manifest(version, level, segment, items, resources, base_hash, base_count, pack_version)
     _write_json(unpacked / "manifest.json", manifest)
 
-    filename = f"vocab_{level}_30_{segment}_v{pack_version}.zip"
+    filename = f"vocab_{level}_{version.replace('.', '')}_{segment}_v{pack_version}.zip"
     zip_path = version_root / filename
     _write_deterministic_zip(unpacked, zip_path)
     digest = sha256_file(zip_path)
@@ -407,7 +471,7 @@ def _read_zip_json(archive: zipfile.ZipFile, name: str) -> object:
         raise BuildValidationError(f"ZIP thiếu {name}") from exc
 
 
-def verify_pack(zip_path: str | Path, expected_level: str | None = None, expected_segment: str | None = None, expected_pack_version: int | None = None) -> dict[str, object]:
+def verify_pack(zip_path: str | Path, expected_level: str | None = None, expected_segment: str | None = None, expected_pack_version: int | None = None, expected_version: str | None = None) -> dict[str, object]:
     """Verify the ZIP itself against its manifest, without touching any remote service."""
     path = Path(zip_path)
     errors: list[str] = []
@@ -424,7 +488,7 @@ def verify_pack(zip_path: str | Path, expected_level: str | None = None, expecte
                     break
             manifest = _read_zip_json(archive, "manifest.json")
             vocab = _read_zip_json(archive, "vocab.json")
-            errors.extend(validate_pack_data(manifest, vocab, lambda item_path: archive.read(item_path), names, expected_level, expected_segment, expected_pack_version))
+            errors.extend(validate_pack_data(manifest, vocab, lambda item_path: archive.read(item_path), names, expected_level, expected_segment, expected_pack_version, expected_version))
     except (OSError, zipfile.BadZipFile, UnicodeDecodeError, json.JSONDecodeError) as exc:
         errors.append(f"Không mở/đọc được ZIP: {exc}")
     if errors:
@@ -432,10 +496,10 @@ def verify_pack(zip_path: str | Path, expected_level: str | None = None, expecte
     return {"zip": str(path), "bytes": path.stat().st_size, "sha256": sha256_file(path), "status": "PASS"}
 
 
-def verify_pack_pair(base_zip: str | Path, plus_zip: str | Path, expected_level: str, expected_pack_version: int | None = None) -> dict[str, object]:
+def verify_pack_pair(base_zip: str | Path, plus_zip: str | Path, expected_level: str, expected_pack_version: int | None = None, expected_version: str | None = None) -> dict[str, object]:
     """Verify the BASE/PLUS relationship after both individual ZIP checks pass."""
-    base_result = verify_pack(base_zip, expected_level, "base", expected_pack_version)
-    plus_result = verify_pack(plus_zip, expected_level, "plus", expected_pack_version)
+    base_result = verify_pack(base_zip, expected_level, "base", expected_pack_version, expected_version)
+    plus_result = verify_pack(plus_zip, expected_level, "plus", expected_pack_version, expected_version)
     with zipfile.ZipFile(base_zip, "r") as archive:
         base_manifest = _read_zip_json(archive, "manifest.json")
         base_vocab = _read_zip_json(archive, "vocab.json")
@@ -447,9 +511,10 @@ def verify_pack_pair(base_zip: str | Path, plus_zip: str | Path, expected_level:
     errors: list[str] = []
     base_indexes = [item.get("index") for item in base_vocab if isinstance(item, dict)]
     plus_indexes = [item.get("index") for item in plus_vocab if isinstance(item, dict)]
-    if base_indexes != list(range(1, 51)):
-        errors.append("BASE không chứa chính xác index 1–50")
-    expected_plus = list(range(51, 51 + len(plus_indexes)))
+    base_count = int(base_manifest.get("previewWordCount", 0) or 0)
+    if base_count < 1 or base_indexes != list(range(1, base_count + 1)):
+        errors.append("BASE index không khớp previewWordCount")
+    expected_plus = list(range(base_count + 1, base_count + 1 + len(plus_indexes)))
     if plus_indexes != expected_plus:
         errors.append("PLUS phải bắt đầu từ index 51 và liên tục")
     if set(base_indexes).intersection(plus_indexes):
@@ -473,6 +538,7 @@ def validate_pack_data(
     expected_level: str | None = None,
     expected_segment: str | None = None,
     expected_pack_version: int | None = None,
+    expected_version: str | None = None,
 ) -> list[str]:
     errors: list[str] = []
     if not isinstance(manifest, dict) or not isinstance(vocab, list):
@@ -483,21 +549,24 @@ def validate_pack_data(
         errors.append("level trong manifest không khớp")
     if expected_segment and segment != expected_segment:
         errors.append("segment trong manifest không khớp")
-    if manifest.get("schemaVersion") != 2 or manifest.get("standardVersion") != "3.0" or manifest.get("datasetVersion") != "3.0":
+    version = str(manifest.get("standardVersion", ""))
+    if manifest.get("schemaVersion") != 2 or version not in SUPPORTED_VERSIONS or manifest.get("datasetVersion") != version:
         errors.append("schema/version manifest không hợp lệ")
+    if expected_version is not None and version != expected_version:
+        errors.append("version trong manifest không khớp")
     if manifest.get("createdAt") != FIXED_CREATED_AT or manifest.get("zipSha256") != "":
         errors.append("createdAt/zipSha256 không đúng contract")
     if manifest.get("packType") != "vocab" or (expected_pack_version is not None and manifest.get("packVersion") != expected_pack_version):
         errors.append("packType/packVersion không đúng")
     pack_version = int(manifest.get("packVersion", 0) or 0)
-    expected_pack = f"vocab:3.0:{level}:{segment}:v{pack_version}"
+    expected_pack = f"vocab:{version}:{level}:{segment}:v{pack_version}"
     if manifest.get("packId") != expected_pack:
         errors.append("packId không đúng")
     if segment == "base":
-        if manifest.get("accessTier") != "base" or manifest.get("vocabCount") != 50 or manifest.get("previewWordCount") != 50:
+        if manifest.get("accessTier") != "base" or manifest.get("vocabCount") != manifest.get("previewWordCount") or not isinstance(manifest.get("previewWordCount"), int) or manifest.get("previewWordCount", 0) < 1:
             errors.append("BASE metadata không đúng")
     elif segment == "plus":
-        base_id = f"vocab:3.0:{level}:base:v{pack_version}"
+        base_id = f"vocab:{version}:{level}:base:v{pack_version}"
         if manifest.get("accessTier") != "vip" or manifest.get("requiresPackId") != base_id or manifest.get("compatibleBaseVersion") != pack_version:
             errors.append("PLUS metadata không tương thích BASE")
         if manifest.get("remainingVocabCount") != len(vocab):
@@ -518,11 +587,11 @@ def validate_pack_data(
         item_id = str(entry.get("id", ""))
         index = entry.get("index")
         audio_url = str(entry.get("audio_url", ""))
-        if entry.get("level") != level or entry.get("version") != "3.0" or item_id != str(index):
+        if entry.get("level") != level or entry.get("version") != version or item_id != str(index):
             errors.append(f"vocab item {item_id}: level/version/id không đúng")
         if not isinstance(index, int):
             errors.append(f"vocab item {item_id}: index không phải integer")
-        expected_uri = f"vocab://3.0/{level}/{item_id}/audio"
+        expected_uri = f"vocab://{version}/{level}/{item_id}/audio"
         if audio_url != expected_uri and not re.fullmatch(re.escape(expected_uri) + r"/[0-9a-f]{64}", audio_url):
             errors.append(f"vocab item {item_id}: audio_url không đúng contract")
         ids.append(item_id)
@@ -597,11 +666,33 @@ def _write_local_csv(path: Path, items: list[SourceVocab]) -> None:
             writer.writerow({"index": item.index, "word": item.word, "meaning_vi": item.meaning, "example_zh": item.example, "example_vi": item.example_meaning})
 
 
-def build_hsk30(
+def split_policy(version: str, level: str) -> dict[str, int | str]:
+    """Read the checked-in combined catalog before falling back to tested HSK3 policy."""
+    version = _validate_version(version)
+    _validate_level(level)
+    catalog_path = Path(__file__).resolve().parents[1] / "input" / "vocab_pack_catalog_all_enabled_rollout.json"
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        entries = catalog.get("packs", [])
+        selected = [entry for entry in entries if isinstance(entry, dict) and entry.get("version") == version and entry.get("level") == level]
+        base = next((entry for entry in selected if entry.get("segment") == "base"), None)
+        plus = next((entry for entry in selected if entry.get("segment") == "plus"), None)
+        if isinstance(base, dict) and isinstance(plus, dict):
+            base_count, plus_count = int(base["vocabCount"]), int(plus["vocabCount"])
+            if base_count > 0 and plus_count >= 0:
+                return {"source": "combined catalog", "base": base_count, "plus": plus_count, "total": base_count + plus_count}
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError):
+        pass
+    # HSK 3.0's existing tested builder policy is 50 preview/base words.
+    return {"source": "tested builder default", "base": 50, "plus": -1, "total": -1}
+
+
+def build_vocab_pack(
     excel_path: str | Path,
     sheet_name: str,
     level: str,
     output_directory: str | Path,
+    version: str = "3.0",
     engine: str = "gTTS",
     generate_missing: bool = True,
     progress: Callable[[str], None] | None = None,
@@ -612,52 +703,64 @@ def build_hsk30(
     languages: Iterable[str] = ("vi", "zh"),
     config_confirmed: bool = True,
     pack_version: int = PACK_VERSION,
+    tts_profile: str = "",
+    force_regenerate_audio: bool = False,
 ) -> dict[str, object]:
     """Run the complete local-only Build + Validate workflow."""
-    _validate_level(level)
+    version, level = resolve_sheet_selection(sheet_name, version, level)
+    if not isinstance(pack_version, int) or pack_version < 1:
+        raise BuildValidationError("pack_version phải là integer dương.")
     normalized_languages = {str(language).strip().lower() for language in languages if str(language).strip()}
     if not config_confirmed:
-        raise BuildValidationError("Chưa xác nhận dùng cấu hình TTS hiện tại cho vocab HSK 3.0.")
+        raise BuildValidationError(f"Chưa xác nhận dùng cấu hình TTS hiện tại cho vocab HSK {version}.")
     if not {"vi", "zh"}.issubset(normalized_languages):
-        raise BuildValidationError("Vocab HSK 3.0 cần chọn cả Tiếng Việt và Tiếng Trung trong cấu hình TTS.")
+        raise BuildValidationError(f"Vocab HSK {version} cần chọn cả Tiếng Việt và Tiếng Trung trong cấu hình TTS.")
     if bitrate not in {"26k", "32k"}:
         raise BuildValidationError("M4A bitrate chỉ hỗ trợ 26k hoặc 32k.")
     if audio_mode not in {"zh_only", "zh_vi"}:
         raise BuildValidationError("Audio mode chỉ hỗ trợ zh_only hoặc zh_vi.")
-    output_root = Path(output_directory).expanduser().resolve() / "vocab" / "3.0" / level
-    output_root.mkdir(parents=True, exist_ok=True)
-    report_path = output_root / "build_report.json"
-    validation_path = output_root / "validation_report.json"
+    level_root = Path(output_directory).expanduser().resolve() / "vocab" / version / level
+    report_root = level_root / "builds" / f"v{pack_version}"
+    report_root.mkdir(parents=True, exist_ok=True)
+    report_path = report_root / "build_report.json"
+    validation_path = report_root / "validation_report.json"
     try:
         if progress:
             progress("Đọc Excel strict")
         items = load_excel_strict(excel_path, sheet_name)
-        if len(items) < 50:
+        policy = split_policy(version, level)
+        base_count = int(policy["base"])
+        expected_total = int(policy["total"])
+        if expected_total >= 0 and len(items) != expected_total:
+            raise BuildValidationError(f"Tổng rows {len(items)} không khớp policy catalog {expected_total} cho HSK {version} {level}.")
+        if len(items) < base_count:
             raise BuildValidationError("Excel phải có tối thiểu 50 item để tạo BASE")
-        base_items = [item for item in items if item.index <= 50]
-        plus_items = [item for item in items if item.index >= 51]
-        if len(base_items) != 50:
-            raise BuildValidationError("BASE phải gồm chính xác index 1–50")
-        audio_root = output_root / "source_audio"
+        base_items = [item for item in items if item.index <= base_count]
+        plus_items = [item for item in items if item.index >= base_count + 1]
+        if len(base_items) != base_count:
+            raise BuildValidationError(f"BASE phải gồm chính xác index 1–{base_count}")
+        audio_root = level_root / "audio_cache"
         if progress:
             progress("Tạo/tái sử dụng M4A")
         reused, generated = ensure_audio(
             items, audio_root, sheet_name, engine, speed, voice, bitrate,
-            generate_missing, progress, audio_mode=audio_mode,
+            generate_missing, progress, audio_mode=audio_mode, profile=tts_profile,
+            force_regenerate=force_regenerate_audio,
         )
-        _write_local_csv(output_root / "source_check.csv", items)
+        _write_local_csv(report_root / "source_check.csv", items)
         if progress:
             progress("Đóng BASE deterministic")
-        base = _build_one_pack(level, "base", base_items, audio_root, sheet_name, output_root, None, pack_version)
+        base = _build_one_pack(version, level, "base", base_items, audio_root, sheet_name, level_root, None, base_count, engine, speed, voice, tts_profile, bitrate, audio_mode, pack_version)
         if progress:
             progress("Đóng PLUS deterministic")
-        plus = _build_one_pack(level, "plus", plus_items, audio_root, sheet_name, output_root, base["manifest"]["orderedVocabIdsSha256"], pack_version)
+        plus = _build_one_pack(version, level, "plus", plus_items, audio_root, sheet_name, level_root, base["manifest"]["orderedVocabIdsSha256"], base_count, engine, speed, voice, tts_profile, bitrate, audio_mode, pack_version)
         if progress:
             progress("Mở lại ZIP và verify")
-        pair_verify = verify_pack_pair(base["zip"], plus["zip"], level, pack_version)
+        pair_verify = verify_pack_pair(base["zip"], plus["zip"], level, pack_version, version)
         result: dict[str, object] = {
             "status": "PASS",
-            "workflow": "HSK 3.0 local build only; deploy/publish disabled",
+            "workflow": "Generic HSK vocab local build only; deploy/publish disabled",
+            "version": version,
             "level": level,
             "packVersion": pack_version,
             "sheet": sheet_name,
@@ -666,31 +769,40 @@ def build_hsk30(
                 "engine": engine,
                 "speed": speed,
                 "voice": voice,
+                "profile": tts_profile,
                 "audioMode": audio_mode,
                 "languages": sorted(normalized_languages),
                 "m4a": {"codec": "AAC-LC", "channels": 1, "sampleRate": 22050, "bitrate": bitrate},
             },
             "totalRows": len(items),
+            "splitPolicy": policy,
             "audioReused": reused,
             "audioGenerated": generated,
             "base": base,
             "plus": plus,
             "deployEnabled": False,
+            "sourceAudioRoot": str(audio_root),
             "objectPaths": {
-                "base": f"vocab/3.0/{level}/base/v{pack_version}/vocab_{level}_30_base_v{pack_version}.zip",
-                "plus": f"vocab/3.0/{level}/plus/v{pack_version}/vocab_{level}_30_plus_v{pack_version}.zip",
+                "base": f"vocab/{version}/{level}/base/v{pack_version}/vocab_{level}_{version.replace('.', '')}_base_v{pack_version}.zip",
+                "plus": f"vocab/{version}/{level}/plus/v{pack_version}/vocab_{level}_{version.replace('.', '')}_plus_v{pack_version}.zip",
             },
         }
         _write_json(report_path, result)
         _write_json(validation_path, pair_verify)
         return result
     except Exception as exc:
-        failure = {"status": "FAIL", "level": level, "sheet": sheet_name, "error": str(exc), "deployEnabled": False}
+        failure = {"status": "FAIL", "version": version, "level": level, "sheet": sheet_name, "error": str(exc), "deployEnabled": False}
         _write_json(report_path, failure)
         _write_json(validation_path, failure)
         if isinstance(exc, BuildValidationError):
             raise
         raise BuildValidationError(str(exc)) from exc
+
+
+def build_hsk30(*args, **kwargs) -> dict[str, object]:
+    """Compatibility entry point retained for existing callers."""
+    kwargs["version"] = "3.0"
+    return build_vocab_pack(*args, **kwargs)
 
 
 def deployment_allowed(result: object) -> bool:
@@ -708,12 +820,13 @@ def deployment_allowed(result: object) -> bool:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build HSK 3.0 vocab ZIP packs locally; no upload is implemented.")
+    parser = argparse.ArgumentParser(description="Build HSK 2.0/3.0 vocab ZIP packs locally; no upload is implemented.")
     parser.add_argument("excel_file")
     parser.add_argument("--sheet", required=True)
+    parser.add_argument("--version", required=True, choices=SUPPORTED_VERSIONS)
     parser.add_argument("--level", required=True, choices=SUPPORTED_LEVELS)
     parser.add_argument("--pack-version", type=int, default=PACK_VERSION, help="Immutable pack version (default: 1)")
-    parser.add_argument("--output", required=True, help="Parent directory for output/vocab/3.0")
+    parser.add_argument("--output", required=True, help="Parent directory for output/vocab/<version>")
     parser.add_argument("--engine", default=os.environ.get("TTS_ENGINE", "gTTS"))
     parser.add_argument("--speed", default=os.environ.get("TTS_SPEED", "Bình thường"))
     parser.add_argument("--voice", default=os.environ.get("TTS_VOICE", "Mặc định"))
@@ -727,20 +840,23 @@ def _parse_args() -> argparse.Namespace:
         help="The UI confirmation snapshot; false blocks the build.",
     )
     parser.add_argument("--reuse-only", action="store_true", help="Fail instead of creating a missing audio file")
+    parser.add_argument("--tts-profile", default=os.environ.get("TTS_PROFILE", ""))
+    parser.add_argument("--force-regenerate-audio", action="store_true")
     return parser.parse_args()
 
 
 def main() -> int:
     args = _parse_args()
     try:
-        result = build_hsk30(
+        result = build_vocab_pack(
             args.excel_file,
             args.sheet,
             args.level,
             args.output,
-            args.engine,
-            not args.reuse_only,
-            print,
+            version=args.version,
+            engine=args.engine,
+            generate_missing=not args.reuse_only,
+            progress=print,
             speed=args.speed,
             voice=args.voice,
             bitrate=args.bitrate,
@@ -748,6 +864,8 @@ def main() -> int:
             languages=args.languages.split(","),
             config_confirmed=args.config_confirmed == "true",
             pack_version=args.pack_version,
+            tts_profile=args.tts_profile,
+            force_regenerate_audio=args.force_regenerate_audio,
         )
         print(f"STATUS: PASS\nBASE_SHA256: {result['base']['sha256']}\nPLUS_SHA256: {result['plus']['sha256']}")
         return 0

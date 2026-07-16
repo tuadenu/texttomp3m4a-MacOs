@@ -1,10 +1,10 @@
-# HSK 3.0 Vocab ZIP Builder
+# HSK 2.0 / 3.0 Vocab ZIP Builder
 
-Tài liệu vận hành cho màn **HSK 3.0 Vocab ZIP Builder**.
+Tài liệu vận hành cho màn **HSK 2.0 / 3.0 Vocab ZIP Builder**.
 
-Tool tạo ZIP từ vựng HSK 3.0, chia thành BASE/PLUS, upload ZIP immutable,
-tạo catalog immutable và cập nhật signed pointer. Luồng HSK 2.0 legacy
-không bị thay đổi.
+Tool tạo ZIP từ vựng HSK 2.0 và HSK 3.0, chia thành BASE/PLUS, upload ZIP
+immutable, tạo catalog immutable và cập nhật signed pointer. Luồng HSK 2.0
+và HSK 3.0 dùng chung builder nhưng tách namespace theo `version`.
 
 ## Cách kích hoạt cấp độ mới trong app
 
@@ -12,7 +12,7 @@ Upload ZIP lên Supabase chưa làm cấp độ xuất hiện trong app. Để k
 cấp độ vừa upload, phải thực hiện tiếp bước **3. Publish Catalog + Signed
 Pointer**.
 
-Nút này nằm trong màn **HSK 3.0 Vocab ZIP Builder**, ngay phía dưới nút
+Nút này nằm trong màn **HSK 2.0 / 3.0 Vocab ZIP Builder**, ngay phía dưới nút
 **2. Upload + Verify Packs**. Nếu cửa sổ thấp thì kéo xuống hoặc tăng chiều
 cao cửa sổ.
 
@@ -36,21 +36,48 @@ nhiều level đã stage sẵn. Nó không chỉ giới hạn ở level đang ch
 ## 1. Tổng quan quy trình
 
 1. Chọn Excel.
-2. Chọn sheet.
-3. Chọn level.
-4. Chọn pack version.
-5. Bấm **Build + Validate Local**.
-6. Nghe thử audio local.
-7. Bấm **Upload + Verify Packs**.
-8. Lặp lại cho các level cần chuẩn bị.
-9. Bấm **Publish Catalog + Signed Pointer** một lần.
-10. Sau khi signed pointer đã được cấu hình trong Flutter, app tự nhận catalog mới.
+2. Chọn vocab version.
+3. Chọn sheet.
+4. Chọn level.
+5. Chọn pack version.
+6. Bấm **Build + Validate Local**.
+7. Nghe thử audio local.
+8. Bấm **Upload + Verify Packs**.
+9. Lặp lại cho các level/version cần chuẩn bị.
+10. Bấm **Publish Catalog + Signed Pointer** một lần.
+11. Sau khi signed pointer đã được cấu hình trong Flutter, app tự nhận catalog mới.
 
 Upload ZIP chưa làm dữ liệu xuất hiện trong app. Dữ liệu chỉ được kích hoạt khi
 catalog được publish và `current.json` cập nhật, GET-verify thành công. Có thể
-stage nhiều level rồi publish catalog một lần.
+stage nhiều level/version rồi publish catalog một lần.
 
-## 2. Các level hỗ trợ
+## 2. Version và level hỗ trợ
+
+Version canonical:
+
+- HSK 2.0 -> `2.0`
+- HSK 3.0 -> `3.0`
+
+Sheet mapping canonical:
+
+- `hsk1_20` -> HSK 2.0 / `hsk1`
+- `hsk2_20` -> HSK 2.0 / `hsk2`
+- `hsk3_20` -> HSK 2.0 / `hsk3`
+- `hsk4_20` -> HSK 2.0 / `hsk4`
+- `hsk5_20` -> HSK 2.0 / `hsk5`
+- `hsk6_20` -> HSK 2.0 / `hsk6`
+- `hsk1_30` -> HSK 3.0 / `hsk1`
+- `hsk2_30` -> HSK 3.0 / `hsk2`
+- `hsk3_30` -> HSK 3.0 / `hsk3`
+- `hsk4_30` -> HSK 3.0 / `hsk4`
+- `hsk5_30` -> HSK 3.0 / `hsk5`
+- `hsk6_30` -> HSK 3.0 / `hsk6`
+- `hsk7_9_30` -> HSK 3.0 / `hsk7_9`
+
+Đổi sheet sẽ tự đồng bộ version và level, nhưng build vẫn hard-fail nếu tuple
+không khớp.
+
+## 3. Các level hỗ trợ
 
 | Hiển thị | Canonical code |
 | --- | --- |
@@ -65,7 +92,7 @@ stage nhiều level rồi publish catalog một lần.
 HSK 7–9 chỉ dùng canonical code `hsk7_9`; không tạo riêng `hsk7`, `hsk8`,
 hoặc `hsk9`.
 
-## 3. Yêu cầu file Excel
+## 4. Yêu cầu file Excel
 
 Các cột bắt buộc:
 
@@ -76,32 +103,32 @@ Các cột bắt buộc:
 - `example_vi`
 
 `index` phải bắt đầu từ 1, liên tục, không trùng và không có gap. `word`,
-`meaning_vi`, `example_zh`, `example_vi` không được rỗng. BASE luôn là index
-1–50; PLUS là index 51 đến hết. Không tự renumber khi nguồn sai.
+`meaning_vi`, `example_zh`, `example_vi` không được rỗng. BASE/PLUS split lấy
+từ policy hiện có của catalog/manifest; builder không tự suy đoán lại số lượng.
 
 Excel, CSV kiểm tra, JSON trung gian và thư mục unpacked không được upload lên
 Supabase.
 
-## 4. Chất lượng audio và TTS
+## 5. Chất lượng audio và TTS
 
 Màn hình dùng chung các lựa chọn engine, giọng, tốc độ và bitrate M4A. Mỗi từ
 có đúng một M4A; audio được đóng trong ZIP, không upload audio rời.
 
 Nên nghe thử các từ đầu, giữa và cuối của BASE/PLUS. Nếu audio đã tồn tại và
-bytes không đổi, builder có thể reuse. Nếu audio thay đổi, alias phải có
-content SHA mới; không map alias cũ sang bytes mới.
+bytes không đổi, builder có thể reuse canonical audio URI. Nếu audio thay đổi,
+alias phải có content SHA mới; không map alias cũ sang bytes mới.
 
 Nếu audio lỗi, sửa nguồn/TTS, tăng pack version nếu artifact đã publish, build
 lại và không upload pack lỗi.
 
-## 5. Pack version
+## 6. Pack version
 
 Pack version là version của artifact ZIP. Lần đầu thường dùng `v1`. Khi sửa
 hoặc rebuild dữ liệu đã publish, tăng lên `v2`, `v3`… và dùng object path mới:
 
 ```text
-vocab/3.0/hsk2/base/v1/vocab_hsk2_30_base_v1.zip
-vocab/3.0/hsk2/base/v2/vocab_hsk2_30_base_v2.zip
+vocab/2.0/hsk2/base/v1/vocab_hsk2_20_base_v1.zip
+vocab/2.0/hsk2/base/v2/vocab_hsk2_20_base_v2.zip
 ```
 
 Không overwrite ZIP cũ. Catalog revision mới thay descriptor bằng descriptor
@@ -136,6 +163,12 @@ Nút **2. Upload + Verify Packs** yêu cầu Local PASS, profile Supabase hợp 
 receipt hợp lệ và confirmation đúng:
 
 ```text
+STAGE HSK1 2.0
+STAGE HSK2 2.0
+STAGE HSK3 2.0
+STAGE HSK4 2.0
+STAGE HSK5 2.0
+STAGE HSK6 2.0
 STAGE HSK1 3.0
 STAGE HSK2 3.0
 STAGE HSK3 3.0
@@ -163,7 +196,7 @@ Không upload Excel, JSON rời, audio rời, unpacked directory hoặc private 
 Receipt nằm tại:
 
 ```text
-output/vocab/3.0/<level>/deploy_receipt.json
+output/vocab/<version>/<level>/deploy_receipt.json
 ```
 
 Receipt ghi level, data version, pack version, descriptor BASE/PLUS, SHA/bytes,
@@ -259,7 +292,9 @@ Catalog object:
 catalogs/vocab/combined/v<N>/vocab_pack_catalog_20_30_v<N>.json
 ```
 
-Khi đủ HSK 3.0 sẽ có 12 entry HSK 2.0, 14 entry HSK 3.0, tổng 26 entry.
+Catalog replace theo khóa `(version, level, segment)`, nên HSK 2.0 và HSK 3.0
+không duplicate nhau. Nếu chỉ thay pack version của một level đã có, entry count
+giữ nguyên.
 
 ## 14. Thêm level mới và sửa level cũ
 
@@ -276,8 +311,8 @@ Chỉ cần build app lại khi đổi pointer/catalog/manifest schema, đổi p
 thêm loại level/resource mới, đổi BASE/VIP hoặc cache/runtime contract, hoặc
 tăng `minAppBuild` vượt build đang phát hành.
 
-Không cần sửa app chỉ vì thêm từ, sửa nghĩa/ví dụ/audio, thêm level HSK 3.0,
-tăng pack version hoặc publish catalog revision.
+Không cần sửa app chỉ vì thêm từ, sửa nghĩa/ví dụ/audio, thêm level HSK 2.0
+hoặc HSK 3.0, tăng pack version hoặc publish catalog revision.
 
 ## 16. minAppBuild
 
@@ -325,12 +360,14 @@ không ghi private seed vào app hoặc tài liệu.
 - `CATALOG PUBLISHED`: current đã trỏ catalog mới.
 - `CURRENT POINTER REVISION`: revision chống replay.
 - `CURRENT CATALOG REVISION`: catalog immutable đang active.
+- `Version`: hiển thị rõ HSK 2.0 hoặc HSK 3.0 cùng sheet, level và pack version.
 
 ## 20. Xử lý lỗi thường gặp
 
 ### Compatibility hash chưa PASS
 
-Kiểm tra BASE index 1–50 và stable IDs, build lại, không upload.
+Kiểm tra BASE/PLUS split theo policy đúng version, stable IDs và build lại,
+không upload.
 
 ### Upload button disabled
 
@@ -368,6 +405,13 @@ cần quy trình key rotation có cập nhật app.
 ## 21. Quy trình khuyến nghị
 
 ```text
+HSK1 2.0: Build → nghe thử → Upload + Verify
+HSK2 2.0: Build → nghe thử → Upload + Verify
+HSK3 2.0: Build → nghe thử → Upload + Verify
+HSK4 2.0: Build → nghe thử → Upload + Verify
+HSK5 2.0: Build → nghe thử → Upload + Verify
+HSK6 2.0: Build → nghe thử → Upload + Verify
+HSK1 3.0: Build → nghe thử → Upload + Verify
 HSK2 3.0: Build → nghe thử → Upload + Verify
 HSK3 3.0: Build → nghe thử → Upload + Verify
 HSK4 3.0: Build → nghe thử → Upload + Verify
@@ -381,7 +425,7 @@ Sau khi tất cả remote verified: Publish Catalog + Signed Pointer một lần
 ## 22. Checklist trước khi publish
 
 - [ ] Đúng Excel, sheet, level và pack version.
-- [ ] BASE = 50, PLUS đúng phần còn lại.
+- [ ] BASE/PLUS đúng policy của version đang chọn.
 - [ ] Compatibility hash PASS.
 - [ ] Đã nghe thử audio.
 - [ ] ZIP local verify PASS.
@@ -419,7 +463,7 @@ Không dùng `git add .`. Không commit:
 
 ## 25. Refresh Pointer Status và Publish theo level
 
-Khi mở màn HSK 3.0, tool thực hiện GET-only để đọc và verify
+Khi mở màn HSK 2.0 hoặc HSK 3.0, tool thực hiện GET-only để đọc và verify
 `catalogs/vocab/current.json`, chữ ký Ed25519 và catalog mà pointer đang trỏ tới.
 
 - Bấm `Refresh Pointer Status` để kiểm tra lại production pointer.

@@ -1,3 +1,4 @@
+import json
 import hashlib
 import shutil
 import tempfile
@@ -25,7 +26,7 @@ from pipelines.vocab_catalog_publish import (
     update_pointer_with_client,
 )
 from pipelines.vocab_catalog_signing import public_key_b64
-from pipelines.vocab_zip_builder import SourceVocab, audio_filename, build_hsk30
+from pipelines.vocab_zip_builder import SourceVocab, audio_cache_key, build_hsk30
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 
@@ -41,16 +42,17 @@ class VocabCatalogPublishTests(unittest.TestCase):
         rows = [{"index": i, "word": f"词{i}", "meaning_vi": f"nghia {i}", "example_zh": f"例子{i}", "example_vi": f"vi du {i}"} for i in range(1, 53)]
         pd.DataFrame(rows).to_excel(self.excel, sheet_name="hsk2_30", index=False)
         self.output = self.temp / "output"
-        audio = self.output / "vocab" / "3.0" / "hsk2" / "source_audio"
+        audio = self.output / "vocab" / "3.0" / "hsk2" / "audio_cache"
         audio.mkdir(parents=True)
         for row in rows:
             item = SourceVocab(row["index"], row["word"], row["meaning_vi"], row["example_zh"], row["example_vi"])
-            (audio / audio_filename("hsk2_30", item)).write_bytes(f"audio-{row['index']}".encode())
+            name = audio_cache_key(item, engine="gTTS", speed="Bình thường", voice="Mặc định", profile="", bitrate="32k", audio_mode="zh_vi") + ".m4a"
+            (audio / name).write_bytes(f"audio-{row['index']}".encode())
         result = build_hsk30(self.excel, "hsk2_30", "hsk2", self.output, generate_missing=False)
         fingerprint = deploy.input_fingerprint(self.excel, "hsk2_30", "hsk2", self.output, bitrate="32k")
         profile = {"SUPABASE_URL": "https://example.supabase.co", "SUPABASE_BUCKET": deploy.STAGING_BUCKET, "SUPABASE_SERVICE_ROLE_KEY": "fixture-only"}
         self.plan = deploy.build_plan(result, (str(self.excel), "hsk2_30", "hsk2", str(self.output)), fingerprint, profile, profile_name="fixture")
-        source = self.output / "vocab" / "3.0" / "catalog_revisions" / "v1" / "vocab_pack_catalog_20_30_v1.json"
+        source = self.output / "vocab" / "catalog_revisions" / "v1" / "vocab_pack_catalog_20_30_v1.json"
         source.parent.mkdir(parents=True)
         source.write_bytes(self.seed)
         self.client = deploy.MemoryStorageClient({(deploy.STAGING_BUCKET, deploy.catalog_object_path(1)): self.seed})
@@ -76,6 +78,8 @@ class VocabCatalogPublishTests(unittest.TestCase):
         self.assertIn((deploy.STAGING_BUCKET, pointer_archive_path(1)), self.client.objects)
         self.assertIn((deploy.STAGING_BUCKET, "catalogs/vocab/current.json"), self.client.objects)
         self.assertGreaterEqual([call[0] for call in self.client.calls].index("UPDATE"), [call[0] for call in self.client.calls].index("CREATE"))
+        receipt = json.loads(deploy.deploy_receipt_path(self.output, "hsk2", "3.0").read_text(encoding="utf-8"))
+        self.assertTrue(receipt["catalogPublished"])
 
     def test_read_verified_pointer_status_is_get_only_and_reports_active(self):
         publish_signed_catalog_with_client(

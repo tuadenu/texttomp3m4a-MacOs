@@ -24,7 +24,7 @@ if "pypinyin" not in sys.modules:
     fake_pypinyin.lazy_pinyin = _fake_lazy_pinyin
     sys.modules["pypinyin"] = fake_pypinyin
 
-from pipelines.vocab_zip_builder import BuildValidationError, build_hsk30, deployment_allowed, verify_pack, verify_pack_pair
+from pipelines.vocab_zip_builder import BuildValidationError, SourceVocab, audio_cache_key, build_hsk30, build_vocab_pack, deployment_allowed, verify_pack, verify_pack_pair
 from pipelines import vocab_pipeline
 
 
@@ -40,18 +40,18 @@ class VocabZipBuilderTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.temp_dir)
 
-    def _write_excel(self, rows=None):
-        pd.DataFrame(rows or self.rows).to_excel(self.excel, sheet_name="hsk1_30", index=False)
+    def _write_excel(self, rows=None, sheet="hsk1_30"):
+        pd.DataFrame(rows or self.rows).to_excel(self.excel, sheet_name=sheet, index=False)
 
-    def _seed_audio(self, root, level="hsk1", sheet="hsk1_30"):
-        audio = root / "vocab" / "3.0" / level / "source_audio"
+    def _seed_audio(self, root, level="hsk1", sheet="hsk1_30", pack_version=1, version="3.0", speed="Bình thường", voice="Mặc định", bitrate="32k"):
+        audio = root / "vocab" / version / level / "audio_cache"
         audio.mkdir(parents=True, exist_ok=True)
         for row in self.rows:
             # The builder derives a pinyin filename; copy one nonempty test M4A
             # to each expected filename after an initial generated-name lookup.
-            from pipelines.vocab_zip_builder import SourceVocab, audio_filename
             item = SourceVocab(row["index"], row["word"], row["meaning_vi"], row["example_zh"], row["example_vi"])
-            (audio / audio_filename(sheet, item)).write_bytes(f"m4a-{row['index']}".encode())
+            name = audio_cache_key(item, engine="gTTS", speed=speed, voice=voice, profile="", bitrate=bitrate, audio_mode="zh_vi") + ".m4a"
+            (audio / name).write_bytes(f"m4a-{version}-{level}-{row['index']}-{speed}-{voice}-{bitrate}".encode())
 
     def _build(self, out):
         self._write_excel()
@@ -87,9 +87,10 @@ class VocabZipBuilderTests(unittest.TestCase):
         first_vocab = first["base"]["vocab"][0]["audio_url"]
         second = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False)
         self.assertEqual(first_vocab, second["base"]["vocab"][0]["audio_url"])
-        from pipelines.vocab_zip_builder import SourceVocab, audio_filename
         item = SourceVocab(1, "词1", "nghĩa 1", "例子1", "ví dụ 1")
-        (out / "vocab" / "3.0" / "hsk1" / "source_audio" / audio_filename("hsk1_30", item)).write_bytes(b"changed-audio")
+        audio = out / "vocab" / "3.0" / "hsk1" / "audio_cache"
+        name = audio_cache_key(item, engine="gTTS", speed="Bình thường", voice="Mặc định", profile="", bitrate="32k", audio_mode="zh_vi") + ".m4a"
+        (audio / name).write_bytes(b"changed-audio")
         third = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False)
         changed_url = third["base"]["vocab"][0]["audio_url"]
         self.assertNotEqual(first_vocab, changed_url)
@@ -99,11 +100,27 @@ class VocabZipBuilderTests(unittest.TestCase):
         self._write_excel()
         out = self.temp_dir / "out"
         self._seed_audio(out)
-        result = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, pack_version=2)
-        self.assertEqual(2, result["packVersion"])
-        self.assertIn("/base/v2/vocab_hsk1_30_base_v2.zip", result["base"]["zip"])
-        self.assertEqual("vocab:3.0:hsk1:base:v2", result["base"]["manifest"]["packId"])
-        self.assertEqual("vocab:3.0:hsk1:plus:v2", result["plus"]["manifest"]["packId"])
+        v1 = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, pack_version=1)
+        v2 = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, pack_version=2)
+        self.assertEqual(2, v2["packVersion"])
+        self.assertIn("/base/v2/vocab_hsk1_30_base_v2.zip", v2["base"]["zip"])
+        self.assertEqual("vocab:3.0:hsk1:base:v2", v2["base"]["manifest"]["packId"])
+        self.assertEqual("vocab:3.0:hsk1:plus:v2", v2["plus"]["manifest"]["packId"])
+        self.assertEqual([item["id"] for item in v1["base"]["vocab"]], [item["id"] for item in v2["base"]["vocab"]])
+        self.assertEqual(v1["base"]["vocab"][0]["audio_url"], v2["base"]["vocab"][0]["audio_url"])
+        self.assertNotEqual(v1["base"]["zip"], v2["base"]["zip"])
+
+    def test_voice_change_regenerates_audio_identity_without_overwriting_v1(self):
+        self._write_excel()
+        out = self.temp_dir / "out"
+        self._seed_audio(out, voice="Mặc định")
+        v1 = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, pack_version=1, voice="Mặc định")
+        self._seed_audio(out, voice="Nữ")
+        v2 = build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, pack_version=2, voice="Nữ")
+        self.assertNotEqual(v1["base"]["vocab"][0]["audio_url"], v2["base"]["vocab"][0]["audio_url"])
+        self.assertRegex(v2["base"]["vocab"][0]["audio_url"], r"^vocab://3\.0/hsk1/1/audio/[0-9a-f]{64}$")
+        self.assertTrue(Path(v1["base"]["zip"]).is_file())
+        self.assertTrue(Path(v2["base"]["zip"]).is_file())
 
     def test_index_gap_is_rejected(self):
         rows = list(self.rows)
@@ -122,8 +139,8 @@ class VocabZipBuilderTests(unittest.TestCase):
     def test_missing_and_empty_audio_are_rejected(self):
         self._write_excel()
         out = self.temp_dir / "out"
-        self._seed_audio(out)
-        audio = out / "vocab" / "3.0" / "hsk1" / "source_audio"
+        self._seed_audio(out, speed="Chậm", voice="Nữ", bitrate="26k")
+        audio = out / "vocab" / "3.0" / "hsk1" / "audio_cache"
         next(audio.iterdir()).unlink()
         with self.assertRaises(BuildValidationError):
             build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False)
@@ -132,7 +149,7 @@ class VocabZipBuilderTests(unittest.TestCase):
         self._write_excel()
         out = self.temp_dir / "out"
         self._seed_audio(out)
-        audio = out / "vocab" / "3.0" / "hsk1" / "source_audio"
+        audio = out / "vocab" / "3.0" / "hsk1" / "audio_cache"
         next(audio.iterdir()).write_bytes(b"")
         with self.assertRaises(BuildValidationError):
             build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False)
@@ -178,7 +195,7 @@ class VocabZipBuilderTests(unittest.TestCase):
     def test_hsk30_requires_confirmed_vi_zh_and_records_selected_m4a_quality(self):
         self._write_excel()
         out = self.temp_dir / "out"
-        self._seed_audio(out)
+        self._seed_audio(out, speed="Chậm", voice="Nữ", bitrate="26k")
         with self.assertRaises(BuildValidationError):
             build_hsk30(self.excel, "hsk1_30", "hsk1", out, generate_missing=False, config_confirmed=False)
         with self.assertRaises(BuildValidationError):
@@ -230,16 +247,47 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertEqual(["zh-CN", "vi"], [call.args[1] for call in tts.call_args_list])
 
     def test_hsk7_9_identity_is_never_split_into_hsk7_hsk8_hsk9(self):
-        self._write_excel()
+        self._write_excel(sheet="hsk7_9_30")
         out = self.temp_dir / "out"
-        self._seed_audio(out, level="hsk7_9")
-        result = build_hsk30(self.excel, "hsk1_30", "hsk7_9", out, generate_missing=False)
+        self._seed_audio(out, level="hsk7_9", sheet="hsk7_9_30")
+        result = build_hsk30(self.excel, "hsk7_9_30", "hsk7_9", out, generate_missing=False)
         self.assertEqual("vocab:3.0:hsk7_9:base:v1", result["base"]["manifest"]["packId"])
         self.assertEqual("vocab://3.0/hsk7_9/1/audio", result["base"]["vocab"][0]["audio_url"])
         self.assertIn("vocab/3.0/hsk7_9/base/v1/", result["objectPaths"]["base"])
         self.assertFalse((out / "vocab" / "3.0" / "hsk7").exists())
         self.assertFalse((out / "vocab" / "3.0" / "hsk8").exists())
         self.assertFalse((out / "vocab" / "3.0" / "hsk9").exists())
+
+    def test_hsk20_sheet_mapping_paths_and_stable_ids(self):
+        self.rows = [
+            {"index": index, "word": f"词{index}", "meaning_vi": f"nghĩa {index}", "example_zh": f"例子{index}", "example_vi": f"ví dụ {index}"}
+            for index in range(1, 153)
+        ]
+        self._write_excel(sheet="hsk1_20")
+        out = self.temp_dir / "out"
+        self._seed_audio(out, sheet="hsk1_20", version="2.0")
+        result = build_vocab_pack(self.excel, "hsk1_20", "hsk1", out, version="2.0", generate_missing=False)
+        self.assertEqual("2.0", result["version"])
+        self.assertEqual("1", result["base"]["vocab"][0]["id"])
+        self.assertIn("/vocab/2.0/hsk1/base/v1/", result["base"]["zip"])
+        self.assertEqual("vocab/2.0/hsk1/base/v1/vocab_hsk1_20_base_v1.zip", result["objectPaths"]["base"])
+
+    def test_sheet_version_or_level_mismatch_hard_fails(self):
+        self._write_excel(sheet="hsk2_20")
+        with self.assertRaises(BuildValidationError):
+            build_vocab_pack(self.excel, "hsk2_20", "hsk2", self.temp_dir / "out", version="3.0", generate_missing=False)
+        with self.assertRaises(BuildValidationError):
+            build_vocab_pack(self.excel, "hsk2_20", "hsk3", self.temp_dir / "out", version="2.0", generate_missing=False)
+
+    def test_hsk6_20_mapping_is_canonical(self):
+        from pipelines.vocab_zip_builder import resolve_sheet_selection
+        self.assertEqual(("2.0", "hsk6"), resolve_sheet_selection("hsk6_20"))
+
+    def test_changed_voice_uses_distinct_audio_cache_identity(self):
+        item = SourceVocab(1, "词1", "nghĩa 1", "例子1", "ví dụ 1")
+        one = audio_cache_key(item, engine="gTTS", speed="Bình thường", voice="Nữ", profile="female", bitrate="32k", audio_mode="zh_vi")
+        two = audio_cache_key(item, engine="gTTS", speed="Bình thường", voice="Nam", profile="male", bitrate="32k", audio_mode="zh_vi")
+        self.assertNotEqual(one, two)
 
     def test_ui_has_one_hsk7_9_option_and_builder_never_calls_legacy_importer(self):
         project = Path(__file__).resolve().parents[1]
@@ -287,6 +335,22 @@ class VocabZipBuilderTests(unittest.TestCase):
         self.assertIn('"--audio-mode", vocab_tts["audio_mode"]', app_source)
         self.assertIn('"TTS_AUDIO_MODE": snapshot["audio_mode"]', app_source)
         self.assertIn('"audioMode": audio_mode', builder_source)
+
+    def test_google_tts_popup_supports_per_language_gender_slots_and_wider_window(self):
+        project = Path(__file__).resolve().parents[1]
+        app_source = (project / "app.pyw").read_text(encoding="utf-8")
+        self.assertIn('GOOGLE_TTS_SLOT_LABELS = ("Mặc định", "Nam", "Nữ", "Trung tính")', app_source)
+        self.assertIn("Mỗi ngôn ngữ có thể lưu riêng giọng Nam/Nữ/Trung tính", app_source)
+        self.assertIn('popup_google.geometry("940x650")', app_source)
+        self.assertIn("sync_google_voice_selection", app_source)
+        self.assertIn("_google_tts_resolve_selection", app_source)
+        self.assertIn('_save_google_tts_profiles_to_config()', app_source)
+
+    def test_secret_save_popups_update_shared_config_before_writing_file(self):
+        project = Path(__file__).resolve().parents[1]
+        app_source = (project / "app.pyw").read_text(encoding="utf-8")
+        self.assertIn("global config", app_source.split("def sua_key_don", 1)[1].split("def sua_key_nhom", 1)[0])
+        self.assertIn("global config", app_source.split("def sua_key_nhom", 1)[1].split("#==============", 1)[0])
 
 
 if __name__ == "__main__":
