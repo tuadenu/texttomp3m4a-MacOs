@@ -192,7 +192,7 @@ def _get_polly_region():
     )
 
 
-def _get_google_profile(lang):
+def _get_google_profile(lang, requested_voice="Mặc định"):
     lang_code = _normalize_lang_code(lang)
     raw = os.environ.get("GOOGLE_TTS_PROFILES_JSON", "")
     if not raw:
@@ -201,6 +201,21 @@ def _get_google_profile(lang):
     try:
         data = json.loads(raw)
         profile = data.get(lang_code, {}) or {}
+        requested_label = str(requested_voice or "Mặc định").strip()
+        slots = profile.get("slots", {})
+        if isinstance(slots, dict) and requested_label in {"Nam", "Nữ", "Trung tính"}:
+            slot = slots.get(requested_label, {}) or {}
+            return {
+                "gender": slot.get("gender", requested_label) or requested_label,
+                "voice_name": slot.get("voice_name", "") or "",
+            }
+        if isinstance(slots, dict) and requested_label == "Mặc định":
+            default_slot = slots.get("Mặc định", {}) or {}
+            if default_slot.get("voice_name"):
+                return {
+                    "gender": default_slot.get("gender", "Mặc định") or "Mặc định",
+                    "voice_name": default_slot.get("voice_name", "") or "",
+                }
         return {
             "gender": profile.get("gender", "Mặc định") or "Mặc định",
             "voice_name": profile.get("voice_name", "") or "",
@@ -383,10 +398,10 @@ def _tts_segment_google(text, lang, temp_dir, speed="Bình thường", voice="M�
     }
     lang_code = lang_map.get(lang, "vi-VN")
 
-    profile = _get_google_profile(lang)
+    requested_voice = (voice or "Mặc định").strip()
+    profile = _get_google_profile(lang, requested_voice)
     voice_name = (profile.get("voice_name") or "").strip()
     gender_label = (profile.get("gender") or "Mặc định").strip()
-    requested_voice = (voice or "Mặc định").strip()
     if not voice_name and requested_voice in {"Nam", "Nữ", "Trung tính"}:
         gender_label = requested_voice
 
@@ -543,10 +558,27 @@ def _export_m4a(audio, file_path, bitrate=None):
                 pass
 
 
+def _google_profiles_digest():
+    raw = os.environ.get("GOOGLE_TTS_PROFILES_JSON", "")
+    try:
+        canonical = json.dumps(json.loads(raw), ensure_ascii=False, sort_keys=True)
+    except Exception:
+        canonical = raw
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
     overwrite_local_audio = str(os.environ.get("OVERWRITE_LOCAL_AUDIO", "false")).lower() == "true"
     engine_mode = os.environ.get("TTS_ENGINE", "gTTS")
     speed, voice, bitrate, languages, audio_mode = _vocab_tts_runtime_config()
+    tts_config = {
+        "engine": engine_mode,
+        "speed": speed,
+        "voice": voice,
+        "bitrate": bitrate,
+        "audio_mode": audio_mode,
+        "google_profiles_sha256": _google_profiles_digest(),
+    }
     _log(f"[Pipeline] Start: excel={file_path}")
     _log(f"[Pipeline] Sheet: {sheet_name}")
     _log(f"[Pipeline] TTS engine: {engine_mode}")
@@ -564,6 +596,18 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
 
     audio_dir = os.path.join(output_dir, "audio")
     os.makedirs(audio_dir, exist_ok=True)
+
+    metadata_path = os.path.join(output_dir, "output_vocab_metadata.json")
+    existing_metadata = {}
+    try:
+        with open(metadata_path, "r", encoding="utf-8") as f:
+            existing_metadata = json.load(f)
+    except (OSError, ValueError, TypeError):
+        pass
+    reuse_existing_audio = (
+        not overwrite_local_audio
+        and existing_metadata.get("ttsConfig") == tts_config
+    )
 
     _log(f"[Pipeline] Output dir: {output_dir}")
     _log(f"[Pipeline] Audio dir: {audio_dir}")
@@ -609,7 +653,7 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
         file_name = f"{sheet_name}_{row_index:03d}_{pinyin_slug}.m4a"
         file_path_out = os.path.join(audio_dir, file_name)
 
-        if os.path.isfile(file_path_out) and os.path.getsize(file_path_out) > 0 and not overwrite_local_audio:
+        if os.path.isfile(file_path_out) and os.path.getsize(file_path_out) > 0 and reuse_existing_audio:
             skipped_existing_count += 1
             _log(f"[Pipeline] Skip existing M4A {row_index}/{total_valid}: {file_name}")
         else:
@@ -647,7 +691,6 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
     _log(f"[Pipeline] Skipped existing M4A: {skipped_existing_count}")
     _log(f"[Pipeline] Skipped rows: {skipped_rows}")
 
-    metadata_path = os.path.join(output_dir, "output_vocab_metadata.json")
     metadata = {
         "sheet_name": sheet_name,
         "excel_file": os.path.abspath(file_path),
@@ -657,6 +700,7 @@ def run_vocab_pipeline(file_path, sheet_name, skip_validate=False):
         "skipped_empty_count": skipped_rows,
         "total_rows": total_rows,
         "overwrite_local_audio": overwrite_local_audio,
+        "ttsConfig": tts_config,
     }
     _log(f"[Pipeline] Writing metadata: {metadata_path}")
     with open(metadata_path, "w", encoding="utf-8") as f:

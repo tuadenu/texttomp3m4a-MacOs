@@ -36,8 +36,13 @@ def generate_audio_core(
     for i, (dong, lang) in enumerate(danh_sach_doc):
         dong_sach = clean_text_func(dong)
 
-        if giong == "Hội thoại 1 câu nam - 1 câu nữ":
-            voice = "Nam" if count % 2 == 0 else "Nữ"
+        dialogue_pairs = {
+            "Hội thoại 1 câu nam - 1 câu nữ": ("Nam", "Nữ"),
+            "Hội thoại 1 câu nữ - 1 câu nam": ("Nữ", "Nam"),
+        }
+        if giong in dialogue_pairs:
+            first_voice, second_voice = dialogue_pairs[giong]
+            voice = first_voice if count % 2 == 0 else second_voice
             count += 1
         else:
             voice = giong

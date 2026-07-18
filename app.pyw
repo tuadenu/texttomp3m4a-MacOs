@@ -544,7 +544,7 @@ else:
 
 
 #====================
-def tao_file_mp3(text, lang="vi", voice="Female", toc_do="Bình thường",
+def tao_file_mp3(text, lang="vi", voice="Mặc định", toc_do="Bình thường",
                  engine="gTTS", file_out="out.mp3"):
     """
     Tạo file mp3 từ text, hỗ trợ gTTS hoặc Amazon Polly.
@@ -2140,16 +2140,31 @@ def doan_ngon_ngu_theo_ky_tu(text):
             return "vi"
 
 
+def _get_runtime_tts_selection():
+    """Read the active popup selection, falling back to the saved app config."""
+    engine = _load_ui_tts_engine_from_config()
+    voice = config.get("VOCAB_TTS_VOICE", "Nam") or "Nam"
+    try:
+        engine = combo_engine.get().strip() or engine
+    except Exception:
+        pass
+    try:
+        voice = combo_giong_popup.get().strip() or voice
+    except Exception:
+        pass
+    return engine, voice
+
+
 def doc_noi_dung_de():
     import threading, tempfile, os, time
     import tkinter as tk
     from tkinter import messagebox
-    from gtts import gTTS
     import pygame
     from langdetect import detect
 
     global dung_doc_ngay, dang_doc, channel_doc
     dung_doc_ngay = False
+    engine_selected, voice_selected = _get_runtime_tts_selection()
 
     def run():
         global noi_dung_cuoi, dang_doc, channel_doc
@@ -2188,6 +2203,7 @@ def doc_noi_dung_de():
             "Tiếng Trung": "zh"
         }.get(chon_combo, None)
 
+        dialogue_count = 0
         for dong in cac_dong:
             if dung_doc_ngay:
                 print("⛔ Dừng đọc ngay.")
@@ -2217,12 +2233,23 @@ def doc_noi_dung_de():
                     print(f"⚠ Ngôn ngữ '{lang}' không hỗ trợ, dùng tiếng Việt.")
                     lang = "vi"
 
-                print(f"📢 Đọc ({lang}): {dong_sach}")
+                dialogue_pairs = {
+                    "Hội thoại 1 câu nam - 1 câu nữ": ("Nam", "Nữ"),
+                    "Hội thoại 1 câu nữ - 1 câu nam": ("Nữ", "Nam"),
+                }
+                if voice_selected in dialogue_pairs:
+                    first_voice, second_voice = dialogue_pairs[voice_selected]
+                    voice = first_voice if dialogue_count % 2 == 0 else second_voice
+                    dialogue_count += 1
+                else:
+                    voice = voice_selected
+
+                print(f"📢 Đọc ({lang}) [{voice}] Engine: {engine_selected}: {dong_sach}")
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tf:
                     file_path = tf.name
 
                 toc_do = combo_toc_do.get()
-                tao_file_mp3(dong_sach, lang=lang, voice="Female", toc_do=toc_do, engine="gTTS", file_out=file_path)
+                tao_file_mp3(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine=engine_selected, file_out=file_path)
 
                 sound = pygame.mixer.Sound(file_path)
                 channel_doc.play(sound)
@@ -2425,7 +2452,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     import tempfile, os, threading, time
     import pygame
     global popup_lang_open, popup, background_path
-    #global combo_engine, combo_giong_popup, combo_toc_do_popup
+    global combo_engine, combo_giong_popup, combo_toc_do_popup
 
     if popup_lang_open:
         tk.messagebox.showwarning("Đang mở", "Cửa sổ chọn ngôn ngữ đã được mở rồi!")
@@ -5821,7 +5848,11 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 ]
                 if force_audio_var.get():
                     command.append("--force-regenerate-audio")
-                command.extend(["--tts-profile", json.dumps(vocab_tts, ensure_ascii=False, sort_keys=True)])
+                cache_profile = {
+                    "selection": vocab_tts,
+                    "google_profiles": GOOGLE_TTS_PROFILES,
+                }
+                command.extend(["--tts-profile", json.dumps(cache_profile, ensure_ascii=False, sort_keys=True)])
                 env = os.environ.copy()
                 env.update({
                     "GOOGLE_TTS_PROFILES_JSON": json.dumps(GOOGLE_TTS_PROFILES, ensure_ascii=False),
@@ -7282,12 +7313,18 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 #===============
 #=====phát đa ngôn ngữ
 
-def phat_da_ngon_ngu(danh_sach_cau, giong="Nam", toc_do="Bình thường", close_popup=None):
+def phat_da_ngon_ngu(danh_sach_cau, giong="Nam", toc_do="Bình thường", close_popup=None, engine=None):
     import threading, tempfile, os, time
     import pygame
     from gtts import gTTS
     from pydub import AudioSegment
     global dung_doc_ngay, dang_doc
+
+    if engine is None:
+        engine, configured_voice = _get_runtime_tts_selection()
+        if giong == "Nam" and configured_voice:
+            giong = configured_voice
+    engine = engine or "gTTS"
 
     if 'dang_doc' not in globals():
         dang_doc = False
@@ -7326,7 +7363,7 @@ def phat_da_ngon_ngu(danh_sach_cau, giong="Nam", toc_do="Bình thường", close
                 slow = True if toc_do == "Chậm" else False
 
                 file_mp3 = tempfile.mktemp(suffix=".mp3")
-                tao_file_mp3(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine="gTTS", file_out=file_mp3)
+                tao_file_mp3(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine=engine, file_out=file_mp3)
 
                 pygame.mixer.init()
                 sound = pygame.mixer.Sound(file_mp3)
@@ -7555,7 +7592,8 @@ def xu_ly_doc_noi_dung():
         doc_noi_dung_de()
     else:
         danh_sach = tach_de_thanh_danh_sach_da_ngon_ngu()
-        phat_da_ngon_ngu(danh_sach)
+        engine, voice = _get_runtime_tts_selection()
+        phat_da_ngon_ngu(danh_sach, giong=voice, engine=engine)
 #================
 
 
