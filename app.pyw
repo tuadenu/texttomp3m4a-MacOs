@@ -2386,8 +2386,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     popup = tk.Toplevel(root)
     set_popup_icon(popup)
     popup.title("Chọn ngôn ngữ từng dòng")
-    popup.geometry("1420x860+40+20")
-    popup.minsize(1240, 760)
+    popup.geometry("1420x980+40+20")
+    popup.minsize(1240, 880)
     popup.grab_set()
     popup.transient(root)
 
@@ -2399,6 +2399,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     left_frame = tk.Frame(body_frame, bg="#ffffff")
     left_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+    left_frame.columnconfigure(0, weight=1)
+    left_frame.columnconfigure(1, weight=0)
+    left_frame.rowconfigure(0, weight=1)
+    left_frame.rowconfigure(1, weight=0)
 
     right_frame = tk.Frame(body_frame, bg="#f8fff8", width=400)
     right_frame.grid(row=0, column=1, sticky="ns")
@@ -2430,14 +2434,25 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     vsb = tk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
     canvas.configure(yscrollcommand=vsb.set)
 
-    canvas.pack(side="left", fill="both", expand=True)
-    vsb.pack(side="right", fill="y")
+    canvas.grid(row=0, column=0, sticky="nsew")
+    vsb.grid(row=0, column=1, sticky="ns")
     list_window = canvas.create_window((0, 0), window=frame, anchor="nw")
 
     def on_list_canvas_configure(event):
         canvas.itemconfigure(list_window, width=event.width)
 
     canvas.bind("<Configure>", on_list_canvas_configure)
+
+    page_bar = tk.Frame(left_frame, bg="#f7f7f7", bd=1, relief="solid")
+    page_bar.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+    page_bar.columnconfigure(0, weight=1)
+
+    page_info_var = tk.StringVar(value="Trang 1/1")
+    tk.Label(page_bar, textvariable=page_info_var, bg="#f7f7f7", fg="#444").grid(
+        row=0, column=0, sticky="w", padx=10, pady=8
+    )
+    nav_buttons = tk.Frame(page_bar, bg="#f7f7f7")
+    nav_buttons.grid(row=0, column=1, sticky="e", padx=10, pady=6)
 
     lang_options = ['vi', 'en', 'ja', 'zh', 'zh-cn']
     combos = []
@@ -2834,9 +2849,235 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             }
         )
 
+    hsk30_audio_state = {
+        "source_path": "",
+        "level": "HSK 3.0",
+        "engine": combo_engine.get().strip(),
+        "speed": combo_toc_do_popup.get().strip(),
+        "voice": combo_giong_popup.get().strip(),
+        "languages": [code for code in ("vi", "en", "ja", "zh") if ngon_ngu_flags[code].get()],
+    }
+
+    def _get_hsk30_audio_context():
+        return {
+            "source_path": hsk30_audio_state.get("source_path", ""),
+            "level": hsk30_audio_state.get("level", "HSK 3.0"),
+            "engine": combo_engine.get().strip(),
+            "speed": combo_toc_do_popup.get().strip(),
+            "voice": combo_giong_popup.get().strip(),
+            "languages": [code for code in ("vi", "en", "ja", "zh") if ngon_ngu_flags[code].get()],
+            "confirmed": bool(vocab_tts_confirmed_var.get()),
+        }
+
+    def _format_hsk30_audio_context(context):
+        langs = ", ".join(context.get("languages") or []) or "—"
+        source = context.get("source_path") or "Chưa chọn tài liệu"
+        return (
+            f"Tài liệu: {source}\n"
+            f"Cấp độ: {context.get('level', 'HSK 3.0')}\n"
+            f"Engine: {context.get('engine', '')}\n"
+            f"Tốc độ: {context.get('speed', '')}\n"
+            f"Giọng đọc: {context.get('voice', '')}\n"
+            f"Ngôn ngữ đang bật: {langs}\n"
+            f"Xác nhận M4A vocab: {'Có' if context.get('confirmed') else 'Chưa'}"
+        )
+
+    def open_hsk30_audio_popup():
+        audio_win = tk.Toplevel(popup)
+        set_popup_icon(audio_win)
+        audio_win.title("HSK 3.0 Audio")
+        audio_win.geometry("760x520")
+        audio_win.minsize(660, 460)
+        audio_win.transient(popup)
+        audio_win.grab_set()
+
+        audio_state_var = tk.StringVar()
+        audio_hint_var = tk.StringVar(
+            value="Các nút bên dưới chỉ giữ state và truyền cấu hình từ cửa sổ Lang. Logic xử lý sẽ gắn sau."
+        )
+
+        def refresh_audio_state():
+            context = _get_hsk30_audio_context()
+            hsk30_audio_state.update(context)
+            audio_state_var.set(_format_hsk30_audio_context(context))
+            return context
+
+        def choose_source_file():
+            selected = filedialog.askopenfilename(
+                parent=audio_win,
+                title="Import tài liệu cho HSK 3.0 Audio",
+                filetypes=[
+                    ("Tài liệu Excel", "*.xlsx;*.xlsm;*.xls"),
+                    ("Tài liệu văn bản", "*.txt;*.md"),
+                    ("PDF", "*.pdf"),
+                    ("Tất cả file", "*.*"),
+                ],
+            )
+            if selected:
+                hsk30_audio_state["source_path"] = selected
+                refresh_audio_state()
+
+        def choose_level():
+            chooser = tk.Toplevel(audio_win)
+            set_popup_icon(chooser)
+            chooser.title("Chọn cấp độ")
+            chooser.geometry("360x170")
+            chooser.resizable(False, False)
+            chooser.transient(audio_win)
+            chooser.grab_set()
+
+            local_level = tk.StringVar(value=hsk30_audio_state.get("level", "HSK 3.0"))
+            tk.Label(chooser, text="Chọn cấp độ cho file nghe", font=("Arial", 11, "bold")).pack(
+                anchor="w", padx=12, pady=(12, 6)
+            )
+            level_combo = ttk.Combobox(
+                chooser,
+                textvariable=local_level,
+                values=["HSK 1", "HSK 2", "HSK 3", "HSK 4", "HSK 5", "HSK 6", "HSK 7-9", "HSK 3.0"],
+                state="readonly",
+            )
+            level_combo.pack(fill="x", padx=12, pady=(0, 10))
+
+            def save_level():
+                hsk30_audio_state["level"] = local_level.get().strip() or "HSK 3.0"
+                refresh_audio_state()
+                chooser.destroy()
+
+            btn_row = tk.Frame(chooser)
+            btn_row.pack(fill="x", padx=12, pady=(0, 12))
+            tk.Button(btn_row, text="Hủy", width=10, command=chooser.destroy).pack(side="right")
+            tk.Button(btn_row, text="Lưu", width=10, command=save_level).pack(side="right", padx=(0, 8))
+
+        def tinh_chinh():
+            tune_win = tk.Toplevel(audio_win)
+            set_popup_icon(tune_win)
+            tune_win.title("Tinh chỉnh HSK 3.0 Audio")
+            tune_win.geometry("520x300")
+            tune_win.minsize(520, 300)
+            tune_win.transient(audio_win)
+            tune_win.grab_set()
+
+            local_engine = tk.StringVar(value=combo_engine.get().strip())
+            local_speed = tk.StringVar(value=combo_toc_do_popup.get().strip())
+            local_voice = tk.StringVar(value=combo_giong_popup.get().strip())
+
+            tk.Label(
+                tune_win,
+                text="Tinh chỉnh chỉ lưu vào state của HSK 3.0 Audio và lấy sẵn từ Lang hiện tại.",
+                wraplength=480,
+                justify="left",
+            ).pack(anchor="w", padx=12, pady=(12, 10))
+
+            form = tk.Frame(tune_win)
+            form.pack(fill="both", expand=True, padx=12)
+
+            tk.Label(form, text="Engine").grid(row=0, column=0, sticky="w", pady=4)
+            ttk.Combobox(form, textvariable=local_engine, values=["Google Cloud TTS", "gTTS", "Polly"], state="readonly").grid(
+                row=0, column=1, sticky="ew", pady=4
+            )
+            tk.Label(form, text="Tốc độ").grid(row=1, column=0, sticky="w", pady=4)
+            ttk.Combobox(form, textvariable=local_speed, values=["Chậm", "Bình thường"], state="readonly").grid(
+                row=1, column=1, sticky="ew", pady=4
+            )
+            tk.Label(form, text="Giọng đọc").grid(row=2, column=0, sticky="w", pady=4)
+            ttk.Combobox(
+                form,
+                textvariable=local_voice,
+                values=["Nam", "Nữ", "Hội thoại 1 câu nam - 1 câu nữ", "Hội thoại 1 câu nữ - 1 câu nam"],
+                state="readonly",
+            ).grid(row=2, column=1, sticky="ew", pady=4)
+            form.columnconfigure(1, weight=1)
+
+            def save_tuning():
+                hsk30_audio_state["engine"] = local_engine.get().strip()
+                hsk30_audio_state["speed"] = local_speed.get().strip()
+                hsk30_audio_state["voice"] = local_voice.get().strip()
+                refresh_audio_state()
+                tune_win.destroy()
+
+            def pull_from_lang():
+                hsk30_audio_state["engine"] = combo_engine.get().strip()
+                hsk30_audio_state["speed"] = combo_toc_do_popup.get().strip()
+                hsk30_audio_state["voice"] = combo_giong_popup.get().strip()
+                local_engine.set(hsk30_audio_state["engine"])
+                local_speed.set(hsk30_audio_state["speed"])
+                local_voice.set(hsk30_audio_state["voice"])
+                refresh_audio_state()
+
+            btn_row = tk.Frame(tune_win)
+            btn_row.pack(fill="x", padx=12, pady=12)
+            tk.Button(btn_row, text="Lấy từ Lang", width=12, command=pull_from_lang).pack(side="left")
+            tk.Button(btn_row, text="Hủy", width=10, command=tune_win.destroy).pack(side="right")
+            tk.Button(btn_row, text="Lưu", width=10, command=save_tuning).pack(side="right", padx=(0, 8))
+
+        def export_hsk30_audio():
+            context = refresh_audio_state()
+            export_win = tk.Toplevel(audio_win)
+            set_popup_icon(export_win)
+            export_win.title("Xuất HSK 3.0 Audio")
+            export_win.geometry("620x340")
+            export_win.minsize(620, 340)
+            export_win.transient(audio_win)
+            export_win.grab_set()
+
+            tk.Label(export_win, text="Sẵn sàng xuất file HSK 3.0 Audio", font=("Arial", 13, "bold")).pack(
+                anchor="w", padx=14, pady=(14, 8)
+            )
+            tk.Label(
+                export_win,
+                text=_format_hsk30_audio_context(context),
+                justify="left",
+                wraplength=580,
+                fg="#444",
+            ).pack(anchor="w", padx=14, pady=(0, 10))
+            tk.Label(
+                export_win,
+                text="Phần xử lý xuất file sẽ nối sau từ state này.",
+                fg="#6a6a6a",
+            ).pack(anchor="w", padx=14, pady=(0, 10))
+
+            btn_row = tk.Frame(export_win)
+            btn_row.pack(fill="x", padx=14, pady=(4, 14))
+            tk.Button(btn_row, text="Đóng", width=12, command=export_win.destroy).pack(side="right")
+
+        refresh_audio_state()
+
+        main = tk.Frame(audio_win, bg="#fbfff7")
+        main.pack(fill="both", expand=True, padx=14, pady=14)
+        tk.Label(main, text="HSK 3.0 Audio", font=("Arial", 15, "bold"), bg="#fbfff7").pack(anchor="w")
+        tk.Label(
+            main,
+            text="Popup này nhận cấu hình trực tiếp từ cửa sổ Lang hiện tại và giữ state để gắn logic sau.",
+            bg="#fbfff7",
+            fg="#555",
+            wraplength=720,
+            justify="left",
+        ).pack(anchor="w", pady=(4, 8))
+
+        tk.Label(main, textvariable=audio_state_var, bg="#fbfff7", fg="#2f5f2f", justify="left", anchor="w").pack(
+            anchor="w", fill="x", pady=(0, 8)
+        )
+        tk.Label(main, textvariable=audio_hint_var, bg="#fbfff7", fg="#666", wraplength=720, justify="left").pack(
+            anchor="w", pady=(0, 12)
+        )
+
+        btn_box = tk.Frame(main, bg="#fbfff7")
+        btn_box.pack(fill="x")
+        tk.Button(btn_box, text="Import tài liệu", width=18, command=choose_source_file).grid(row=0, column=0, padx=4, pady=4, sticky="ew")
+        tk.Button(btn_box, text="Chọn cấp độ", width=18, command=choose_level).grid(row=0, column=1, padx=4, pady=4, sticky="ew")
+        tk.Button(btn_box, text="Tinh chỉnh", width=18, command=tinh_chinh).grid(row=1, column=0, padx=4, pady=4, sticky="ew")
+        tk.Button(btn_box, text="Xuất file", width=18, command=export_hsk30_audio).grid(row=1, column=1, padx=4, pady=4, sticky="ew")
+        btn_box.columnconfigure(0, weight=1)
+        btn_box.columnconfigure(1, weight=1)
+
+        bottom = tk.Frame(main, bg="#fbfff7")
+        bottom.pack(fill="x", pady=(10, 0))
+        tk.Button(bottom, text="Lấy lại cấu hình từ Lang", command=refresh_audio_state).pack(side="left")
+        tk.Button(bottom, text="Đóng", command=audio_win.destroy).pack(side="right")
+
     
 
-
+    
     
     #==== phân trang khi văn bản dài:
     current_page = 0
@@ -2860,6 +3101,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         if current_page > 0:
             current_page -= 1
             rebuild_page()
+
+    def update_page_info():
+        total_pages = max(1, (len(danh_sach) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE)
+        page_info_var.set(f"Trang {current_page + 1}/{total_pages}  -  {len(danh_sach)} dòng")
 
     #Viết hàm rebuild
     def rebuild_page():
@@ -2898,6 +3143,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(frame, text="", height=2).pack()
         frame.update_idletasks()
         canvas.config(scrollregion=canvas.bbox("all"))
+        update_page_info()
 
 
 
@@ -7190,8 +7436,6 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         # ("🖼️ Chọn background", "lightgray", chon_bg),
         # ("🎥 Tạo Video", "lightpink", run_xuat_video_thread),
         ("🎧 Xuất M4A MultiFiles", "#ffcccc", xuat_popup_m4a_multifiles),
-        ("⬅ Trang trước", "#f0f0f0", prev_page),
-        ("Trang tiếp ➡", "#f0f0f0", next_page),
     ]
 
     for idx, (label_text, bg_color, callback) in enumerate(action_buttons):
@@ -7206,6 +7450,20 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     button_grid.columnconfigure(0, weight=1)
     button_grid.columnconfigure(1, weight=1)
+
+    tk.Button(
+        button_grid,
+        text="HSK 3.0 Audio",
+        bg="#f7f1ff",
+        command=open_hsk30_audio_popup,
+    ).grid(row=4, column=1, padx=3, pady=4, sticky="ew", ipady=2)
+
+    tk.Button(nav_buttons, text="⬅ Trang trước", bg="#f0f0f0", command=prev_page, width=14).pack(
+        side="left", padx=(0, 8)
+    )
+    tk.Button(nav_buttons, text="Trang tiếp ➡", bg="#f0f0f0", command=next_page, width=14).pack(
+        side="left"
+    )
 
     tk.Label(
         option_frame,
