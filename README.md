@@ -47,11 +47,3 @@ cd /path/to/text-to-audio-viettrungnhat
 ## Cài trên máy khác
 
 Xem hướng dẫn đầy đủ tại [docs/run-on-another-machine.md](docs/run-on-another-machine.md).
-
-## Git accounts trên máy này
-
-Nếu bạn dùng nhiều tài khoản GitHub trên cùng máy, xem [GIT_ACCOUNTS.md](GIT_ACCOUNTS.md) để biết:
-
-- tài khoản cá nhân và công việc đang map vào host alias nào
-- repo hiện tại đang dùng tài khoản nào
-- lệnh `ssh -T` và `git remote set-url` cho từng loại repo

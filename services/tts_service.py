@@ -1,6 +1,9 @@
+import io
 import os
 import tempfile
 import uuid
+import shutil
+import subprocess
 
 from pydub import AudioSegment
 
@@ -10,6 +13,43 @@ def process_text_lines(danh_sach, selected_lang_list=None):
     if selected_lang_list is None:
         return [(dong, lang) for dong, lang in danh_sach]
     return [(dong, selected_lang_list[idx]) for idx, (dong, _) in enumerate(danh_sach)]
+
+
+def _locate_ffmpeg():
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
+
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bundled_ffmpeg = os.path.join(repo_root, "ffmpeg_bin", "bin", "ffmpeg")
+    if os.path.isfile(bundled_ffmpeg):
+        return bundled_ffmpeg
+
+    return None
+
+
+def load_audio_segment_from_mp3(temp_mp3, ffmpeg_path=None):
+    """Nạp mp3 tạm an toàn kể cả khi máy không có ffprobe."""
+    try:
+        return AudioSegment.from_mp3(temp_mp3)
+    except Exception as primary_error:
+        fallback_ffmpeg = ffmpeg_path or _locate_ffmpeg()
+        if not fallback_ffmpeg:
+            raise RuntimeError(f"Không nạp được mp3 tạm: {primary_error}") from primary_error
+
+        result = subprocess.run(
+            [fallback_ffmpeg, "-y", "-i", temp_mp3, "-f", "wav", "-"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=False,
+        )
+        if result.returncode != 0 or not result.stdout:
+            stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+            raise RuntimeError(
+                f"Không nạp được mp3 tạm: {primary_error}. Fallback ffmpeg lỗi: {stderr_text}"
+            ) from primary_error
+
+        return AudioSegment.from_file(io.BytesIO(result.stdout), format="wav")
 
 
 def generate_audio_core(
@@ -54,10 +94,9 @@ def generate_audio_core(
             else:
                 tts_func(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine=engine, file_out=temp_mp3)
                 try:
-                    segment = AudioSegment.from_mp3(temp_mp3)
+                    segment = load_audio_segment_from_mp3(temp_mp3)
                 except Exception as e2:
-                    print(f"⚠ Không nạp được mp3 tạm: {e2} → chèn im lặng {between_silence_ms}ms")
-                    segment = AudioSegment.silent(duration=between_silence_ms)
+                    raise RuntimeError(f"Không nạp được mp3 tạm cho dòng {i + 1}: {e2}") from e2
                 full_audio += segment + AudioSegment.silent(duration=between_silence_ms)
         except Exception as e:
             msg = str(e)

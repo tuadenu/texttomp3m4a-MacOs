@@ -1,16 +1,13 @@
 #!/bin/zsh
 set -euo pipefail
-
-cd "$(dirname "$0")"
-
+cd "$(dirname "$0")/../../../"
 if [ ! -x ".venv/bin/python" ]; then
   if ! command -v python3.11 >/dev/null 2>&1; then
-    echo "Khong tim thay python3.11. Hay cai Python 3.11 truoc khi chay app." >&2
+    osascript -e 'display alert "Thiếu Python 3.11" message "Hãy cài Python 3.11 trước khi chạy app."'
     exit 1
   fi
   python3.11 -m venv .venv
 fi
-
 _venv_python=".venv/bin/python"
 _req_hash_file=".venv/.requirements.sha256"
 _current_req_hash="$(shasum -a 256 requirements.txt | awk '{print $1}')"
@@ -19,9 +16,7 @@ if [ -f "$_req_hash_file" ]; then
   _stored_req_hash="$(cat "$_req_hash_file")"
 fi
 if [ "$_current_req_hash" != "$_stored_req_hash" ]; then
-  echo "Dang dong bo dependencies..."
-  "$_venv_python" -m pip install -r requirements.txt
+  "$_venv_python" -m pip install -r requirements.txt >/tmp/texttomp3m4a-dock-build.log 2>&1
   printf '%s\n' "$_current_req_hash" > "$_req_hash_file"
 fi
-
 exec "$_venv_python" app.pyw

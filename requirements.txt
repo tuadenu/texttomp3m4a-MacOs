@@ -1,6 +1,5 @@
 langdetect
 gTTS
-openai
 google-genai
 Pillow
 numpy
@@ -19,3 +18,4 @@ pyperclip
 python-docx
 python-pptx
 PyPDF2
+google-cloud-texttospeech

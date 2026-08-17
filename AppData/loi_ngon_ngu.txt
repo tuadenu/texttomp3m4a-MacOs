@@ -4166,3 +4166,10 @@ Dòng 692: noisy
 Dòng 695: main
 Dòng 701: cute
 Dòng 704: ugly
+Dòng 1: run_latest_app.command
+Dòng 1: run_latest_app.command
+Dòng 6: I might have been in love before
+Dòng 22: Like a guiding star
+Dòng 6: I might have been in love before
+Dòng 22: Like a guiding star
+Dòng 6: I might have been in love before

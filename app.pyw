@@ -15,7 +15,6 @@ import json
 import base64
 import shutil
 import requests
-from openai import OpenAI
 from google import genai
 import tempfile
 import subprocess
@@ -31,6 +30,7 @@ from config.settings import AWS_REGION, DEFAULT_VOICE
 from services.tts_service import (
     export_audio_batch,
     generate_audio_core,
+    load_audio_segment_from_mp3,
     process_text_lines,
 )
 from utils.file_reader import read_excel_vocab, read_text_file
@@ -515,7 +515,6 @@ is_email = lambda e: "@" in e and "." in e
 is_token = lambda t: ":" in t
 is_chat_id = lambda c: str(c).lstrip("-").isdigit()
 is_webhook = lambda u: "api/webhooks/" in u
-is_github_models_token = lambda k: k.startswith(("ghp_", "github_pat_")) and len(k) >= 20
 is_gemini = lambda k: k.startswith("AIza")
 is_weather = lambda k: len(k) > 15
 
@@ -948,37 +947,6 @@ def thong_bao_loi_cauhinh(loai, chi_tiet="", hien_popup=True):
 
 #==================
 
-# === GitHub Models ===
-# GitHub Models exposes an OpenAI-compatible chat-completions endpoint.  This is
-# intentionally separate from the old OpenAI key so an `sk-...` key is never
-# sent to GitHub by accident.
-GITHUB_MODELS_BASE_URL = "https://models.github.ai/inference"
-GITHUB_MODELS_CATALOG_URL = "https://models.github.ai/catalog/models"
-GITHUB_MODELS_API_VERSION = "2022-11-28"
-GITHUB_MODELS_MODEL = "openai/gpt-4.1"
-
-
-def _create_github_models_client(token):
-    """Return a client only after a token has been configured.
-
-    Recent OpenAI SDK versions reject an empty api_key during construction, so
-    the app must remain usable before the user opens Settings for the first
-    time.
-    """
-    if not token:
-        return None
-    return OpenAI(base_url=GITHUB_MODELS_BASE_URL, api_key=token)
-
-
-GITHUB_MODELS_TOKEN = config.get("GITHUB_MODELS_TOKEN", "").strip()
-if not is_valid(GITHUB_MODELS_TOKEN, is_github_models_token):
-    thong_bao_loi_cauhinh(
-        "GitHub Models token",
-        "Sai định dạng hoặc rỗng. Hãy nhập GitHub PAT (ghp_... hoặc github_pat_...).",
-        hien_popup=False,
-    )
-    GITHUB_MODELS_TOKEN = ""
-
 GEMINI_API_KEY = config.get("GEMINI_API_KEY", "").strip()
 if not is_valid(GEMINI_API_KEY, is_gemini):
     thong_bao_loi_cauhinh("Gemini API Key", "Sai định dạng hoặc rỗng → dùng mặc định.", hien_popup=False)
@@ -993,8 +961,7 @@ if not is_valid(DISCORD_WEBHOOK_URL, is_webhook):
     DISCORD_WEBHOOK_URL = config_default.get("DISCORD_WEBHOOK_URL", "")
 
 #===========================BIẾN TOÀN CỤC ============================================================BIẾN TOÀN CỤC===============
-client = _create_github_models_client(GITHUB_MODELS_TOKEN)
-#Biến điều khiển đọc âm thanh
+# Biến điều khiển đọc âm thanh
 doc_thread = None
 dang_doc = False
 file_am_thanh = ""
@@ -1090,6 +1057,12 @@ def resolve_ffmpeg_paths():
     if system_ffmpeg:
         return system_ffmpeg, system_ffprobe or system_ffmpeg, None
 
+    bundle_folder = os.path.join(FOLDER, "ffmpeg_bin", "bin")
+    bundle_ffmpeg = pick_existing_executable(os.path.join("ffmpeg_bin", "bin", "ffmpeg"), os.path.join("ffmpeg_bin", "bin", "ffmpeg.exe"))
+    bundle_ffprobe = pick_existing_executable(os.path.join("ffmpeg_bin", "bin", "ffprobe"), os.path.join("ffmpeg_bin", "bin", "ffprobe.exe"))
+    if bundle_ffmpeg:
+        return bundle_ffmpeg, bundle_ffprobe or bundle_ffmpeg, bundle_folder
+
     cache_root = os.path.join(APPDATA_ROOT, "ffmpeg_bin")
     cache_folder = os.path.join(cache_root, "bin")
     cache_ffmpeg = pick_existing_executable("ffmpeg", "ffmpeg.exe")
@@ -1131,12 +1104,6 @@ def resolve_ffmpeg_paths():
             return downloaded
     except Exception as e:
         print(f"⚠️ Tải ffmpeg tự động thất bại: {e}")
-
-    bundle_folder = os.path.join(FOLDER, "ffmpeg_bin", "bin")
-    bundle_ffmpeg = pick_existing_executable(os.path.join("ffmpeg_bin", "bin", "ffmpeg"), os.path.join("ffmpeg_bin", "bin", "ffmpeg.exe"))
-    bundle_ffprobe = pick_existing_executable(os.path.join("ffmpeg_bin", "bin", "ffprobe"), os.path.join("ffmpeg_bin", "bin", "ffprobe.exe"))
-    if bundle_ffmpeg:
-        return bundle_ffmpeg, bundle_ffprobe or bundle_ffmpeg, bundle_folder
 
     return None, None, None
 
@@ -1474,23 +1441,7 @@ Cảm ơn bạn đã sử dụng ứng dụng.
     ask_password_with_keyboard(thuc_hien)
 
 #=======================NHÓM  - HỎI A.I , ĐỌC ĐỀ, XUẤT MP3====
-#hàm hỏi A.I qua GitHub Models
-def goi_github_models_cau_hoi(prompt):
-    try:
-        if client is None:
-            raise RuntimeError(
-                "GitHub Models API key chưa được cấu hình. "
-                "Mở Cài đặt → Sửa GitHub Models Token để nhập GitHub PAT."
-            )
-        response = client.chat.completions.create(
-            model=GITHUB_MODELS_MODEL,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        thong_bao_loi_api(e, "GitHub Models")
-        return f"Lỗi GitHub Models: {e}"
-##có chọn ngôn ngữ
+#có chọn ngôn ngữ
 def goi_gemini_cau_hoi(prompt):
     from langdetect import detect
     import re
@@ -1544,40 +1495,13 @@ Nội dung yêu cầu là:
         thong_bao_loi_api(e, "Gemini")
         return f"Lỗi Gemini: {e}"
 
-
-
-def gui_hoi_github_models():
-    cau_hoi = entry_cau_hoi.get().strip()
-    if not cau_hoi:
-        messagebox.showwarning("Chưa nhập câu hỏi", "Hãy nhập nội dung để hỏi.")
-        return
-
-    txt_de.delete("1.0", tk.END)
-    txt_de.insert(tk.END, "⏳ Đang gửi tới GitHub Models ...\n")
-
-    def call():
-        try:
-            ket_qua = goi_github_models_cau_hoi(cau_hoi)
-            if any(x in ket_qua.lower() for x in ["github models", "quota", "error", "api key", "invalid", "401", "403"]):
-                raise Exception("GitHub Models có thể đang bận")
-
-            txt_de.delete("1.0", tk.END)
-            txt_de.insert(tk.END, ket_qua)
-        except:
-            txt_de.delete("1.0", tk.END)
-            txt_de.insert(tk.END, "⚠ GitHub Models có thể đang bận, chuyển sang Gemini ...\n⏳ Đang hỏi Gemini ...\n")
-            ket_qua = goi_gemini_cau_hoi(cau_hoi)
-            txt_de.delete("1.0", tk.END)
-            txt_de.insert(tk.END, ket_qua)
-
-    threading.Thread(target=call, daemon=True).start()
 def gui_hoi_gemini(on_done=None):
     cau_hoi = entry_cau_hoi.get().strip()
     if not cau_hoi:
         messagebox.showwarning("Chưa nhập câu hỏi", "Hãy nhập nội dung để hỏi cho các nhà thông thái!")
         return
     txt_de.delete("1.0", tk.END)
-    txt_de.insert(tk.END, "⏳ Đang hỏi mẹ ...")
+    txt_de.insert(tk.END, "⏳ Đang hỏi AI ...")
     def call():
         ket_qua = goi_gemini_cau_hoi(cau_hoi)
         txt_de.delete("1.0", tk.END)
@@ -1767,7 +1691,7 @@ def nhap_giong_noi_advanced(entry_cau_hoi, on_text_got=None, root=None):
                     if content and "⏳" not in content:
                         break
                     if time.time() - bat_dau > 20:  # Sau 20 giây vẫn chưa có thì bỏ
-                        print("⚠ Quá thời gian chờ nội dung GitHub Models/Gemini.")
+                        print("⚠ Quá thời gian chờ nội dung Gemini.")
                         return
                     time.sleep(0.2)
 
@@ -3527,7 +3451,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
                             # Nạp đoạn, lỗi → im lặng 300ms
                             try:
-                                segment = AudioSegment.from_mp3(temp_mp3)
+                                segment = load_audio_segment_from_mp3(temp_mp3, FFMPEG_PATH)
                             except Exception as e2:
                                 print(f"⚠ Không nạp được mp3 tạm: {e2} → chèn im lặng 300ms")
                                 segment = AudioSegment.silent(duration=300)
@@ -3783,7 +3707,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
                         # +1.5s im lặng cuối đoạn cho dễ ghép
                         try:
-                            segment = AudioSegment.from_mp3(temp_mp3)
+                            segment = load_audio_segment_from_mp3(temp_mp3, FFMPEG_PATH)
                         except Exception as e2:
                             print(f"⚠ Không nạp được mp3 tạm: {e2} → chèn im lặng 300ms")
                             segment = AudioSegment.silent(duration=300)
@@ -7483,7 +7407,7 @@ def xuat_file_mp3():
                     try:
                         # Use central tao_file_mp3 which prefers Google Cloud for vi and falls back
                         tao_file_mp3(cleaned, lang=lang, voice=None, toc_do=toc_do, engine=combo_engine.get(), file_out=temp_mp3)
-                        segment = AudioSegment.from_mp3(temp_mp3)
+                        segment = load_audio_segment_from_mp3(temp_mp3, FFMPEG_PATH)
                         full_audio += segment + AudioSegment.silent(duration=300)
                     except Exception as e:
                         msg = str(e)
@@ -8354,16 +8278,14 @@ def create_frame_noi_dung(parent):
 
     scrollbar.config(command=txt_de.yview)
 
-    # Khung hỏi GitHub Models/Gemini sát mép dưới trái (dưới txt_de)
-    frame_hoi_gpt = tk.LabelFrame(frame_noi_dung, text="🧠 Hỏi GitHub Models hoặc Gemini", font=("Arial", 10, "bold"), bg="#f0fff0", fg="darkgreen")
+    # Khung hỏi AI sát mép dưới trái (dưới txt_de)
+    frame_hoi_gpt = tk.LabelFrame(frame_noi_dung, text="🧠 Hỏi AI", font=("Arial", 10, "bold"), bg="#f0fff0", fg="darkgreen")
     frame_hoi_gpt.place(x=10, y=560, width=620, height=105)
 
     entry_cau_hoi = tk.Entry(frame_hoi_gpt, font=("Arial", 9))
     entry_cau_hoi.place(x=8, y=8, width=395, height=28)
     attach_mouse_text_menu(entry_cau_hoi)
     
-    tk.Button(frame_hoi_gpt, text="Hỏi GitHub", bg="#ffe6e6", fg="red", font=("Arial", 10, "bold"),
-              command=gui_hoi_github_models).place(x=410, y=8, width=65, height=28)
     tk.Button(frame_hoi_gpt, text="Hỏi Mẹ", bg="#e6ffe6", fg="green", font=("Arial", 10, "bold"),
               command=gui_hoi_gemini).place(x=480, y=8, width=65, height=28)
     tk.Button(frame_hoi_gpt, text="🎙Nói", font=("Arial", 8),
@@ -8991,7 +8913,7 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
             top.protocol("WM_DELETE_WINDOW", top.destroy)
             set_popup_icon(top)
             top.title(f"Sửa {loai}")
-            top.geometry("560x340" if key_field == "GITHUB_MODELS_TOKEN" else "560x260")
+            top.geometry("560x260")
             top.grab_set()
             top.resizable(False, False)
 
@@ -9005,25 +8927,6 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
             ent_new = tk.Entry(top, font=("Arial", 11), width=60, show="*" if show_pw else None)
             ent_new.pack(pady=2)
 
-            if key_field == "GITHUB_MODELS_TOKEN":
-                tk.Label(
-                    top,
-                    text=(
-                        "Dùng GitHub Personal Access Token (PAT).\n"
-                        "Fine-grained PAT cần quyền Models: Read; classic PAT cần scope models.\n"
-                        "Không chia sẻ token cho người khác."
-                    ),
-                    justify="left",
-                    wraplength=510,
-                    fg="#444444",
-                ).pack(padx=18, pady=(8, 2), anchor="w")
-                tk.Button(
-                    top,
-                    text="Mở GitHub để tạo token",
-                    command=lambda: open_path_cross_platform("https://github.com/settings/personal-access-tokens/new"),
-                    fg="blue",
-                ).pack(pady=(0, 2))
-
             def luu():
                 new_value = _normalize_secret_text(ent_new.get())
                 if not new_value:
@@ -9036,11 +8939,8 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                     unprotect_file(CONFIG_FILE)  # Gỡ bảo vệ
                     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                         json.dump(config, f, indent=2, ensure_ascii=False)
-                    global GITHUB_MODELS_TOKEN, GEMINI_API_KEY, GOOGLE_TTS_API_KEY, DISCORD_WEBHOOK_URL, client
-                    if key_field == "GITHUB_MODELS_TOKEN":
-                        GITHUB_MODELS_TOKEN = new_value
-                        client = _create_github_models_client(GITHUB_MODELS_TOKEN)
-                    elif key_field == "GEMINI_API_KEY":
+                    global GEMINI_API_KEY, GOOGLE_TTS_API_KEY, DISCORD_WEBHOOK_URL
+                    if key_field == "GEMINI_API_KEY":
                         GEMINI_API_KEY = new_value
                     elif key_field == "GOOGLE_TTS_API_KEY":
                         GOOGLE_TTS_API_KEY = new_value
@@ -9067,37 +8967,7 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
                         return
                     try:
                         import requests
-                        if key_field == "GITHUB_MODELS_TOKEN":
-                            if not is_github_models_token(new_value):
-                                raise Exception("❌ Token GitHub không đúng định dạng. Token PAT phải bắt đầu bằng 'ghp_' hoặc 'github_pat_'.")
-                            try:
-                                response = requests.get(
-                                    GITHUB_MODELS_CATALOG_URL,
-                                    headers={
-                                        "Accept": "application/vnd.github+json",
-                                        "Authorization": f"Bearer {new_value}",
-                                        "X-GitHub-Api-Version": GITHUB_MODELS_API_VERSION,
-                                    },
-                                    timeout=15,
-                                )
-                                if response.status_code == 401:
-                                    raise Exception("❌ Token GitHub không hợp lệ hoặc đã bị thu hồi.")
-                                if response.status_code == 403:
-                                    raise Exception("❌ Token chưa có quyền GitHub Models. Fine-grained PAT cần Models: Read; classic PAT cần scope 'models'.")
-                                if response.status_code == 429:
-                                    raise Exception("❌ GitHub Models đang giới hạn lượt dùng. Hãy chờ quota được làm mới rồi thử lại.")
-                                response.raise_for_status()
-                            except Exception as e:
-                                msg = str(e)
-                                if "quota" in msg.lower() or "rate limit" in msg.lower():
-                                    raise Exception("❌ Token hợp lệ nhưng GitHub Models đã hết lượt miễn phí / bị giới hạn. Hãy chờ rồi thử lại.")
-                                elif "Token GitHub" in msg or "quyền GitHub Models" in msg:
-                                    raise
-                                else:
-                                    raise Exception(f"❌ Không kiểm tra được GitHub Models: {e}")
-                            messagebox.showinfo("OK", "✅ GitHub Models token hoạt động!", parent=top)
-
-                        elif key_field == "GEMINI_API_KEY":
+                        if key_field == "GEMINI_API_KEY":
                             temp_client = genai.Client(api_key=new_value)
                             temp_client.models.generate_content(
                                 model="gemini-1.5-flash",
@@ -9156,7 +9026,6 @@ def sua_key_don(loai, key_field, label_hientai, label_moi, show_pw=False):
 
 
 API_KEY_SETTINGS = {
-    "GitHub Models": ("GitHub Models Token", "GITHUB_MODELS_TOKEN", "GitHub PAT hiện tại:", "Nhập GitHub PAT mới:"),
     "Gemini": ("Gemini API KEY cho khung chat", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:"),
     "Google TTS": ("API key cho Google TTS", "GOOGLE_TTS_API_KEY", "Google TTS Key hiện tại:", "Nhập Google TTS Key mới:"),
     "Discord": ("Discord Webhook", "DISCORD_WEBHOOK_URL", "Webhook Discord hiện tại:", "Nhập Webhook Discord mới:"),
@@ -9179,8 +9048,6 @@ def _api_key_service_from_error(error_text, context=""):
         return "Gemini"
     if any(word in text for word in ("text-to-speech", "texttospeech", "google cloud tts", "google tts")):
         return "Google TTS"
-    if any(word in text for word in ("github models", "models.github.ai", "github pat", "github token")):
-        return "GitHub Models"
     if any(word in text for word in ("discord", "webhook")):
         return "Discord"
     if any(word in text for word in ("smtp", "email", "app password", "535")):
@@ -9226,10 +9093,7 @@ def hien_popup_loi_api_key(service, error_text, context=""):
         guidance = "Hãy kiểm tra hạn mức, thanh toán và quyền dùng API trong tài khoản dịch vụ."
     elif hint == "restricted":
         headline = f"Key của {service} hợp lệ nhưng đang bị chặn quyền truy cập."
-        if service == "GitHub Models":
-            guidance = "Hãy tạo lại GitHub PAT: fine-grained cần Models: Read, còn classic cần scope 'models'; rồi dán vào Cài đặt."
-        else:
-            guidance = "Hãy kiểm tra API đã bật đúng chưa, key có bị giới hạn sai dịch vụ, IP, referrer hoặc project không."
+        guidance = "Hãy kiểm tra API đã bật đúng chưa, key có bị giới hạn sai dịch vụ, IP, referrer hoặc project không."
     elif hint == "expired":
         headline = f"Key của {service} có thể đã bị xoá, thu hồi hoặc hết hạn."
         guidance = "Hãy tạo key mới hoặc kiểm tra lại key đang dùng có còn tồn tại không."
@@ -9319,7 +9183,7 @@ def gioi_thieu_ung_dung():
      Link tải exe : https://tuadenu.github.io/smartlearning/latest.html
     - Hẹn giờ tự động thông minh file nghe, bài đọc cho từng học viên các khung giờ khác nhau, có chuông thông báo và gọi đúng tên học viên
     - Tạo đề thông minh luyện tập: Toán, Ngoại ngữ, Tự luận, Trắc nghiệm...Đa ngôn ngữ các trình độ , phạm vi tuỳ chọn
-    - Tích hợp GitHub Models & Gemini tương tác thông minh với học viên, có thể in ra trực tiếp 1 click
+    - Tích hợp Gemini tương tác thông minh với học viên, có thể in ra trực tiếp 1 click
     - Hẹn giờ phát nhạc - kết hợp camera gửi ảnh
     - Điều khiển thiết bị Broadlink ,nhà thông minh, học lệnh điều khiển với 1 nút nhấn
     - Gửi ảnh ở bàn học 3 phút/lần (hoặc tuỳ chọn với 3 camera) qua Telegram, Discord cho giáo viên, phụ huynh học viên hoặc chính học viên thông minh
@@ -9550,7 +9414,6 @@ menu_cai_dat.add_command(label="ℹ️ Giới thiệu Ứng dụng", command=gio
 menu_cai_dat.add_separator()
 menu_cai_dat.add_separator()
 menu_cai_dat.add_command(label="🔑 Đổi mật khẩu toàn ứng dụng", command=doi_mat_khau)
-menu_cai_dat.add_command(label="🔧 Sửa GitHub Models Token", command=lambda: sua_key_don("GitHub Models Token", "GITHUB_MODELS_TOKEN", "GitHub PAT hiện tại:", "Nhập GitHub PAT mới:", show_pw=True))
 menu_cai_dat.add_command(label="🔧 Gemini API KEY cho khung chat", command=lambda: sua_key_don("Gemini API KEY cho khung chat", "GEMINI_API_KEY", "Gemini Key hiện tại:", "Nhập Gemini Key mới:", show_pw=True))
 menu_cai_dat.add_command(label="🔧 API key cho Google TTS", command=lambda: sua_key_don("API key cho Google TTS", "GOOGLE_TTS_API_KEY", "Google TTS Key hiện tại:", "Nhập Google TTS Key mới:", show_pw=True))
 menu_cai_dat.add_command(label="🔧 Sửa Discord Webhook", command=lambda: sua_key_don("Discord Webhook", "DISCORD_WEBHOOK_URL", "Webhook Discord hiện tại:", "Nhập Webhook Discord mới:"))
