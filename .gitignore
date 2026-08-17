@@ -17,6 +17,8 @@ venv_py313/
 .mypy_cache/
 AppData/client_secret.json
 AppData/config.json
+AppData/*.mp3
+AppData/**/*.mp3
 
 TextToMp3Portable/secrets.enc
 TextToMp3Portable/AppData/

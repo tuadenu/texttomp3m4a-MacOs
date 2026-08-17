@@ -1,28 +1,57 @@
-# TextToMp3 Portable
+# text-to-audio-viettrungnhat
 
-Ban portable chay o:
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-lightgrey.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-Private-red.svg)]()
 
-`TextToMp3Portable/TextToMp3App_0426.pyw`
+Phần mềm này là để bổ trợ cho các ứng dụng mobile, web... Thuộc sở hữu của Bảo Ngọc EduSoft Studio - 0986. 183 806.
 
-## Chay app
+Ứng dụng text-to-speech đa ngôn ngữ dùng Python/Tkinter, tối ưu cho chạy cục bộ trên macOS và Windows.
 
-1. Cai Python 3.10+ tren may moi.
-2. Cai thu vien:
+## Tính năng chính
+
+- Đọc text thành MP3/M4A với nhiều ngôn ngữ.
+- Hỗ trợ gTTS, Google Cloud TTS, OpenAI và Gemini.
+- Có khu vực quản lý API key, Discord webhook và AWS.
+- Giao diện Tkinter có sẵn launcher trên macOS để mở nhanh.
+- Hỗ trợ xuất âm thanh, lưu cấu hình, và chạy đúng code mới nhất trong repo.
+ĐỌc luân phiên, sole nam nữ đa ngôn ngữ, xuất audio chuẩn m4a nhẹ nhất vẫn rõ lời
+
+## Mockup giao diện
+
+### Luồng chính
+
+![Luồng text-to-audio](docs/assets/text-to-audio-flow.svg)
+
+### Chọn giọng và tốc độ
+
+![Cài đặt giọng đọc](docs/assets/voice-settings.svg)
+
+### API và tích hợp dịch vụ
+
+![Cài đặt API](docs/assets/api-settings.svg)
+
+## Mở app trên macOS
+
+Click [TextToMp3Launcher.app](TextToMp3Launcher.app) để mở app.
+
+Launcher này luôn trỏ về [app.pyw](app.pyw) trong thư mục dự án, nên mỗi lần bạn sửa code xong chỉ cần bấm lại icon là nó chạy bản mới nhất.
+
+## Chạy bằng Terminal
 
 ```bash
-pip install -r requirements.txt
+cd /path/to/text-to-audio-viettrungnhat
+./.venv312/bin/python app.pyw
 ```
 
-3. Mo file:
+## Cài trên máy khác
 
-```bash
-python TextToMp3Portable/TextToMp3App_0426.pyw
-```
+Xem hướng dẫn đầy đủ tại [docs/run-on-another-machine.md](docs/run-on-another-machine.md).
 
-Lan chay dau app se hoi mat khau de mo `secrets.enc`.
+## Git accounts trên máy này
 
-## Luu y
+Nếu bạn dùng nhiều tài khoản GitHub trên cùng máy, xem [GIT_ACCOUNTS.md](GIT_ACCOUNTS.md) để biết:
 
-- Khong commit `TextToMp3Portable/AppData/`.
-- Secret duoc luu trong `TextToMp3Portable/secrets.enc`.
-- Neu muon tu dong chay ma khong nhap mat khau, dat bien moi truong `TEXTTOMP3_VAULT_PASSWORD`.
+- tài khoản cá nhân và công việc đang map vào host alias nào
+- repo hiện tại đang dùng tài khoản nào
+- lệnh `ssh -T` và `git remote set-url` cho từng loại repo

@@ -2978,3 +2978,1191 @@ Dòng 691: noisy	.
 Dòng 694: main	.
 Dòng 700: cute	.
 Dòng 703: ugly	.
+Dòng 2: ai	.	rain, train, wait, paid, mail	.
+Dòng 3: .	ay	.	day, play, say, way, stay	.
+Dòng 4: .	ea	.	eat, tea, read, speak, clean	.
+Dòng 5: .	ee	.	see, meet, need, keep, week	.
+Dòng 6: .	ei	.	receive, receipt, ceiling, either, neither	.
+Dòng 8: .	ie	.	pie, tie, lie, die, piece	.
+Dòng 9: .	oa	.	boat, road, coat, soap, goal	.
+Dòng 10: .	oe	.	toe, goes, does, shoe, canoe	.
+Dòng 11: .	oo	.	book, look, good, food, school	.
+Dòng 13: .	ow	.	now, how, cow, down, town	.
+Dòng 14: .	oi	.	oil, coin, point, voice, choice	.
+Dòng 15: .	oy	.	boy, toy, enjoy, annoy, loyal	.
+Dòng 16: .	au	.	August, aunt, sauce, cause, pause	.
+Dòng 17: .	aw	.	saw, law, draw, straw, awful	.
+Dòng 18: .	ue	.	blue, true, glue, clue, due	.
+Dòng 19: .	ui	.	fruit, juice, suit, suitcase, guide	.
+Dòng 20: .	ew	.	new, few, news, knew, grew	.
+Dòng 21: .	eu	.	Europe, European, museum, neutral, reunion	.
+Dòng 23: .	eigh	.	eight, eighteen, eighty, weight, weigh	.
+Dòng 24: .	air	.	air, hair, chair, fair, pair	.
+Dòng 26: .	eer	.	beer, deer, cheer, career, engineer	.
+Dòng 27: .	are	.	are, care, share, square, prepare	.
+Dòng 28: .	ire	.	fire, tire, wire, hire, desire	.
+Dòng 29: .	ore	.	more, store, before, core, score	.
+Dòng 30: .	our	.	our, your, four, hour, course	.
+Dòng 33: .	pr	.	price, problem, pretty, present, practice	.
+Dòng 34: .	bl	.	black, blue, block, blood, blanket	.
+Dòng 37: .	gl	.	glass, glasses, glad, glove, glue	.
+Dòng 39: .	gr	.	green, gray, great, grow, group	.
+Dòng 41: .	dr	.	drink, drive, dress, dream, drop	.
+Dòng 42: .	fl	.	fly, floor, flower, flag, flat	.
+Dòng 44: .	sl	.	sleep, slow, slide, slip, slim	.
+Dòng 45: .	sm	.	small, smile, smell, smoke, smart	.
+Dòng 46: .	sn	.	snow, snack, snake, sneeze, snap	.
+Dòng 49: .	w	.	we, water, want, walk, work	.
+Dòng 50: .	nd	.	and, hand, end, send, friend	.
+Dòng 53: .	ll	.	all, call, ball, tell, well	.
+Dòng 54: .	ng	.	sing, song, long, bring, ring	.
+Dòng 55: .	nt	.	want, went, sent, rent, front	.
+Dòng 56: .	nk	.	bank, think, drink, pink, sink	.
+Dòng 57: .	mp	.	camp, jump, lamp, stamp, bump	.
+Dòng 58: .	ft	.	left, gift, soft, lift, shift	.
+Dòng 60: .	lt	.	salt, belt, built, felt, melt	.
+Dòng 62: .	lk	.	milk, walk, talk, chalk, folk	.
+Dòng 64: .	pt	.	kept, slept, swept, accept, except	.
+Dòng 65: .	xt	.	next, text, context, pretext, teletext	.
+Dòng 68: .	dge	.	bridge, fridge, judge, edge, badge	.
+Dòng 70: .	d	.	day, dog, dad, door, dinner	.
+Dòng 71: .	k	.	key, kid, keep, kind, kitchen	.
+Dòng 72: .	p	.	pen, put, pay, park, people	.
+Dòng 73: .	n	.	no, name, night, need, nice	.
+Dòng 74: .	b	.	boy, big, baby, bag, bed	.
+Dòng 75: .	g	.	go, good, girl, game, give	.
+Dòng 76: .	m	.	man, mom, milk, make, meet	.
+Dòng 82: .	sk	.	sky, school, skill, skin, skate	.
+Dòng 83: .	c_t	.	cat, cut, cot, coat, cart, cost, cast	.
+Dòng 86: .	bl_ck	.	black, block	.
+Dòng 87: .	c_ke	.	cake, coke	.
+Dòng 88: .	br_ke	.	brake, broke	.
+Dòng 89: .	sh_p	.	ship, shop, sheep, shape, sharp	.
+Dòng 90: .	fi_sh	.	fish	.
+Dòng 92: .	r__n	.	rain, run, ran, ruin, reason, return	.
+Dòng 93: .	bl_ck	.	black, block	.
+Dòng 95: .	cl_p	.	clap, clip	.
+Dòng 96: .	cr_b	.	crab, crib	.
+Dòng 97: .	dr_p	.	drop, drip	.
+Dòng 98: .	fl_g	.	flag	.
+Dòng 99: .	fr_g	.	frog, fridge	.
+Dòng 100: .	gl_d	.	glad, glide	.
+Dòng 101: .	gr_b	.	grab	.
+Dòng 102: .	pl_n	.	plan, plane, plain, plant	.
+Dòng 103: .	pr_m	.	problem, promise, program, prime	.
+Dòng 104: .	sk_n	.	skin, skinny	.
+Dòng 105: .	sl_p	.	sleep, slip, slap, slope	.
+Dòng 106: .	sm_ll	.	small, smell	.
+Dòng 107: .	sn_p	.	snap	.
+Dòng 108: .	sp_n	.	spin, spoon, spend, spent	.
+Dòng 109: .	st_p	.	stop, step	.
+Dòng 110: .	sw_m	.	swim, swam	.
+Dòng 112: .	tw_n	.	twin, twins, twenty	.
+Dòng 113: .	scr_p	.	scrap, scrape, scrub	.
+Dòng 115: .	spr_ng	.	spring, sprang, sprung	.
+Dòng 116: .	str_p	.	strip, strap, stripe	.
+Dòng 119: .	squ_d	.	squad, squid	.
+Dòng 122: .	b_nt	.	bent, burnt, blunt	.
+Dòng 123: .	b_nk	.	bank, blank, blink, bunk	.
+Dòng 124: .	c_mp	.	camp, camping, camper, company, computer	.
+Dòng 125: .	l_mp	.	lamp, limp, lump	.
+Dòng 127: .	m_sk	.	mask, masks	.
+Dòng 128: .	d_sk	.	desk, disk, desktop, dusk	.
+Dòng 129: .	g_sp	.	gasp, grasp	.
+Dòng 130: .	l_ft	.	left, lift, leftovers	.
+Dòng 132: .	b_lt	.	belt, built, bolt	.
+Dòng 134: .	m_lk	.	milk, milky, milkshake	.
+Dòng 135: .	h_lp	.	help, helper, helpful, helpless	.
+Dòng 136: .	k_pt	.	kept	.
+Dòng 137: .	n_xt	.	next	.
+Dòng 141: .	pi_ck	.	pick, pickup	.
+Dòng 143: .	di_sh	.	dish, dishes, dishwasher	.
+Dòng 144: .	ri_ch	.	rich	.
+Dòng 147: .	si_ng	.	sing, singer, singing, single	.
+Dòng 148: .	so_ng	.	song, songs, songwriter	.
+Dòng 151: .	ba_dge	.	badge	.
+Dòng 152: .	bri_dge	.	bridge	.
+Dòng 153: .		.	zero	.
+Dòng 154: .		.	one	.
+Dòng 155: .		.	two	.
+Dòng 158: .		.	five	.
+Dòng 159: .		.	six	.
+Dòng 160: .		.	seven	.
+Dòng 161: .		.	eight	.
+Dòng 162: .		.	nine	.
+Dòng 163: .		.	ten	.
+Dòng 164: .		.	eleven	.
+Dòng 165: .		.	twelve	.
+Dòng 167: .		.	fourteen	.
+Dòng 168: .		.	fifteen	.
+Dòng 169: .		.	sixteen	.
+Dòng 170: .		.	seventeen	.
+Dòng 171: .		.	eighteen	.
+Dòng 172: .		.	nineteen	.
+Dòng 180: .		.	ninety	.
+Dòng 189: .		.	ninety-six	.
+Dòng 190: .		.	ninety-nine	.
+Dòng 191: .		.	one hundred	.
+Dòng 194: .		.	five hundred	.
+Dòng 195: .		.	nine hundred	.
+Dòng 202: .		.	million	.
+Dòng 203: .		.	billion	.
+Dòng 204: .		.	zero point five	.
+Dòng 207: .		.	Monday	.
+Dòng 208: .		.	Tuesday	.
+Dòng 209: .		.	Wednesday	.
+Dòng 211: .		.	Friday	.
+Dòng 212: .		.	Saturday	.
+Dòng 213: .		.	Sunday	.
+Dòng 217: .		.	March	.
+Dòng 218: .		.	April	.
+Dòng 219: .		.	May	.
+Dòng 220: .		.	June	.
+Dòng 222: .		.	August	.
+Dòng 223: .		.	September	.
+Dòng 225: .		.	November	.
+Dòng 226: .		.	December	.
+Dòng 244: .		.	seventeenth	.
+Dòng 245: .		.	eighteenth	.
+Dòng 246: .		.	nineteenth	.
+Dòng 260: .		.	twenty ten	.
+Dòng 273: .		.	nine o’clock	.
+Dòng 275: .		.	eleven o’clock	.
+Dòng 279: .		.	seven ten	.
+Dòng 280: .		.	eight fifteen	.
+Dòng 291: .		.	sit, big, fish	.
+Dòng 292: .		.	bed, pen, friend	.
+Dòng 293: .		.	cat, map, black	.
+Dòng 299: .		.	law, talk, call	.
+Dòng 303: .		.	day, name	.
+Dòng 304: .		.	my, time	.
+Dòng 307: .		.	go, home	.
+Dòng 309: .		.	hair, chair	.
+Dòng 310: .		.	tour, pure	.
+Dòng 311: .		.	today	.
+Dòng 317: .		.	yesterday	.
+Dòng 326: .		.	last Monday	.
+Dòng 332: .		.	next week	.
+Dòng 335: .		.	last week	.
+Dòng 336: .		.	What did you do last week?	.
+Dòng 356: .		.	hour	.
+Dòng 359: .		.	minute	.
+Dòng 364: .		.	Sure, no problem.	.
+Dòng 371: .		.	past	.
+Dòng 373: .		.	It’s a quarter past seven.	.
+Dòng 374: .		.	to	.
+Dòng 377: .		.	quarter	.
+Dòng 383: .		.	noon	.
+Dòng 386: .		.	midnight	.
+Dòng 389: .		.	cry	.
+Dòng 392: .		.	laugh	.
+Dòng 393: .		.	What are you laughing at?	.
+Dòng 394: .		.	I'm not laughing at anything.	.
+Dòng 398: .		.	start	.
+Dòng 401: .		.	leave	.
+Dòng 404: .		.	stay	.
+Dòng 410: .		.	lend	.
+Dòng 411: .		.	Did you lend her a book?	.
+Dòng 422: .		.	receive	.
+Dòng 425: .		.	agree	.
+Dòng 426: .		.	Do you agree?	.
+Dòng 427: .		.	No, I don't.	.
+Dòng 428: .		.	disagree	.
+Dòng 429: .		.	Does he disagree?	.
+Dòng 431: .		.	hold	.
+Dòng 434: .		.	let go	.
+Dòng 437: .		.	bring	.
+Dòng 440: .		.	take	.
+Dòng 443: .		.	close	.
+Dòng 446: .		.	open	.
+Dòng 448: .		.	Sure, go ahead.	.
+Dòng 452: .		.	turn on	.
+Dòng 455: .		.	move	.
+Dòng 458: .		.	stay still, stand	.
+Dòng 461: .		.	understand	.
+Dòng 462: .		.	Do you understand?	.
+Dòng 463: .		.	I still don't quite understand.	.
+Dòng 464: .		.	misunderstand	.
+Dòng 465: .		.	You've misunderstood her.	.
+Dòng 467: .		.	believe	.
+Dòng 470: .		.	doubt, suspect	.
+Dòng 473: .		.	improve	.
+Dòng 476: .		.	get worse, bad	.
+Dòng 479: .		.	spend	.
+Dòng 480: .		.	What do you do on weekends?	.
+Dòng 482: .		.	save	.
+Dòng 485: .		.	remember	.
+Dòng 488: .		.	forget, bring	.
+Dòng 489: .		.	Did you bring your phone?	.
+Dòng 491: .		.	answer	.
+Dòng 494: .		.	ask	.
+Dòng 497: .		.	hurt	.
+Dòng 498: .		.	Does your leg hurt?	.
+Dòng 503: .		.	check	.
+Dòng 506: .		.	ride, get	.
+Dòng 507: .		.	How did you get here?	.
+Dòng 509: .		.	meet	.
+Dòng 510: .		.	Have you met Ms. Nguyen Anh yet?	.
+Dòng 512: .		.	put	.
+Dòng 515: .		.	review	.
+Dòng 523: .		.	Not yet. I still haven't decided.	.
+Dòng 524: .		.	looks	.
+Dòng 530: .		.	solve, resolve	.
+Dòng 536: .		.	practice	.
+Dòng 539: .		.	need	.
+Dòng 540: .		.	Do you need hot water?	.
+Dòng 541: .		.	Yes, I'd like some hot water.	.
+Dòng 542: .		.	worry	.
+Dòng 545: .		.	change, exchange	.
+Dòng 551: .		.	say, speak, tell	.
+Dòng 560: .		.	use	.
+Dòng 561: .		.	Do you use a computer?	.
+Dòng 563: .		.	take, join	.
+Dòng 565: .		.	Yes, I am.	.
+Dòng 566: .		.	draw	.
+Dòng 569: .		.	grow	.
+Dòng 572: .		.	decide	.
+Dòng 574: .		.	Not yet. I still haven't decided.	.
+Dòng 577: .		.	You'd better get some sleep.	.
+Dòng 578: .		.	must	.
+Dòng 581: .		.	help	.
+Dòng 584: .		.	welcome	.
+Dòng 585: .		.	Welcome to Vietnam!	.
+Dòng 587: .		.	full	.
+Dòng 588: .		.	Are you full yet?	.
+Dòng 591: .		.	Are you hungry?	.
+Dòng 593: .		.	sweet	.
+Dòng 595: .		.	No, it isn't sweet.	.
+Dòng 596: .		.	bitter	.
+Dòng 602: .		.	stale	.
+Dòng 605: .		.	comfortable	.
+Dòng 606: .		.	Do you feel comfortable?	.
+Dòng 607: .		.	I feel a little carsick.	.
+Dòng 611: .		.	afraid	.
+Dòng 612: .		.	Are you afraid of dogs?	.
+Dòng 613: .		.	I'm really afraid of big dogs.	.
+Dòng 614: .		.	brave	.
+Dòng 617: .		.	sad	.
+Dòng 619: .		.	Nothing. I'm not sad at all.	.
+Dòng 620: .		.	happy, have fun	.
+Dòng 626: .		.	calm, relaxed	.
+Dòng 629: .		.	convenient	.
+Dòng 632: .		.	inconvenient, not very convenient.	.
+Dòng 634: .		.	Yes, it's a little inconvenient.	.
+Dòng 635: .		.	ugly, bad,	.
+Dòng 638: .		.	good	.
+Dòng 641: .		.	broken	.
+Dòng 644: .		.	fix	.
+Dòng 647: .		.	difficult	.
+Dòng 653: .		.	important	.
+Dòng 656: .		.	unimportant, not important	.
+Dòng 665: .		.	short	.
+Dòng 668: .		.	long	.
+Dòng 677: .		.	old	.
+Dòng 680: .		.	young	.
+Dòng 683: .		.	stranger	.
+Dòng 689: .		.	quiet	.
+Dòng 692: .		.	noisy	.
+Dòng 695: .		.	main	.
+Dòng 701: .		.	cute	.
+Dòng 704: .		.	ugly	.
+Dòng 2: ai	.	rain, train, wait, paid, mail	.
+Dòng 3: .	ay	.	day, play, say, way, stay	.
+Dòng 4: .	ea	.	eat, tea, read, speak, clean	.
+Dòng 5: .	ee	.	see, meet, need, keep, week	.
+Dòng 6: .	ei	.	receive, receipt, ceiling, either, neither	.
+Dòng 8: .	ie	.	pie, tie, lie, die, piece	.
+Dòng 9: .	oa	.	boat, road, coat, soap, goal	.
+Dòng 10: .	oe	.	toe, goes, does, shoe, canoe	.
+Dòng 11: .	oo	.	book, look, good, food, school	.
+Dòng 13: .	ow	.	now, how, cow, down, town	.
+Dòng 14: .	oi	.	oil, coin, point, voice, choice	.
+Dòng 15: .	oy	.	boy, toy, enjoy, annoy, loyal	.
+Dòng 16: .	au	.	August, aunt, sauce, cause, pause	.
+Dòng 17: .	aw	.	saw, law, draw, straw, awful	.
+Dòng 18: .	ue	.	blue, true, glue, clue, due	.
+Dòng 19: .	ui	.	fruit, juice, suit, suitcase, guide	.
+Dòng 20: .	ew	.	new, few, news, knew, grew	.
+Dòng 21: .	eu	.	Europe, European, museum, neutral, reunion	.
+Dòng 23: .	eigh	.	eight, eighteen, eighty, weight, weigh	.
+Dòng 24: .	air	.	air, hair, chair, fair, pair	.
+Dòng 26: .	eer	.	beer, deer, cheer, career, engineer	.
+Dòng 27: .	are	.	are, care, share, square, prepare	.
+Dòng 28: .	ire	.	fire, tire, wire, hire, desire	.
+Dòng 29: .	ore	.	more, store, before, core, score	.
+Dòng 30: .	our	.	our, your, four, hour, course	.
+Dòng 33: .	pr	.	price, problem, pretty, present, practice	.
+Dòng 34: .	bl	.	black, blue, block, blood, blanket	.
+Dòng 37: .	gl	.	glass, glasses, glad, glove, glue	.
+Dòng 39: .	gr	.	green, gray, great, grow, group	.
+Dòng 41: .	dr	.	drink, drive, dress, dream, drop	.
+Dòng 42: .	fl	.	fly, floor, flower, flag, flat	.
+Dòng 44: .	sl	.	sleep, slow, slide, slip, slim	.
+Dòng 45: .	sm	.	small, smile, smell, smoke, smart	.
+Dòng 46: .	sn	.	snow, snack, snake, sneeze, snap	.
+Dòng 49: .	w	.	we, water, want, walk, work	.
+Dòng 50: .	nd	.	and, hand, end, send, friend	.
+Dòng 53: .	ll	.	all, call, ball, tell, well	.
+Dòng 54: .	ng	.	sing, song, long, bring, ring	.
+Dòng 55: .	nt	.	want, went, sent, rent, front	.
+Dòng 56: .	nk	.	bank, think, drink, pink, sink	.
+Dòng 57: .	mp	.	camp, jump, lamp, stamp, bump	.
+Dòng 58: .	ft	.	left, gift, soft, lift, shift	.
+Dòng 60: .	lt	.	salt, belt, built, felt, melt	.
+Dòng 62: .	lk	.	milk, walk, talk, chalk, folk	.
+Dòng 64: .	pt	.	kept, slept, swept, accept, except	.
+Dòng 65: .	xt	.	next, text, context, pretext, teletext	.
+Dòng 68: .	dge	.	bridge, fridge, judge, edge, badge	.
+Dòng 70: .	d	.	day, dog, dad, door, dinner	.
+Dòng 71: .	k	.	key, kid, keep, kind, kitchen	.
+Dòng 72: .	p	.	pen, put, pay, park, people	.
+Dòng 73: .	n	.	no, name, night, need, nice	.
+Dòng 74: .	b	.	boy, big, baby, bag, bed	.
+Dòng 75: .	g	.	go, good, girl, game, give	.
+Dòng 76: .	m	.	man, mom, milk, make, meet	.
+Dòng 82: .	sk	.	sky, school, skill, skin, skate	.
+Dòng 83: .	c_t	.	cat, cut, cot, coat, cart, cost, cast	.
+Dòng 86: .	bl_ck	.	black, block	.
+Dòng 87: .	c_ke	.	cake, coke	.
+Dòng 88: .	br_ke	.	brake, broke	.
+Dòng 89: .	sh_p	.	ship, shop, sheep, shape, sharp	.
+Dòng 90: .	fi_sh	.	fish	.
+Dòng 92: .	r__n	.	rain, run, ran, ruin, reason, return	.
+Dòng 93: .	bl_ck	.	black, block	.
+Dòng 95: .	cl_p	.	clap, clip	.
+Dòng 96: .	cr_b	.	crab, crib	.
+Dòng 97: .	dr_p	.	drop, drip	.
+Dòng 98: .	fl_g	.	flag	.
+Dòng 99: .	fr_g	.	frog, fridge	.
+Dòng 100: .	gl_d	.	glad, glide	.
+Dòng 101: .	gr_b	.	grab	.
+Dòng 102: .	pl_n	.	plan, plane, plain, plant	.
+Dòng 103: .	pr_m	.	problem, promise, program, prime	.
+Dòng 104: .	sk_n	.	skin, skinny	.
+Dòng 105: .	sl_p	.	sleep, slip, slap, slope	.
+Dòng 106: .	sm_ll	.	small, smell	.
+Dòng 107: .	sn_p	.	snap	.
+Dòng 108: .	sp_n	.	spin, spoon, spend, spent	.
+Dòng 109: .	st_p	.	stop, step	.
+Dòng 110: .	sw_m	.	swim, swam	.
+Dòng 112: .	tw_n	.	twin, twins, twenty	.
+Dòng 113: .	scr_p	.	scrap, scrape, scrub	.
+Dòng 115: .	spr_ng	.	spring, sprang, sprung	.
+Dòng 116: .	str_p	.	strip, strap, stripe	.
+Dòng 119: .	squ_d	.	squad, squid	.
+Dòng 122: .	b_nt	.	bent, burnt, blunt	.
+Dòng 123: .	b_nk	.	bank, blank, blink, bunk	.
+Dòng 124: .	c_mp	.	camp, camping, camper, company, computer	.
+Dòng 125: .	l_mp	.	lamp, limp, lump	.
+Dòng 127: .	m_sk	.	mask, masks	.
+Dòng 128: .	d_sk	.	desk, disk, desktop, dusk	.
+Dòng 129: .	g_sp	.	gasp, grasp	.
+Dòng 130: .	l_ft	.	left, lift, leftovers	.
+Dòng 132: .	b_lt	.	belt, built, bolt	.
+Dòng 134: .	m_lk	.	milk, milky, milkshake	.
+Dòng 135: .	h_lp	.	help, helper, helpful, helpless	.
+Dòng 136: .	k_pt	.	kept	.
+Dòng 137: .	n_xt	.	next	.
+Dòng 141: .	pi_ck	.	pick, pickup	.
+Dòng 143: .	di_sh	.	dish, dishes, dishwasher	.
+Dòng 144: .	ri_ch	.	rich	.
+Dòng 147: .	si_ng	.	sing, singer, singing, single	.
+Dòng 148: .	so_ng	.	song, songs, songwriter	.
+Dòng 151: .	ba_dge	.	badge	.
+Dòng 152: .	bri_dge	.	bridge	.
+Dòng 153: .		.	zero	.
+Dòng 154: .		.	one	.
+Dòng 155: .		.	two	.
+Dòng 158: .		.	five	.
+Dòng 159: .		.	six	.
+Dòng 160: .		.	seven	.
+Dòng 161: .		.	eight	.
+Dòng 162: .		.	nine	.
+Dòng 163: .		.	ten	.
+Dòng 164: .		.	eleven	.
+Dòng 165: .		.	twelve	.
+Dòng 167: .		.	fourteen	.
+Dòng 168: .		.	fifteen	.
+Dòng 169: .		.	sixteen	.
+Dòng 170: .		.	seventeen	.
+Dòng 171: .		.	eighteen	.
+Dòng 172: .		.	nineteen	.
+Dòng 180: .		.	ninety	.
+Dòng 189: .		.	ninety-six	.
+Dòng 190: .		.	ninety-nine	.
+Dòng 191: .		.	one hundred	.
+Dòng 194: .		.	five hundred	.
+Dòng 195: .		.	nine hundred	.
+Dòng 202: .		.	million	.
+Dòng 203: .		.	billion	.
+Dòng 204: .		.	zero point five	.
+Dòng 207: .		.	Monday	.
+Dòng 208: .		.	Tuesday	.
+Dòng 209: .		.	Wednesday	.
+Dòng 211: .		.	Friday	.
+Dòng 212: .		.	Saturday	.
+Dòng 213: .		.	Sunday	.
+Dòng 217: .		.	March	.
+Dòng 218: .		.	April	.
+Dòng 219: .		.	May	.
+Dòng 220: .		.	June	.
+Dòng 222: .		.	August	.
+Dòng 223: .		.	September	.
+Dòng 225: .		.	November	.
+Dòng 226: .		.	December	.
+Dòng 244: .		.	seventeenth	.
+Dòng 245: .		.	eighteenth	.
+Dòng 246: .		.	nineteenth	.
+Dòng 260: .		.	twenty ten	.
+Dòng 273: .		.	nine o’clock	.
+Dòng 275: .		.	eleven o’clock	.
+Dòng 279: .		.	seven ten	.
+Dòng 280: .		.	eight fifteen	.
+Dòng 291: .		.	sit, big, fish	.
+Dòng 292: .		.	bed, pen, friend	.
+Dòng 293: .		.	cat, map, black	.
+Dòng 299: .		.	law, talk, call	.
+Dòng 303: .		.	day, name	.
+Dòng 304: .		.	my, time	.
+Dòng 307: .		.	go, home	.
+Dòng 309: .		.	hair, chair	.
+Dòng 310: .		.	tour, pure	.
+Dòng 311: .		.	today	.
+Dòng 317: .		.	yesterday	.
+Dòng 326: .		.	last Monday	.
+Dòng 332: .		.	next week	.
+Dòng 335: .		.	last week	.
+Dòng 336: .		.	What did you do last week?	.
+Dòng 356: .		.	hour	.
+Dòng 359: .		.	minute	.
+Dòng 364: .		.	Sure, no problem.	.
+Dòng 371: .		.	past	.
+Dòng 373: .		.	It’s a quarter past seven.	.
+Dòng 374: .		.	to	.
+Dòng 377: .		.	quarter	.
+Dòng 383: .		.	noon	.
+Dòng 386: .		.	midnight	.
+Dòng 389: .		.	cry	.
+Dòng 392: .		.	laugh	.
+Dòng 393: .		.	What are you laughing at?	.
+Dòng 394: .		.	I'm not laughing at anything.	.
+Dòng 398: .		.	start	.
+Dòng 401: .		.	leave	.
+Dòng 404: .		.	stay	.
+Dòng 410: .		.	lend	.
+Dòng 411: .		.	Did you lend her a book?	.
+Dòng 422: .		.	receive	.
+Dòng 425: .		.	agree	.
+Dòng 426: .		.	Do you agree?	.
+Dòng 427: .		.	No, I don't.	.
+Dòng 428: .		.	disagree	.
+Dòng 429: .		.	Does he disagree?	.
+Dòng 431: .		.	hold	.
+Dòng 434: .		.	let go	.
+Dòng 437: .		.	bring	.
+Dòng 440: .		.	take	.
+Dòng 443: .		.	close	.
+Dòng 446: .		.	open	.
+Dòng 448: .		.	Sure, go ahead.	.
+Dòng 452: .		.	turn on	.
+Dòng 455: .		.	move	.
+Dòng 458: .		.	stay still, stand	.
+Dòng 461: .		.	understand	.
+Dòng 462: .		.	Do you understand?	.
+Dòng 463: .		.	I still don't quite understand.	.
+Dòng 464: .		.	misunderstand	.
+Dòng 465: .		.	You've misunderstood her.	.
+Dòng 467: .		.	believe	.
+Dòng 470: .		.	doubt, suspect	.
+Dòng 473: .		.	improve	.
+Dòng 476: .		.	get worse, bad	.
+Dòng 479: .		.	spend	.
+Dòng 480: .		.	What do you do on weekends?	.
+Dòng 482: .		.	save	.
+Dòng 485: .		.	remember	.
+Dòng 488: .		.	forget, bring	.
+Dòng 489: .		.	Did you bring your phone?	.
+Dòng 491: .		.	answer	.
+Dòng 494: .		.	ask	.
+Dòng 497: .		.	hurt	.
+Dòng 498: .		.	Does your leg hurt?	.
+Dòng 503: .		.	check	.
+Dòng 506: .		.	ride, get	.
+Dòng 507: .		.	How did you get here?	.
+Dòng 509: .		.	meet	.
+Dòng 510: .		.	Have you met Ms. Nguyen Anh yet?	.
+Dòng 512: .		.	put	.
+Dòng 515: .		.	review	.
+Dòng 523: .		.	Not yet. I still haven't decided.	.
+Dòng 524: .		.	looks	.
+Dòng 530: .		.	solve, resolve	.
+Dòng 536: .		.	practice	.
+Dòng 539: .		.	need	.
+Dòng 540: .		.	Do you need hot water?	.
+Dòng 541: .		.	Yes, I'd like some hot water.	.
+Dòng 542: .		.	worry	.
+Dòng 545: .		.	change, exchange	.
+Dòng 551: .		.	say, speak, tell	.
+Dòng 560: .		.	use	.
+Dòng 561: .		.	Do you use a computer?	.
+Dòng 563: .		.	take, join	.
+Dòng 565: .		.	Yes, I am.	.
+Dòng 566: .		.	draw	.
+Dòng 569: .		.	grow	.
+Dòng 572: .		.	decide	.
+Dòng 574: .		.	Not yet. I still haven't decided.	.
+Dòng 577: .		.	You'd better get some sleep.	.
+Dòng 578: .		.	must	.
+Dòng 581: .		.	help	.
+Dòng 584: .		.	welcome	.
+Dòng 585: .		.	Welcome to Vietnam!	.
+Dòng 587: .		.	full	.
+Dòng 588: .		.	Are you full yet?	.
+Dòng 591: .		.	Are you hungry?	.
+Dòng 593: .		.	sweet	.
+Dòng 595: .		.	No, it isn't sweet.	.
+Dòng 596: .		.	bitter	.
+Dòng 602: .		.	stale	.
+Dòng 605: .		.	comfortable	.
+Dòng 606: .		.	Do you feel comfortable?	.
+Dòng 607: .		.	I feel a little carsick.	.
+Dòng 611: .		.	afraid	.
+Dòng 612: .		.	Are you afraid of dogs?	.
+Dòng 613: .		.	I'm really afraid of big dogs.	.
+Dòng 614: .		.	brave	.
+Dòng 617: .		.	sad	.
+Dòng 619: .		.	Nothing. I'm not sad at all.	.
+Dòng 620: .		.	happy, have fun	.
+Dòng 626: .		.	calm, relaxed	.
+Dòng 629: .		.	convenient	.
+Dòng 632: .		.	inconvenient, not very convenient.	.
+Dòng 634: .		.	Yes, it's a little inconvenient.	.
+Dòng 635: .		.	ugly, bad,	.
+Dòng 638: .		.	good	.
+Dòng 641: .		.	broken	.
+Dòng 644: .		.	fix	.
+Dòng 647: .		.	difficult	.
+Dòng 653: .		.	important	.
+Dòng 656: .		.	unimportant, not important	.
+Dòng 665: .		.	short	.
+Dòng 668: .		.	long	.
+Dòng 677: .		.	old	.
+Dòng 680: .		.	young	.
+Dòng 683: .		.	stranger	.
+Dòng 689: .		.	quiet	.
+Dòng 692: .		.	noisy	.
+Dòng 695: .		.	main	.
+Dòng 701: .		.	cute	.
+Dòng 704: .		.	ugly	.
+Dòng 2: ai	.	rain, train, wait, paid, mail
+Dòng 3: ay	.	day, play, say, way, stay
+Dòng 4: ea	.	eat, tea, read, speak, clean
+Dòng 5: ee	.	see, meet, need, keep, week
+Dòng 8: ie	.	pie, tie, lie, die, piece
+Dòng 9: oa	.	boat, road, coat, soap, goal
+Dòng 10: oe	.	toe, goes, does, shoe, canoe
+Dòng 11: oo	.	book, look, good, food, school
+Dòng 13: ow	.	now, how, cow, down, town
+Dòng 14: oi	.	oil, coin, point, voice, choice
+Dòng 15: oy	.	boy, toy, enjoy, annoy, loyal
+Dòng 16: au	.	August, aunt, sauce, cause, pause
+Dòng 17: aw	.	saw, law, draw, straw, awful
+Dòng 18: ue	.	blue, true, glue, clue, due
+Dòng 19: ui	.	fruit, juice, suit, suitcase, guide
+Dòng 20: ew	.	new, few, news, knew, grew
+Dòng 21: eu	.	Europe, European, museum, neutral, reunion
+Dòng 23: eigh	.	eight, eighteen, eighty, weight, weigh
+Dòng 24: air	.	air, hair, chair, fair, pair
+Dòng 26: eer	.	beer, deer, cheer, career, engineer
+Dòng 27: are	.	are, care, share, square, prepare
+Dòng 28: ire	.	fire, tire, wire, hire, desire
+Dòng 29: ore	.	more, store, before, core, score
+Dòng 30: our	.	our, your, four, hour, course
+Dòng 33: pr	.	price, problem, pretty, present, practice
+Dòng 34: bl	.	black, blue, block, blood, blanket
+Dòng 37: gl	.	glass, glasses, glad, glove, glue
+Dòng 39: gr	.	green, gray, great, grow, group
+Dòng 41: dr	.	drink, drive, dress, dream, drop
+Dòng 42: fl	.	fly, floor, flower, flag, flat
+Dòng 44: sl	.	sleep, slow, slide, slip, slim
+Dòng 45: sm	.	small, smile, smell, smoke, smart
+Dòng 46: sn	.	snow, snack, snake, sneeze, snap
+Dòng 49: w	.	we, water, want, walk, work
+Dòng 50: nd	.	and, hand, end, send, friend
+Dòng 53: ll	.	all, call, ball, tell, well
+Dòng 54: ng	.	sing, song, long, bring, ring
+Dòng 55: nt	.	want, went, sent, rent, front
+Dòng 56: nk	.	bank, think, drink, pink, sink
+Dòng 57: mp	.	camp, jump, lamp, stamp, bump
+Dòng 58: ft	.	left, gift, soft, lift, shift
+Dòng 60: lt	.	salt, belt, built, felt, melt
+Dòng 62: lk	.	milk, walk, talk, chalk, folk
+Dòng 64: pt	.	kept, slept, swept, accept, except
+Dòng 65: xt	.	next, text, context, pretext, teletext
+Dòng 68: dge	.	bridge, fridge, judge, edge, badge
+Dòng 70: d	.	day, dog, dad, door, dinner
+Dòng 71: k	.	key, kid, keep, kind, kitchen
+Dòng 72: p	.	pen, put, pay, park, people
+Dòng 73: n	.	no, name, night, need, nice
+Dòng 74: b	.	boy, big, baby, bag, bed
+Dòng 75: g	.	go, good, girl, game, give
+Dòng 76: m	.	man, mom, milk, make, meet
+Dòng 78: sh	.	she, shop, shoe, shirt, shower
+Dòng 81: st	.	stop, stay, start, stand, store
+Dòng 82: sk	.	sky, school, skill, skin, skate
+Dòng 83: c_t	.	cat, cut, cot, coat, cart, cost, cast
+Dòng 86: bl_ck	.	black, block
+Dòng 87: c_ke	.	cake, coke
+Dòng 88: br_ke	.	brake, broke
+Dòng 89: sh_p	.	ship, shop, sheep, shape, sharp
+Dòng 90: fi_sh	.	fish
+Dòng 92: r__n	.	rain, run, ran, ruin, reason, return
+Dòng 93: bl_ck	.	black, block
+Dòng 95: cl_p	.	clap, clip
+Dòng 96: cr_b	.	crab, crib
+Dòng 97: dr_p	.	drop, drip
+Dòng 98: fl_g	.	flag
+Dòng 99: fr_g	.	frog, fridge
+Dòng 100: gl_d	.	glad, glide
+Dòng 101: gr_b	.	grab
+Dòng 102: pl_n	.	plan, plane, plain, plant
+Dòng 103: pr_m	.	problem, promise, program, prime
+Dòng 104: sk_n	.	skin, skinny
+Dòng 105: sl_p	.	sleep, slip, slap, slope
+Dòng 106: sm_ll	.	small, smell
+Dòng 107: sn_p	.	snap
+Dòng 108: sp_n	.	spin, spoon, spend, spent
+Dòng 109: st_p	.	stop, step
+Dòng 110: sw_m	.	swim, swam
+Dòng 112: tw_n	.	twin, twins, twenty
+Dòng 113: scr_p	.	scrap, scrape, scrub
+Dòng 115: spr_ng	.	spring, sprang, sprung
+Dòng 116: str_p	.	strip, strap, stripe
+Dòng 117: shr_d	.	shred
+Dòng 119: squ_d	.	squad, squid
+Dòng 122: b_nt	.	bent, burnt, blunt
+Dòng 123: b_nk	.	bank, blank, blink, bunk
+Dòng 124: c_mp	.	camp, camping, camper, company, computer
+Dòng 125: l_mp	.	lamp, limp, lump
+Dòng 127: m_sk	.	mask, masks
+Dòng 128: d_sk	.	desk, disk, desktop, dusk
+Dòng 129: g_sp	.	gasp, grasp
+Dòng 130: l_ft	.	left, lift, leftovers
+Dòng 132: b_lt	.	belt, built, bolt
+Dòng 133: s_lf	.	self, myself, yourself, itself, himself, herself
+Dòng 134: m_lk	.	milk, milky, milkshake
+Dòng 135: h_lp	.	help, helper, helpful, helpless
+Dòng 136: k_pt	.	kept
+Dòng 137: n_xt	.	next
+Dòng 141: pi_ck	.	pick, pickup
+Dòng 143: di_sh	.	dish, dishes, dishwasher
+Dòng 144: ri_ch	.	rich
+Dòng 145: mu_ch	.	much
+Dòng 147: si_ng	.	sing, singer, singing, single
+Dòng 148: so_ng	.	song, songs, songwriter
+Dòng 151: ba_dge	.	badge
+Dòng 152: bri_dge	.	bridge
+Dòng 153: zero
+Dòng 154: one
+Dòng 155: two
+Dòng 158: five
+Dòng 159: six
+Dòng 160: seven
+Dòng 161: eight
+Dòng 162: nine
+Dòng 163: ten
+Dòng 164: eleven
+Dòng 165: twelve
+Dòng 168: fifteen
+Dòng 169: sixteen
+Dòng 170: seventeen
+Dòng 171: eighteen
+Dòng 172: nineteen
+Dòng 173: twenty
+Dòng 176: fifty
+Dòng 178: seventy
+Dòng 179: eighty
+Dòng 180: ninety
+Dòng 186: sixty-nine
+Dòng 189: ninety-six
+Dòng 190: ninety-nine
+Dòng 191: one hundred
+Dòng 194: five hundred
+Dòng 195: nine hundred
+Dòng 202: million
+Dòng 203: billion
+Dòng 204: zero point five
+Dòng 207: Monday
+Dòng 208: Tuesday
+Dòng 209: Wednesday
+Dòng 211: Friday
+Dòng 212: Saturday
+Dòng 213: Sunday
+Dòng 215: January
+Dòng 218: April
+Dòng 219: May
+Dòng 220: June
+Dòng 222: August
+Dòng 223: September
+Dòng 226: December
+Dòng 229: second
+Dòng 235: eighth
+Dòng 238: eleventh
+Dòng 244: seventeenth
+Dòng 245: eighteenth
+Dòng 246: nineteenth
+Dòng 247: twentieth
+Dòng 260: twenty ten
+Dòng 262: twenty twenty
+Dòng 270: six o’clock
+Dòng 273: nine o’clock
+Dòng 274: ten o’clock
+Dòng 275: eleven o’clock
+Dòng 279: seven ten
+Dòng 280: eight fifteen
+Dòng 281: nine twenty
+Dòng 287: five fifty
+Dòng 291: sit, big, fish
+Dòng 292: bed, pen, friend
+Dòng 293: cat, map, black
+Dòng 297: cup, bus, love
+Dòng 299: law, talk, call
+Dòng 303: day, name
+Dòng 304: my, time
+Dòng 307: go, home
+Dòng 309: hair, chair
+Dòng 310: tour, pure
+Dòng 311: today
+Dòng 317: yesterday
+Dòng 326: last Monday
+Dòng 332: next week
+Dòng 335: last week
+Dòng 336: What did you do last week?
+Dòng 359: minute
+Dòng 362: second
+Dòng 364: Sure, no problem.
+Dòng 368: o’clock
+Dòng 371: past
+Dòng 377: quarter
+Dòng 380: half
+Dòng 383: noon
+Dòng 386: midnight
+Dòng 389: cry
+Dòng 392: laugh
+Dòng 393: What are you laughing at?
+Dòng 394: I'm not laughing at anything.
+Dòng 395: finish
+Dòng 398: start
+Dòng 401: leave
+Dòng 404: stay
+Dòng 410: lend
+Dòng 411: Did you lend her a book?
+Dòng 422: receive
+Dòng 425: agree
+Dòng 426: Do you agree?
+Dòng 427: No, I don't.
+Dòng 428: disagree
+Dòng 429: Does he disagree?
+Dòng 431: hold
+Dòng 434: let go
+Dòng 437: bring
+Dòng 440: take
+Dòng 443: close
+Dòng 446: open
+Dòng 448: Sure, go ahead.
+Dòng 455: move
+Dòng 458: stay still, stand
+Dòng 461: understand
+Dòng 462: Do you understand?
+Dòng 463: I still don't quite understand.
+Dòng 464: misunderstand
+Dòng 465: You've misunderstood her.
+Dòng 467: believe
+Dòng 469: No, I don't.
+Dòng 470: doubt, suspect
+Dòng 473: improve
+Dòng 476: get worse, bad
+Dòng 479: spend
+Dòng 480: What do you do on weekends?
+Dòng 482: save
+Dòng 485: remember
+Dòng 488: forget, bring
+Dòng 489: Did you bring your phone?
+Dòng 491: answer
+Dòng 494: ask
+Dòng 497: hurt
+Dòng 498: Does your leg hurt?
+Dòng 503: check
+Dòng 506: ride, get
+Dòng 507: How did you get here?
+Dòng 509: meet
+Dòng 510: Have you met Ms. Nguyen Anh yet?
+Dòng 512: put
+Dòng 515: review
+Dòng 523: Not yet. I still haven't decided.
+Dòng 524: looks
+Dòng 530: solve, resolve
+Dòng 536: practice
+Dòng 539: need
+Dòng 540: Do you need hot water?
+Dòng 541: Yes, I'd like some hot water.
+Dòng 542: worry
+Dòng 545: change, exchange
+Dòng 551: say, speak, tell
+Dòng 560: use
+Dòng 561: Do you use a computer?
+Dòng 563: take, join
+Dòng 565: Yes, I am.
+Dòng 566: draw
+Dòng 567: What are you drawing?
+Dòng 569: grow
+Dòng 572: decide
+Dòng 574: Not yet. I still haven't decided.
+Dòng 577: You'd better get some sleep.
+Dòng 578: must
+Dòng 581: help
+Dòng 584: welcome
+Dòng 587: full
+Dòng 588: Are you full yet?
+Dòng 593: sweet
+Dòng 595: No, it isn't sweet.
+Dòng 596: bitter
+Dòng 602: stale
+Dòng 605: comfortable
+Dòng 606: Do you feel comfortable?
+Dòng 607: I feel a little carsick.
+Dòng 611: afraid
+Dòng 612: Are you afraid of dogs?
+Dòng 613: I'm really afraid of big dogs.
+Dòng 614: brave
+Dòng 617: sad
+Dòng 620: happy, have fun
+Dòng 626: calm, relaxed
+Dòng 629: convenient
+Dòng 632: inconvenient, not very convenient.
+Dòng 634: Yes, it's a little inconvenient.
+Dòng 635: ugly, bad,
+Dòng 638: good
+Dòng 641: broken
+Dòng 644: fix
+Dòng 647: difficult
+Dòng 653: important
+Dòng 656: unimportant, not important
+Dòng 665: short
+Dòng 668: long
+Dòng 674: complicated
+Dòng 677: old
+Dòng 680: young
+Dòng 683: stranger
+Dòng 684: Don't talk to strangers.
+Dòng 689: quiet
+Dòng 692: noisy
+Dòng 695: main
+Dòng 701: cute
+Dòng 704: ugly
+Dòng 2: ai	.	rain, train, wait, paid, mail
+Dòng 3: ay	.	day, play, say, way, stay
+Dòng 4: ea	.	eat, tea, read, speak, clean
+Dòng 5: ee	.	see, meet, need, keep, week
+Dòng 8: ie	.	pie, tie, lie, die, piece
+Dòng 9: oa	.	boat, road, coat, soap, goal
+Dòng 10: oe	.	toe, goes, does, shoe, canoe
+Dòng 11: oo	.	book, look, good, food, school
+Dòng 13: ow	.	now, how, cow, down, town
+Dòng 14: oi	.	oil, coin, point, voice, choice
+Dòng 15: oy	.	boy, toy, enjoy, annoy, loyal
+Dòng 16: au	.	August, aunt, sauce, cause, pause
+Dòng 17: aw	.	saw, law, draw, straw, awful
+Dòng 18: ue	.	blue, true, glue, clue, due
+Dòng 19: ui	.	fruit, juice, suit, suitcase, guide
+Dòng 20: ew	.	new, few, news, knew, grew
+Dòng 21: eu	.	Europe, European, museum, neutral, reunion
+Dòng 23: eigh	.	eight, eighteen, eighty, weight, weigh
+Dòng 24: air	.	air, hair, chair, fair, pair
+Dòng 26: eer	.	beer, deer, cheer, career, engineer
+Dòng 27: are	.	are, care, share, square, prepare
+Dòng 28: ire	.	fire, tire, wire, hire, desire
+Dòng 29: ore	.	more, store, before, core, score
+Dòng 30: our	.	our, your, four, hour, course
+Dòng 33: pr	.	price, problem, pretty, present, practice
+Dòng 34: bl	.	black, blue, block, blood, blanket
+Dòng 37: gl	.	glass, glasses, glad, glove, glue
+Dòng 39: gr	.	green, gray, great, grow, group
+Dòng 41: dr	.	drink, drive, dress, dream, drop
+Dòng 42: fl	.	fly, floor, flower, flag, flat
+Dòng 44: sl	.	sleep, slow, slide, slip, slim
+Dòng 45: sm	.	small, smile, smell, smoke, smart
+Dòng 46: sn	.	snow, snack, snake, sneeze, snap
+Dòng 49: w	.	we, water, want, walk, work
+Dòng 50: nd	.	and, hand, end, send, friend
+Dòng 53: ll	.	all, call, ball, tell, well
+Dòng 54: ng	.	sing, song, long, bring, ring
+Dòng 55: nt	.	want, went, sent, rent, front
+Dòng 56: nk	.	bank, think, drink, pink, sink
+Dòng 57: mp	.	camp, jump, lamp, stamp, bump
+Dòng 58: ft	.	left, gift, soft, lift, shift
+Dòng 60: lt	.	salt, belt, built, felt, melt
+Dòng 62: lk	.	milk, walk, talk, chalk, folk
+Dòng 64: pt	.	kept, slept, swept, accept, except
+Dòng 65: xt	.	next, text, context, pretext, teletext
+Dòng 68: dge	.	bridge, fridge, judge, edge, badge
+Dòng 70: d	.	day, dog, dad, door, dinner
+Dòng 71: k	.	key, kid, keep, kind, kitchen
+Dòng 72: p	.	pen, put, pay, park, people
+Dòng 73: n	.	no, name, night, need, nice
+Dòng 74: b	.	boy, big, baby, bag, bed
+Dòng 75: g	.	go, good, girl, game, give
+Dòng 76: m	.	man, mom, milk, make, meet
+Dòng 78: sh	.	she, shop, shoe, shirt, shower
+Dòng 81: st	.	stop, stay, start, stand, store
+Dòng 82: sk	.	sky, school, skill, skin, skate
+Dòng 83: c_t	.	cat, cut, cot, coat, cart, cost, cast
+Dòng 86: bl_ck	.	black, block
+Dòng 87: c_ke	.	cake, coke
+Dòng 88: br_ke	.	brake, broke
+Dòng 89: sh_p	.	ship, shop, sheep, shape, sharp
+Dòng 90: fi_sh	.	fish
+Dòng 92: r__n	.	rain, run, ran, ruin, reason, return
+Dòng 93: bl_ck	.	black, block
+Dòng 95: cl_p	.	clap, clip
+Dòng 96: cr_b	.	crab, crib
+Dòng 97: dr_p	.	drop, drip
+Dòng 98: fl_g	.	flag
+Dòng 99: fr_g	.	frog, fridge
+Dòng 100: gl_d	.	glad, glide
+Dòng 101: gr_b	.	grab
+Dòng 102: pl_n	.	plan, plane, plain, plant
+Dòng 103: pr_m	.	problem, promise, program, prime
+Dòng 104: sk_n	.	skin, skinny
+Dòng 105: sl_p	.	sleep, slip, slap, slope
+Dòng 106: sm_ll	.	small, smell
+Dòng 107: sn_p	.	snap
+Dòng 108: sp_n	.	spin, spoon, spend, spent
+Dòng 109: st_p	.	stop, step
+Dòng 110: sw_m	.	swim, swam
+Dòng 112: tw_n	.	twin, twins, twenty
+Dòng 113: scr_p	.	scrap, scrape, scrub
+Dòng 115: spr_ng	.	spring, sprang, sprung
+Dòng 116: str_p	.	strip, strap, stripe
+Dòng 117: shr_d	.	shred
+Dòng 119: squ_d	.	squad, squid
+Dòng 122: b_nt	.	bent, burnt, blunt
+Dòng 123: b_nk	.	bank, blank, blink, bunk
+Dòng 124: c_mp	.	camp, camping, camper, company, computer
+Dòng 125: l_mp	.	lamp, limp, lump
+Dòng 127: m_sk	.	mask, masks
+Dòng 128: d_sk	.	desk, disk, desktop, dusk
+Dòng 129: g_sp	.	gasp, grasp
+Dòng 130: l_ft	.	left, lift, leftovers
+Dòng 132: b_lt	.	belt, built, bolt
+Dòng 133: s_lf	.	self, myself, yourself, itself, himself, herself
+Dòng 134: m_lk	.	milk, milky, milkshake
+Dòng 135: h_lp	.	help, helper, helpful, helpless
+Dòng 136: k_pt	.	kept
+Dòng 137: n_xt	.	next
+Dòng 141: pi_ck	.	pick, pickup
+Dòng 143: di_sh	.	dish, dishes, dishwasher
+Dòng 144: ri_ch	.	rich
+Dòng 145: mu_ch	.	much
+Dòng 147: si_ng	.	sing, singer, singing, single
+Dòng 148: so_ng	.	song, songs, songwriter
+Dòng 151: ba_dge	.	badge
+Dòng 152: bri_dge	.	bridge
+Dòng 153: zero
+Dòng 154: one
+Dòng 155: two
+Dòng 158: five
+Dòng 159: six
+Dòng 160: seven
+Dòng 161: eight
+Dòng 162: nine
+Dòng 163: ten
+Dòng 164: eleven
+Dòng 165: twelve
+Dòng 168: fifteen
+Dòng 169: sixteen
+Dòng 170: seventeen
+Dòng 171: eighteen
+Dòng 172: nineteen
+Dòng 173: twenty
+Dòng 176: fifty
+Dòng 178: seventy
+Dòng 179: eighty
+Dòng 180: ninety
+Dòng 186: sixty-nine
+Dòng 189: ninety-six
+Dòng 190: ninety-nine
+Dòng 191: one hundred
+Dòng 194: five hundred
+Dòng 195: nine hundred
+Dòng 202: million
+Dòng 203: billion
+Dòng 204: zero point five
+Dòng 207: Monday
+Dòng 208: Tuesday
+Dòng 209: Wednesday
+Dòng 211: Friday
+Dòng 212: Saturday
+Dòng 213: Sunday
+Dòng 215: January
+Dòng 218: April
+Dòng 219: May
+Dòng 220: June
+Dòng 222: August
+Dòng 223: September
+Dòng 226: December
+Dòng 229: second
+Dòng 235: eighth
+Dòng 238: eleventh
+Dòng 244: seventeenth
+Dòng 245: eighteenth
+Dòng 246: nineteenth
+Dòng 247: twentieth
+Dòng 260: twenty ten
+Dòng 262: twenty twenty
+Dòng 270: six o’clock
+Dòng 273: nine o’clock
+Dòng 274: ten o’clock
+Dòng 275: eleven o’clock
+Dòng 279: seven ten
+Dòng 280: eight fifteen
+Dòng 281: nine twenty
+Dòng 287: five fifty
+Dòng 291: sit, big, fish
+Dòng 292: bed, pen, friend
+Dòng 293: cat, map, black
+Dòng 297: cup, bus, love
+Dòng 299: law, talk, call
+Dòng 303: day, name
+Dòng 304: my, time
+Dòng 307: go, home
+Dòng 309: hair, chair
+Dòng 310: tour, pure
+Dòng 311: today
+Dòng 317: yesterday
+Dòng 326: last Monday
+Dòng 332: next week
+Dòng 335: last week
+Dòng 336: What did you do last week?
+Dòng 359: minute
+Dòng 362: second
+Dòng 364: Sure, no problem.
+Dòng 368: o’clock
+Dòng 371: past
+Dòng 377: quarter
+Dòng 380: half
+Dòng 383: noon
+Dòng 386: midnight
+Dòng 389: cry
+Dòng 392: laugh
+Dòng 393: What are you laughing at?
+Dòng 394: I'm not laughing at anything.
+Dòng 395: finish
+Dòng 398: start
+Dòng 401: leave
+Dòng 404: stay
+Dòng 410: lend
+Dòng 411: Did you lend her a book?
+Dòng 422: receive
+Dòng 425: agree
+Dòng 426: Do you agree?
+Dòng 427: No, I don't.
+Dòng 428: disagree
+Dòng 429: Does he disagree?
+Dòng 431: hold
+Dòng 434: let go
+Dòng 437: bring
+Dòng 440: take
+Dòng 443: close
+Dòng 446: open
+Dòng 448: Sure, go ahead.
+Dòng 455: move
+Dòng 458: stay still, stand
+Dòng 461: understand
+Dòng 462: Do you understand?
+Dòng 463: I still don't quite understand.
+Dòng 464: misunderstand
+Dòng 465: You've misunderstood her.
+Dòng 467: believe
+Dòng 469: No, I don't.
+Dòng 470: doubt, suspect
+Dòng 473: improve
+Dòng 476: get worse, bad
+Dòng 479: spend
+Dòng 480: What do you do on weekends?
+Dòng 482: save
+Dòng 485: remember
+Dòng 488: forget, bring
+Dòng 489: Did you bring your phone?
+Dòng 491: answer
+Dòng 494: ask
+Dòng 497: hurt
+Dòng 498: Does your leg hurt?
+Dòng 503: check
+Dòng 506: ride, get
+Dòng 507: How did you get here?
+Dòng 509: meet
+Dòng 510: Have you met Ms. Nguyen Anh yet?
+Dòng 512: put
+Dòng 515: review
+Dòng 523: Not yet. I still haven't decided.
+Dòng 524: looks
+Dòng 530: solve, resolve
+Dòng 536: practice
+Dòng 539: need
+Dòng 540: Do you need hot water?
+Dòng 541: Yes, I'd like some hot water.
+Dòng 542: worry
+Dòng 545: change, exchange
+Dòng 551: say, speak, tell
+Dòng 560: use
+Dòng 561: Do you use a computer?
+Dòng 563: take, join
+Dòng 565: Yes, I am.
+Dòng 566: draw
+Dòng 567: What are you drawing?
+Dòng 569: grow
+Dòng 572: decide
+Dòng 574: Not yet. I still haven't decided.
+Dòng 577: You'd better get some sleep.
+Dòng 578: must
+Dòng 581: help
+Dòng 584: welcome
+Dòng 587: full
+Dòng 588: Are you full yet?
+Dòng 593: sweet
+Dòng 595: No, it isn't sweet.
+Dòng 596: bitter
+Dòng 602: stale
+Dòng 605: comfortable
+Dòng 606: Do you feel comfortable?
+Dòng 607: I feel a little carsick.
+Dòng 611: afraid
+Dòng 612: Are you afraid of dogs?
+Dòng 613: I'm really afraid of big dogs.
+Dòng 614: brave
+Dòng 617: sad
+Dòng 620: happy, have fun
+Dòng 626: calm, relaxed
+Dòng 629: convenient
+Dòng 632: inconvenient, not very convenient.
+Dòng 634: Yes, it's a little inconvenient.
+Dòng 635: ugly, bad,
+Dòng 638: good
+Dòng 641: broken
+Dòng 644: fix
+Dòng 647: difficult
+Dòng 653: important
+Dòng 656: unimportant, not important
+Dòng 665: short
+Dòng 668: long
+Dòng 674: complicated
+Dòng 677: old
+Dòng 680: young
+Dòng 683: stranger
+Dòng 684: Don't talk to strangers.
+Dòng 689: quiet
+Dòng 692: noisy
+Dòng 695: main
+Dòng 701: cute
+Dòng 704: ugly
