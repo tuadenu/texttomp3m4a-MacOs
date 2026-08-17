@@ -8295,20 +8295,17 @@ def create_frame_noi_dung(parent):
     lbl_mic_effect.place(x=575, y=42)
 
 
-    # Khung đọc đề sát mép phải (xuất MP3/M4A nằm trong popup chọn ngôn ngữ)
-    frame_doc = tk.LabelFrame(frame_noi_dung, text="🎧 Đọc Nội Dung & Chọn Ngôn Ngữ", font=("Arial", 8, "bold"), bg="#f8fff8")
+    # Khung thao tác đa ngôn ngữ: bên ngoài chỉ còn nút vào popup, không còn chọn đọc trực tiếp ở main UI.
+    frame_doc = tk.LabelFrame(frame_noi_dung, text="🎧 Đa ngôn ngữ", font=("Arial", 8, "bold"), bg="#f8fff8")
     frame_doc.place(x=1030, y=8, width=320, height=660)
 
-    btn_doc = tk.Button(frame_doc, text="Đọc / Chọn ngôn ngữ", font=("Arial", 14, "bold"),
-                        command=lambda: doc_noi_dung_de() if che_do_doc.get() == "Tự động" else mo_popup_chon_lang(), bg="lightyellow")
+    btn_doc = tk.Button(frame_doc, text="Vào chọn Đa ngôn ngữ", font=("Arial", 14, "bold"),
+                        command=mo_popup_chon_lang, bg="lightyellow")
     btn_doc.place(x=35, y=10, width=250, height=34)
-    btn_tam_dung = tk.Button(frame_doc, text="⏸ Dừng", font=("Arial", 8), command=toggle_tam_dung, bg="lightyellow")
-    btn_tam_dung.place(x=55, y=58, width=210, height=30)
-    btn_doc_lai = tk.Button(frame_doc, text="🔁 Đọc lại", font=("Arial", 8), command=doc_lai, bg="lightyellow")
-    btn_doc_lai.place(x=55, y=96, width=210, height=30)
-    # Disabled: xuất MP3/WAV trực tiếp từ main UI.
+    # Disabled: các nút đọc/xuất trực tiếp ở main UI đã dời vào popup chọn ngôn ngữ.
     # Giữ object để các biến global cũ không bị vỡ, nhưng không place lên UI.
-    # Xuất MP3/M4A chính thức nằm trong popup chọn ngôn ngữ.
+    btn_tam_dung = tk.Button(frame_doc, text="⏸ Dừng", font=("Arial", 8), command=toggle_tam_dung, bg="lightyellow")
+    btn_doc_lai = tk.Button(frame_doc, text="🔁 Đọc lại", font=("Arial", 8), command=doc_lai, bg="lightyellow")
     btn_xuat_mp3 = tk.Button(frame_doc, text="🎧 Xuất file MP3", font=("Arial", 8), command=xuat_file_mp3, bg="lightblue", state="disabled")
     # btn_xuat_mp3.place(x=55, y=134, width=210, height=30)
     
@@ -8320,23 +8317,14 @@ def create_frame_noi_dung(parent):
     progress_bar.place(x=20, y=174, width=280)
     progress_bar.place_forget()
 
-   # Chế độ đọc (dòng trên)
-    frame_che_do = tk.Frame(frame_doc, bg="#f8fff8")
-    frame_che_do.place(x=35, y=180, width=260, height=30)
-
-    che_do_doc = tk.StringVar(value="Chọn tay")
-    tk.Label(frame_che_do, text="Chế độ:").pack(side=tk.LEFT, padx=(0,2))
-    tk.Radiobutton(frame_che_do, text="Tự động", variable=che_do_doc, value="Tự động", font=("Arial", 9)).pack(side=tk.LEFT)
-    tk.Radiobutton(frame_che_do, text="Chọn tay", variable=che_do_doc, value="Chọn tay", font=("Arial", 9)).pack(side=tk.LEFT)
-
-    # Hai combobox nằm ngang nhau (dòng dưới)
+    # Giá trị dùng cho logic đọc/xuất vẫn tồn tại để các hàm cũ không vỡ,
+    # nhưng không còn hiển thị trên màn hình chính.
+    che_do_doc = tk.StringVar(value="Tự động")
     combo_ngon_ngu = ttk.Combobox(frame_doc, values=["Việt", "Anh", "Nhật", "Trung"], font=("Arial", 10))
     combo_ngon_ngu.set("")
-    combo_ngon_ngu.place(x=55, y=216, width=95)
 
     combo_toc_do = ttk.Combobox(frame_doc, values=["Chậm", "Bình thường"], font=("Arial", 10))
     combo_toc_do.set("Bình thường")
-    combo_toc_do.place(x=160, y=216, width=105)
     
     # Disabled: Game Đoán Chữ removed in audio-tool version.
     # btn_game = tk.Button(frame_doc, text="🎮 Game Đoán Chữ", font=("Arial", 11, "bold"),
@@ -8743,29 +8731,21 @@ def _place_doc_controls(panel_width, panel_height):
     buttons = [w for w in children if isinstance(w, tk.Button)]
     by_text = {str(w.cget("text")): w for w in buttons}
     inner_w = max(180, panel_width - 40)
-    button_w = min(280, inner_w)
+    button_w = min(270, inner_w)
     button_x = max(10, (panel_width - button_w) // 2)
     button_h = 34
+    tool_start = max(300, min(panel_height - 210, int(panel_height * 0.5)))
     placements = [
-        ("Đọc / Chọn ngôn ngữ", 10, button_h),
-        ("⏸ Dừng", 58, 30),
-        ("🔁 Đọc lại", 96, 30),
-        ("Convert Mp3 🎹 Wav", max(250, panel_height - 320), 30),
-        ("✂️ Cutter Sound", max(286, panel_height - 284), 30),
-        ("➕ Joiner Sound", max(322, panel_height - 248), 30),
-        ("📥 Import tài liệu", max(358, panel_height - 172), 30),
+        ("Vào chọn Đa ngôn ngữ", 16, button_h),
+        ("Convert Mp3 🎹 Wav", tool_start, 30),
+        ("✂️ Cutter Sound", tool_start + 40, 30),
+        ("➕ Joiner Sound", tool_start + 80, 30),
+        ("📥 Import tài liệu", min(panel_height - 70, tool_start + 150), 30),
     ]
     for text, y_pos, h in placements:
         widget = by_text.get(text)
         if widget is not None:
             widget.place(x=button_x, y=y_pos, width=button_w, height=h)
-
-    frame_che_do = next((w for w in children if isinstance(w, tk.Frame)), None)
-    if frame_che_do is not None:
-        frame_che_do.place(x=button_x, y=150, width=button_w, height=34)
-    combo_ngon_ngu.place(x=button_x, y=194, width=max(80, (button_w - 10) // 2), height=30)
-    combo_toc_do.place(x=button_x + (button_w + 10) // 2, y=194,
-                       width=max(80, (button_w - 10) // 2), height=30)
 
 
 _layout_job = None
@@ -8814,19 +8794,14 @@ def _apply_main_layout_now():
 
     panel_h = max(300, main_h - 16)
     _place_doc_controls(right_w, panel_h)
-    # Logo nằm trong khoảng trống riêng, phía trên nhóm nút công cụ;
-    # không đặt ở đáy panel để tránh che nút Import/Cutter/Joiner.
-    action_y = max(250, panel_h - 320)
-    logo_x = left_w + gap + 15
-    logo_w = min(185, right_w - 30)
-    logo_y = top + 8 + 250
-    logo_h = min(150, action_y - 270)
-    if logo_h >= 70:
-        frame_logo.place(x=logo_x + (right_w - logo_w - 30) // 2,
-                         y=logo_y, width=logo_w, height=logo_h)
-        _resize_logo(logo_w, logo_h)
-    else:
-        frame_logo.place_forget()
+    # Logo nằm giữa phần trống phía trên cụm công cụ, luôn được nâng lên trên các khung khác.
+    logo_w = min(160, max(132, right_w - 140))
+    logo_h = min(124, max(104, int(panel_h * 0.17)))
+    logo_x = left_w + gap + (right_w - logo_w) // 2
+    logo_y = top + max(150, min(int(panel_h * 0.26), panel_h - logo_h - 190))
+    frame_logo.place(x=logo_x, y=logo_y, width=logo_w, height=logo_h)
+    frame_logo.lift()
+    _resize_logo(logo_w, logo_h)
 
 
 root.bind("<Configure>", apply_main_layout)
