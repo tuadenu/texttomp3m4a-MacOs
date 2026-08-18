@@ -2888,6 +2888,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         "languages": [code for code in ("vi", "en", "ja", "zh") if ngon_ngu_flags[code].get()],
         "zh_male_voice": "",
         "zh_female_voice": "",
+        "zh_narrator_voice": "",
+        "hsk_speed_profile": "HSK1",
+        "speech_rate": 0.90,
         "preview_path": "",
         "preview_report": None,
         "preview_approved": False,
@@ -2903,6 +2906,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             "languages": [code for code in ("vi", "en", "ja", "zh") if ngon_ngu_flags[code].get()],
             "zh_male_voice": (slots.get("Nam", {}) or {}).get("voice_name", "") or "",
             "zh_female_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
+            "zh_narrator_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
+            "hsk_speed_profile": hsk30_audio_state.get("hsk_speed_profile", "HSK1"),
+            "speech_rate": hsk30_audio_state.get("speech_rate", 0.90),
             "google_api_key": GOOGLE_TTS_API_KEY,
         }
 
@@ -2918,6 +2924,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             "languages": snapshot["languages"],
             "zh_male_voice": snapshot["zh_male_voice"],
             "zh_female_voice": snapshot["zh_female_voice"],
+            "zh_narrator_voice": snapshot["zh_narrator_voice"],
+            "hsk_speed_profile": snapshot["hsk_speed_profile"],
+            "speech_rate": snapshot["speech_rate"],
             "google_api_key": snapshot["google_api_key"],
             "confirmed": bool(vocab_tts_confirmed_var.get()),
             "preview_approved": bool(hsk30_audio_state.get("preview_approved", False)),
@@ -2926,14 +2935,34 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     def _format_hsk30_audio_context(context):
         langs = ", ".join(context.get("languages") or []) or "—"
         source = context.get("source_path") or "Chưa chọn tài liệu"
+        try:
+            speech_rate = round(float(context.get("speech_rate", 0.90) or 0.90), 2)
+        except Exception:
+            speech_rate = 0.90
+        hsk_profile = context.get("hsk_speed_profile", "HSK1") or "HSK1"
+        speech_rate_label = {
+            0.60: "HSK1 thử chậm — 0.60x",
+            0.70: "HSK1 thử chậm — 0.70x",
+            0.88: "HSK1 chậm hơn — 0.88x",
+            0.90: "HSK1 chuẩn — 0.90x",
+            0.92: "HSK1 nhanh hơn — 0.92x",
+            0.97: "HSK4 chậm — 0.97x",
+            0.98: "HSK4 chuẩn — 0.98x",
+            1.00: f"{hsk_profile} chuẩn — 1.00x",
+            1.02: "HSK5-6 nhanh hơn — 1.02x",
+            1.05: "HSK5-6 nhanh hơn — 1.05x",
+        }.get(speech_rate, f"{hsk_profile} custom — {speech_rate:.2f}x")
         return (
             f"Tài liệu: {source}\n"
             f"Cấp độ: {context.get('level', 'HSK 3.0')}\n"
             f"Engine: {context.get('engine', '')}\n"
-            f"Tốc độ: {context.get('speed', '')}\n"
+            f"Tốc độ Lang: {context.get('speed', '')}\n"
             f"Giọng đọc: {context.get('voice', '')}\n"
             f"ZH Nam: {context.get('zh_male_voice', '') or '—'}\n"
             f"ZH Nữ: {context.get('zh_female_voice', '') or '—'}\n"
+            f"Narrator: {context.get('zh_narrator_voice', '') or '—'}\n"
+            f"HSK speed profile: {hsk_profile}\n"
+            f"Speech rate: {speech_rate_label}\n"
             f"Ngôn ngữ đang bật: {langs}\n"
             f"Xác nhận M4A vocab: {'Có' if context.get('confirmed') else 'Chưa'}\n"
             f"Preview duyệt: {'Có' if context.get('preview_approved') else 'Chưa'}"
@@ -3069,11 +3098,25 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tune_win.transient(audio_win)
             tune_win.grab_set()
 
+            def _hsk_speed_label(rate_value):
+                try:
+                    rate = round(float(rate_value or 0.90), 2)
+                except Exception:
+                    rate = 0.90
+                return {
+                    0.60: "HSK1 thử chậm — 0.60x",
+                    0.70: "HSK1 thử chậm — 0.70x",
+                    0.88: "HSK1 chậm hơn — 0.88x",
+                    0.90: "HSK1 chuẩn — 0.90x",
+                    0.92: "HSK1 nhanh hơn — 0.92x",
+                }.get(rate, f"HSK1 custom — {rate:.2f}x")
+
             local_engine = tk.StringVar(value=combo_engine.get().strip())
-            local_speed = tk.StringVar(value=combo_toc_do_popup.get().strip())
             local_voice = tk.StringVar(value=combo_giong_popup.get().strip())
             local_zh_male = tk.StringVar(value=hsk30_audio_state.get("zh_male_voice", ""))
             local_zh_female = tk.StringVar(value=hsk30_audio_state.get("zh_female_voice", ""))
+            local_zh_narrator = tk.StringVar(value=hsk30_audio_state.get("zh_narrator_voice", "") or hsk30_audio_state.get("zh_female_voice", ""))
+            local_hsk_speed = tk.StringVar(value=_hsk_speed_label(hsk30_audio_state.get("speech_rate", 0.90)))
 
             tk.Label(
                 tune_win,
@@ -3089,10 +3132,19 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             ttk.Combobox(form, textvariable=local_engine, values=["Google Cloud TTS", "gTTS", "Polly"], state="readonly").grid(
                 row=0, column=1, sticky="ew", pady=4
             )
-            tk.Label(form, text="Tốc độ").grid(row=1, column=0, sticky="w", pady=4)
-            ttk.Combobox(form, textvariable=local_speed, values=["Chậm", "Bình thường"], state="readonly").grid(
-                row=1, column=1, sticky="ew", pady=4
-            )
+            tk.Label(form, text="Tốc độ HSK").grid(row=1, column=0, sticky="w", pady=4)
+            ttk.Combobox(
+                form,
+                textvariable=local_hsk_speed,
+                values=[
+                    "HSK1 thử chậm — 0.60x",
+                    "HSK1 thử chậm — 0.70x",
+                    "HSK1 chậm hơn — 0.88x",
+                    "HSK1 chuẩn — 0.90x",
+                    "HSK1 nhanh hơn — 0.92x",
+                ],
+                state="readonly",
+            ).grid(row=1, column=1, sticky="ew", pady=4)
             tk.Label(form, text="Giọng đọc").grid(row=2, column=0, sticky="w", pady=4)
             ttk.Combobox(
                 form,
@@ -3104,25 +3156,52 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tk.Entry(form, textvariable=local_zh_male, state="readonly").grid(row=3, column=1, sticky="ew", pady=4)
             tk.Label(form, text="ZH voice nữ").grid(row=4, column=0, sticky="w", pady=4)
             tk.Entry(form, textvariable=local_zh_female, state="readonly").grid(row=4, column=1, sticky="ew", pady=4)
+            tk.Label(form, text="Narrator voice").grid(row=5, column=0, sticky="w", pady=4)
+            tk.Entry(form, textvariable=local_zh_narrator, state="readonly").grid(row=5, column=1, sticky="ew", pady=4)
             form.columnconfigure(1, weight=1)
 
             def save_tuning():
                 hsk30_audio_state["engine"] = local_engine.get().strip()
-                hsk30_audio_state["speed"] = local_speed.get().strip()
                 hsk30_audio_state["voice"] = local_voice.get().strip()
                 hsk30_audio_state["zh_male_voice"] = local_zh_male.get().strip()
                 hsk30_audio_state["zh_female_voice"] = local_zh_female.get().strip()
+                hsk30_audio_state["zh_narrator_voice"] = local_zh_narrator.get().strip()
+                speed_choice = local_hsk_speed.get().strip()
+                if "0.60" in speed_choice:
+                    hsk30_audio_state["speech_rate"] = 0.60
+                elif "0.70" in speed_choice:
+                    hsk30_audio_state["speech_rate"] = 0.70
+                elif "0.88" in speed_choice:
+                    hsk30_audio_state["speech_rate"] = 0.88
+                elif "0.92" in speed_choice:
+                    hsk30_audio_state["speech_rate"] = 0.92
+                else:
+                    hsk30_audio_state["speech_rate"] = 0.90
+                hsk30_audio_state["hsk_speed_profile"] = "HSK1"
                 refresh_audio_state()
+                if hsk30_audio_state.get("source_path"):
+                    _load_preview(hsk30_audio_state.get("source_path"))
                 tune_win.destroy()
 
             def pull_from_lang():
                 snapshot = _capture_lang_snapshot()
                 hsk30_audio_state.update(snapshot)
                 local_engine.set(hsk30_audio_state["engine"])
-                local_speed.set(hsk30_audio_state["speed"])
                 local_voice.set(hsk30_audio_state["voice"])
                 local_zh_male.set(hsk30_audio_state["zh_male_voice"])
                 local_zh_female.set(hsk30_audio_state["zh_female_voice"])
+                local_zh_narrator.set(hsk30_audio_state["zh_narrator_voice"])
+                rate = float(hsk30_audio_state.get("speech_rate", 0.90) or 0.90)
+                if rate <= 0.65:
+                    local_hsk_speed.set("HSK1 thử chậm — 0.60x")
+                elif rate <= 0.75:
+                    local_hsk_speed.set("HSK1 thử chậm — 0.70x")
+                elif rate <= 0.885:
+                    local_hsk_speed.set("HSK1 chậm hơn — 0.88x")
+                elif rate >= 0.915:
+                    local_hsk_speed.set("HSK1 nhanh hơn — 0.92x")
+                else:
+                    local_hsk_speed.set(_hsk_speed_label(rate))
                 refresh_audio_state()
 
             btn_row = tk.Frame(tune_win)
