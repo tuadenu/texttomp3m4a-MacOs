@@ -8484,8 +8484,15 @@ def cutter_sound():
 #====Dán âm thanh
 def joiner_sound():
     import os
+    import tempfile
+    import subprocess
     from tkinter import filedialog, messagebox
     import pygame
+
+    if FFMPEG_PATH and os.path.isfile(FFMPEG_PATH):
+        AudioSegment.converter = FFMPEG_PATH
+        AudioSegment.ffmpeg = FFMPEG_PATH
+        AudioSegment.ffprobe = ffprobe_path or FFMPEG_PATH
 
     files = filedialog.askopenfilenames(title="Chọn nhiều file âm thanh để nối",
                                         filetypes=[("Audio files", "*.mp3 *.wav *.m4a")])
@@ -8510,19 +8517,41 @@ def joiner_sound():
             progress_bar.pack()
             progress_bar.update()
 
-            combined = AudioSegment.empty()
+            if not FFMPEG_PATH or not os.path.isfile(FFMPEG_PATH):
+                raise ValueError("Không tìm thấy ffmpeg để nối file âm thanh.")
+
             total = len(files)
+            input_args = []
+            filter_inputs = []
+            for index, file_path in enumerate(files):
+                input_args.extend(["-i", file_path])
+                filter_inputs.append(f"[{index}:a]")
 
-            for i, f in enumerate(files):
-                audio = AudioSegment.from_file(f)
-                combined += audio
+            if fmt_out == "wav":
+                output_args = ["-c:a", "pcm_s16le"]
+            elif fmt_out == "mp3":
+                output_args = ["-c:a", "libmp3lame", "-b:a", "192k"]
+            else:
+                output_args = ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"]
 
-                progress = int(((i + 1) / total) * 100)
-                progress_var.set(progress)
+            filter_complex = "".join(filter_inputs) + f"concat=n={total}:v=0:a=1[out]"
+            cmd = [
+                FFMPEG_PATH,
+                "-y",
+                *input_args,
+                "-filter_complex", filter_complex,
+                "-map", "[out]",
+                *output_args,
+                save_path,
+            ]
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if result.returncode != 0:
+                raise Exception(result.stderr or "FFmpeg không nối được file âm thanh.")
+
+            for i in range(total):
+                progress_var.set(int(((i + 1) / total) * 100))
                 progress_bar.update()
-                time.sleep(0.05)
-
-            combined.export(save_path, format=fmt_out, bitrate="192k")
+                time.sleep(0.02)
 
             pygame.mixer.init()
             pygame.mixer.music.load(SUCCESS_SOUND)
