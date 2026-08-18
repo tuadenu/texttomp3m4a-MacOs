@@ -8488,16 +8488,18 @@ def joiner_sound():
     import pygame
 
     files = filedialog.askopenfilenames(title="Chọn nhiều file âm thanh để nối",
-                                        filetypes=[("Audio files", "*.mp3 *.wav")])
+                                        filetypes=[("Audio files", "*.mp3 *.wav *.m4a")])
     if not files or len(files) < 2:
         messagebox.showwarning("Ít file", "Cần chọn ít nhất 2 file để nối!")
         return
 
     first_ext = os.path.splitext(files[0])[1].lower()
-    fmt_out = first_ext.replace(".", "")
+    fmt_out = "ipod" if first_ext == ".m4a" else first_ext.replace(".", "")
+    default_name = f"joined_audio{first_ext if first_ext in {'.mp3', '.wav', '.m4a'} else '.m4a'}"
 
     save_path = filedialog.asksaveasfilename(defaultextension=first_ext,
-                                             filetypes=[("Audio files", "*.mp3 *.wav")],
+                                             filetypes=[("Audio files", "*.mp3 *.wav *.m4a")],
+                                             initialfile=default_name,
                                              title="Lưu file nối")
     if not save_path:
         return
