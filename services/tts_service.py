@@ -6,6 +6,7 @@ import shutil
 import subprocess
 
 from pydub import AudioSegment
+from pipelines.pronunciation_overrides import prepare_spoken_text
 
 
 def process_text_lines(danh_sach, selected_lang_list=None):
@@ -75,6 +76,8 @@ def generate_audio_core(
 
     for i, (dong, lang) in enumerate(danh_sach_doc):
         dong_sach = clean_text_func(dong)
+        prepared = prepare_spoken_text(dong_sach, lang, engine, giong)
+        spoken_text = prepared.spoken_text
 
         dialogue_pairs = {
             "Hội thoại 1 câu nam - 1 câu nữ": ("Nam", "Nữ"),
@@ -92,7 +95,7 @@ def generate_audio_core(
             if not dong_sach.strip():
                 full_audio += AudioSegment.silent(duration=between_silence_ms)
             else:
-                tts_func(dong_sach, lang=lang, voice=voice, toc_do=toc_do, engine=engine, file_out=temp_mp3)
+                tts_func(spoken_text, lang=lang, voice=voice, toc_do=toc_do, engine=engine, file_out=temp_mp3)
                 try:
                     segment = load_audio_segment_from_mp3(temp_mp3)
                 except Exception as e2:

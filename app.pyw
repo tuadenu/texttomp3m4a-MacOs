@@ -33,6 +33,7 @@ from services.tts_service import (
     load_audio_segment_from_mp3,
     process_text_lines,
 )
+from pipelines.pronunciation_overrides import prepare_spoken_text
 from pipelines.hsk30_audio import (
     HSK30_AUDIO_ROOT,
     HSK30_DEFAULT_SOURCE,
@@ -647,6 +648,8 @@ def tao_file_mp3(text, lang="vi", voice="Mặc định", toc_do="Bình thường
 
         # ✅ Chuẩn hoá lang
         lang_clean = _normalize_lang_code(lang)
+        prepared = prepare_spoken_text(text, lang_clean, engine, voice)
+        spoken_text = prepared.spoken_text
 
         # ✅ Nếu sau khi làm sạch mà rỗng → tạo im lặng và thoát
         if not text.strip():
@@ -658,35 +661,35 @@ def tao_file_mp3(text, lang="vi", voice="Mặc định", toc_do="Bình thường
         # ================= Amazon Polly =================
         if engine_norm == "polly":
             try:
-                _speak_with_polly(text, lang_clean, voice, toc_do, file_out)
+                _speak_with_polly(spoken_text, lang_clean, voice, toc_do, file_out)
                 return
             except Exception as e:
                 print(f"⚠ Polly lỗi, thử Google Cloud TTS: {e}")
                 thong_bao_loi_api(e, "AWS Polly")
                 try:
-                    _speak_with_google(text, lang_clean, slow, file_out)
+                    _speak_with_google(spoken_text, lang_clean, slow, file_out)
                     return
                 except Exception as e2:
                     print(f"⚠ Google Cloud TTS lỗi, thử gTTS: {e2}")
-                    _speak_with_gtts(text, lang_clean, slow, file_out)
+                    _speak_with_gtts(spoken_text, lang_clean, slow, file_out)
                     return
 
         # ================= gTTS =================
         if engine_norm == "gtts":
             # gTTS is explicit: do not contact Google Cloud first.
-            _speak_with_gtts(text, lang_clean, slow, file_out)
+            _speak_with_gtts(spoken_text, lang_clean, slow, file_out)
             return
 
         # ================= Google Cloud TTS =================
         if engine_norm in {"google cloud tts", "google cloud", "google"}:
             try:
-                _speak_with_google(text, lang_clean, slow, file_out)
+                _speak_with_google(spoken_text, lang_clean, slow, file_out)
                 return
             except Exception as e:
                 print(f"⚠ Google Cloud TTS lỗi hoặc không khả dụng, fallback to gTTS: {e}")
                 thong_bao_loi_api(e, "Google Cloud TTS")
             try:
-                _speak_with_gtts(text, lang_clean, slow, file_out)
+                _speak_with_gtts(spoken_text, lang_clean, slow, file_out)
                 return
             except Exception as e:
                 msg = str(e)
@@ -706,11 +709,11 @@ def tao_file_mp3(text, lang="vi", voice="Mặc định", toc_do="Bình thường
 
         print(f"⚠ Engine '{engine}' không được nhận diện, dùng Google Cloud TTS rồi gTTS.")
         try:
-            _speak_with_google(text, lang_clean, slow, file_out)
+            _speak_with_google(spoken_text, lang_clean, slow, file_out)
             return
         except Exception as e:
             print(f"⚠ Google Cloud TTS lỗi, fallback to gTTS: {e}")
-        _speak_with_gtts(text, lang_clean, slow, file_out)
+        _speak_with_gtts(spoken_text, lang_clean, slow, file_out)
         return
 
     except Exception as e:
@@ -898,6 +901,8 @@ def tao_file_google_mp3(text, lang="vi", gender="Mặc định", voice_name="", 
     profile_selection = _google_tts_resolve_selection(lang, requested_gender)
     profile_gender = (profile_selection.get("gender") or requested_gender).strip()
     profile_voice_name = (profile_selection.get("voice_name") or "").strip()
+    prepared = prepare_spoken_text(text, lang, "Google Cloud TTS", gender)
+    text = prepared.spoken_text
     voice_name = (voice_name or profile_voice_name or "").strip()
     gender = requested_gender if requested_gender else "Mặc định"
     if not voice_name:

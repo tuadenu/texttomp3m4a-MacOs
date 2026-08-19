@@ -30,6 +30,8 @@ try:
 except Exception:
     texttospeech = None
 
+from pipelines.pronunciation_overrides import prepare_spoken_text
+
 try:
     from config.settings import AWS_REGION as CONFIG_AWS_REGION
 except Exception:
@@ -293,8 +295,9 @@ def _tts_segment_gtts(text, lang, temp_dir, speed="Bình thường"):
     min_delay = float(os.environ.get("TTS_MIN_DELAY_SECONDS", "1.5"))
     jitter_max = float(os.environ.get("TTS_DELAY_JITTER_SECONDS", "0.3"))
 
-    # cache key based on text+lang
-    key = hashlib.sha1(f"{lang}|{text}".encode("utf-8")).hexdigest()
+    prepared = prepare_spoken_text(text, lang, "gTTS")
+    spoken_text = prepared.spoken_text
+    key = hashlib.sha1(f"{lang}|gtts|{prepared.mode}|{spoken_text}".encode("utf-8")).hexdigest()
     cache_path = os.path.join(_TTS_CACHE_DIR, f"{key}.mp3")
     if os.path.exists(cache_path):
         try:
@@ -314,7 +317,7 @@ def _tts_segment_gtts(text, lang, temp_dir, speed="Bình thường"):
                     time.sleep(to_sleep)
                 _last_gtts_time = time.time()
 
-            gTTS(text=text, lang=lang, slow=_is_slow_speed(speed)).save(temp_mp3)
+            gTTS(text=spoken_text, lang=lang, slow=_is_slow_speed(speed)).save(temp_mp3)
             # copy to cache for reuse
             try:
                 shutil.copyfile(temp_mp3, cache_path)
@@ -343,7 +346,7 @@ def _tts_segment_gtts(text, lang, temp_dir, speed="Bình thường"):
     except OSError:
         pass
 
-    raise TTSGenerationError(f"gTTS không tạo được audio cho lang={lang}: {text!r}")
+    raise TTSGenerationError(f"gTTS không tạo được audio cho lang={lang}: {spoken_text!r}")
 
 
 def _tts_segment_polly(text, lang, temp_dir, speed="Bình thường", voice="Mặc định"):
@@ -359,8 +362,9 @@ def _tts_segment_polly(text, lang, temp_dir, speed="Bình thường", voice="M�
         region_name=_get_polly_region(),
     ).client("polly")
 
+    prepared = prepare_spoken_text(text, lang, "Polly", voice)
     text_type = "text"
-    tts_text = text
+    tts_text = prepared.spoken_text
     if _is_slow_speed(speed):
         tts_text = f"<speak><prosody rate='80%'>{text}</prosody></speak>"
         text_type = "ssml"
@@ -388,7 +392,8 @@ def _tts_segment_google(text, lang, temp_dir, speed="Bình thường", voice="M�
 
     # prepare client and params
     client = _google_tts_client()
-    synthesis_input = texttospeech.SynthesisInput(text=text)
+    prepared = prepare_spoken_text(text, lang, "Google Cloud TTS", voice)
+    synthesis_input = texttospeech.SynthesisInput(text=prepared.spoken_text)
     # choose language/voice per requested lang
     lang_map = {
         "vi": "vi-VN",
@@ -447,9 +452,11 @@ def _tts_segment_google(text, lang, temp_dir, speed="Bình thường", voice="M�
 def _tts_segment(text, lang, temp_dir, engine_mode, speed="Bình thường", voice="Mặc định"):
     lang_code = _normalize_lang_code(lang)
     engine_clean = (engine_mode or "gTTS").strip().lower()
+    prepared = prepare_spoken_text(text, lang_code, engine_mode, voice)
+    spoken_text = prepared.spoken_text
     if engine_clean == "gtts":
         # gTTS is an explicit user choice. Do not probe Google Cloud first.
-        return _tts_segment_gtts(text, lang_code, temp_dir, speed)
+        return _tts_segment_gtts(spoken_text, lang_code, temp_dir, speed)
 
     # If Polly is explicitly selected, keep fallback local to Polly -> gTTS.
     # Do not probe Google Cloud here: Polly has no Vietnamese voice in this
@@ -458,27 +465,27 @@ def _tts_segment(text, lang, temp_dir, engine_mode, speed="Bình thường", voi
     if engine_clean == "polly":
         if lang_code not in {"en", "ja", "zh"}:
             _log(f"[Pipeline] Polly does not support lang={lang_code}; using gTTS")
-            return _tts_segment_gtts(text, lang_code, temp_dir, speed)
+            return _tts_segment_gtts(spoken_text, lang_code, temp_dir, speed)
         try:
-            return _tts_segment_polly(text, lang_code, temp_dir, speed, voice)
+            return _tts_segment_polly(spoken_text, lang_code, temp_dir, speed, voice)
         except Exception as exc:
             _log(f"[Pipeline] Polly failed for lang={lang_code}: {exc}; falling back to gTTS")
-            return _tts_segment_gtts(text, lang_code, temp_dir, speed)
+            return _tts_segment_gtts(spoken_text, lang_code, temp_dir, speed)
 
     # Google Cloud (and legacy/unrecognised values): prefer Google Cloud then gTTS.
     try:
-        return _tts_segment_google(text, lang_code, temp_dir, speed, voice)
+        return _tts_segment_google(spoken_text, lang_code, temp_dir, speed, voice)
     except Exception as exc:
         _log(f"[Pipeline] Google Cloud TTS failed for lang={lang_code}: {exc}; falling back to gTTS")
 
     try:
-        return _tts_segment_gtts(text, lang_code, temp_dir, speed)
+        return _tts_segment_gtts(spoken_text, lang_code, temp_dir, speed)
     except Exception as exc:
         _log(f"[Pipeline] gTTS failed for lang={lang_code}: {exc}")
         if lang_code in {"en", "ja", "zh"}:
             _log(f"[Pipeline] Fallback to Polly for lang={lang_code}")
             try:
-                return _tts_segment_polly(text, lang_code, temp_dir, speed, voice)
+                return _tts_segment_polly(spoken_text, lang_code, temp_dir, speed, voice)
             except Exception as polly_exc:
                 _log(f"[Pipeline] Polly fallback failed for lang={lang_code}: {polly_exc}")
         raise TTSGenerationError(f"Không tạo được audio bằng engine {engine_mode} cho lang={lang_code}") from exc

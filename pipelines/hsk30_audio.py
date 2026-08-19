@@ -34,6 +34,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency at runtime
     texttospeech = None
 
+from pipelines.pronunciation_overrides import prepare_spoken_text
 from services.tts_service import load_audio_segment_from_mp3
 
 
@@ -697,13 +698,16 @@ def _load_audio_segment(path: str | Path) -> AudioSegment:
         return AudioSegment.from_file(io.BytesIO(result.stdout), format="wav")
 
 
-def _tts_cache_key(engine: str, voice_name: str, speed: str, text: str, speaker_label: str) -> str:
+def _tts_cache_key(engine: str, voice_name: str, speed: str, language: str, mode: str, spoken_text: str, source_text: str, speaker_label: str) -> str:
     payload = json.dumps(
         {
             "engine": _clean_text(engine).lower(),
             "voice": _clean_text(voice_name),
             "speed": _clean_text(speed),
-            "text": _normalize_tts_text(text),
+            "language": _clean_text(language).lower(),
+            "mode": _clean_text(mode).lower(),
+            "spoken_text": _normalize_tts_text(spoken_text),
+            "source_text": _normalize_tts_text(source_text),
             "speaker": _clean_text(speaker_label),
         },
         ensure_ascii=False,
@@ -797,8 +801,10 @@ def _synthesize_tts_segment(
     if not normalized_text:
         return _silent_segment(0), True
 
+    prepared = prepare_spoken_text(normalized_text, "zh-CN", engine, voice_name)
+    spoken_text = prepared.spoken_text
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_key = _tts_cache_key(engine, voice_name, speed, normalized_text, speaker_label)
+    cache_key = _tts_cache_key(engine, voice_name, speed, "zh-CN", prepared.mode, spoken_text, normalized_text, speaker_label)
     cache_path = cache_dir / f"{cache_key}.mp3"
 
     if cache_path.is_file() and cache_path.stat().st_size > 0:
@@ -811,6 +817,8 @@ def _synthesize_tts_segment(
             speed=speed,
             voice_name=voice_name,
             speaker_label=speaker_label,
+            spoken_text=spoken_text,
+            pronunciation_mode=prepared.mode,
         )
         if not isinstance(segment, AudioSegment):
             raise TypeError("tts_provider phải trả về AudioSegment")
@@ -827,7 +835,7 @@ def _synthesize_tts_segment(
         if gTTS is None:
             raise RuntimeError("gTTS không khả dụng")
         temp_mp3 = cache_path.with_suffix(".tmp.mp3")
-        gTTS(text=normalized_text, lang="zh", slow=speech_rate < 0.95).save(str(temp_mp3))
+        gTTS(text=spoken_text, lang="zh", slow=speech_rate < 0.95).save(str(temp_mp3))
         shutil.move(str(temp_mp3), str(cache_path))
         return load_audio_segment_from_mp3(str(cache_path)).set_frame_rate(44100).set_channels(2), False
 
@@ -846,7 +854,7 @@ def _synthesize_tts_segment(
             region_name=os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "ap-southeast-1",
         ).client("polly")
         text_type = "text"
-        tts_text = normalized_text
+        tts_text = spoken_text
         if abs(speech_rate - 1.0) > 0.001:
             tts_text = f"<speak><prosody rate='{int(round(speech_rate * 100))}%'>{normalized_text}</prosody></speak>"
             text_type = "ssml"
@@ -871,7 +879,7 @@ def _synthesize_tts_segment(
         client_options = ClientOptions(api_key=api_key)
 
     client = texttospeech.TextToSpeechClient(client_options=client_options) if client_options else texttospeech.TextToSpeechClient()
-    synthesis_input = texttospeech.SynthesisInput(text=normalized_text)
+    synthesis_input = texttospeech.SynthesisInput(text=spoken_text)
     voice_kwargs = {"language_code": _google_tts_lang_code("zh")}
     selected_voice = _clean_text(voice_name)
     if selected_voice:
