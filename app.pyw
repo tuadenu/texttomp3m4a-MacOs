@@ -40,6 +40,7 @@ from pipelines.hsk30_audio import (
     format_phase1b_build_report,
     format_phase1_preview_report,
     parse_hsk1_phase1,
+    phase1_output_filename,
 )
 from utils.file_reader import read_excel_vocab, read_text_file
 
@@ -3347,6 +3348,178 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
             finish_when_ready()
 
+        def export_hsk30_audio_batch():
+            context = refresh_audio_state()
+            source_path = hsk30_audio_state.get("source_path") or str(HSK30_DEFAULT_SOURCE)
+            if not source_path or not Path(source_path).is_file():
+                messagebox.showwarning(
+                    "Chưa có file nguồn",
+                    "Hãy import Excel HSK1 trước khi xuất batch.",
+                    parent=audio_win,
+                )
+                return
+
+            if preview_report["value"] is None:
+                messagebox.showwarning(
+                    "Chưa có preview",
+                    "Hãy import Excel và xem preview HSK1001 trước khi xuất batch HSK1.",
+                    parent=audio_win,
+                )
+                return
+
+            if not preview_approved_var.get():
+                messagebox.showwarning(
+                    "Chưa duyệt preview",
+                    "Hãy tick 'Đã duyệt preview HSK1001' trước khi bấm Xuất batch HSK1.",
+                    parent=audio_win,
+                )
+                return
+
+            start_dir = Path(source_path).parent
+            output_dir = filedialog.askdirectory(
+                parent=audio_win,
+                title="Chọn thư mục xuất batch HSK1",
+                initialdir=str(start_dir),
+            )
+            if not output_dir:
+                return
+
+            exam_codes = [f"HSK10{i:02d}" for i in range(1, 8)]
+            progress_win = tk.Toplevel(audio_win)
+            set_popup_icon(progress_win)
+            progress_win.title("Đang build batch HSK1")
+            progress_win.geometry("580x190")
+            progress_win.minsize(580, 190)
+            progress_win.transient(audio_win)
+            progress_win.grab_set()
+
+            progress_msg_var = tk.StringVar(value="Đang khởi tạo batch HSK1...")
+            progress_detail_var = tk.StringVar(value="HSK1001 -> HSK1007")
+            tk.Label(progress_win, text="Batch HSK1 3.0 Audio", font=("Arial", 12, "bold")).pack(
+                anchor="w", padx=14, pady=(14, 6)
+            )
+            tk.Label(progress_win, textvariable=progress_msg_var, wraplength=540, justify="left").pack(
+                anchor="w", padx=14, pady=(0, 4)
+            )
+            tk.Label(progress_win, textvariable=progress_detail_var, fg="#555", wraplength=540, justify="left").pack(
+                anchor="w", padx=14, pady=(0, 8)
+            )
+            progress = ttk.Progressbar(progress_win, orient="horizontal", length=520, mode="determinate", maximum=len(exam_codes))
+            progress.pack(padx=14, pady=(0, 14))
+
+            state = {
+                "done": False,
+                "error": None,
+                "results": [],
+                "message": "Đang chuẩn bị build batch...",
+                "current": 0,
+            }
+
+            def worker():
+                try:
+                    for index, exam_code in enumerate(exam_codes, start=1):
+                        state["current"] = index
+                        state["message"] = f"Đang build {exam_code}..."
+                        report = parse_hsk1_phase1(
+                            source_path,
+                            sheet_name="Sheet1",
+                            exam_code=exam_code,
+                            asset_root=HSK30_AUDIO_ROOT,
+                            lang_state=context,
+                        )
+                        output_path = Path(output_dir) / phase1_output_filename(exam_code)
+                        result = build_hsk1_phase1b(
+                            report,
+                            output_path,
+                            lang_state=context,
+                            progress_callback=lambda message, code=exam_code: state.__setitem__("message", f"{code}: {message}"),
+                        )
+                        state["results"].append(result)
+                    state["message"] = "Batch HSK1 đã build xong."
+                except Exception as exc:
+                    state["error"] = exc
+                    state["message"] = f"Lỗi batch HSK1: {exc}"
+                finally:
+                    state["done"] = True
+
+            threading.Thread(target=worker, daemon=True).start()
+
+            def finish_when_ready():
+                progress_msg_var.set(state["message"])
+                progress_detail_var.set(f"Đã xong {state['current']}/{len(exam_codes)}")
+                progress["value"] = min(state["current"], len(exam_codes))
+                if not state["done"]:
+                    progress_win.after(150, finish_when_ready)
+                    return
+
+                try:
+                    progress_win.destroy()
+                except Exception:
+                    pass
+
+                if state["error"] is not None:
+                    messagebox.showerror("Lỗi batch HSK1", str(state["error"]), parent=audio_win)
+                    return
+
+                batch_results = state["results"]
+                report_win = tk.Toplevel(audio_win)
+                set_popup_icon(report_win)
+                report_win.title("Batch HSK1 report")
+                report_win.geometry("860x620")
+                report_win.minsize(760, 520)
+                report_win.transient(audio_win)
+                report_win.grab_set()
+
+                tk.Label(report_win, text="HSK1 batch build report", font=("Arial", 13, "bold")).pack(
+                    anchor="w", padx=14, pady=(14, 8)
+                )
+                tk.Label(
+                    report_win,
+                    text=f"Đã xuất batch vào: {output_dir}",
+                    fg="#355",
+                    wraplength=800,
+                    justify="left",
+                ).pack(anchor="w", padx=14, pady=(0, 8))
+
+                report_text = tk.Text(report_win, wrap="word", font=("Consolas", 10))
+                report_text.pack(fill="both", expand=True, padx=14, pady=(0, 10))
+
+                lines = [
+                    f"Batch output dir: {output_dir}",
+                    f"Source: {source_path}",
+                    f"Speed: {context.get('speech_rate', 0.90)}x",
+                    f"Profile: {context.get('hsk_speed_profile', 'HSK1')}",
+                    "",
+                ]
+                for result in batch_results:
+                    lines.append(f"{result.get('exam', '')} -> {result.get('output_file', '')}")
+                    lines.append(f"  Status: {result.get('status', '')}")
+                    lines.append(f"  Final duration: {result.get('final_duration_ms', 0)} ms")
+                    lines.append(f"  Difference: {result.get('difference_ms', 0)} ms")
+                    lines.append(f"  Unique TTS requests: {result.get('unique_tts_requests', 0)}")
+                    lines.append(f"  Reused segments: {result.get('reused_segments', 0)}")
+                    lines.append("")
+                report_text.insert("1.0", "\n".join(lines).rstrip())
+                report_text.configure(state="disabled")
+
+                btn_row = tk.Frame(report_win)
+                btn_row.pack(fill="x", padx=14, pady=(0, 14))
+
+                def open_output_folder():
+                    try:
+                        open_path_cross_platform(output_dir)
+                    except Exception as exc:
+                        messagebox.showerror("Lỗi", f"Không mở được thư mục:\n{exc}", parent=report_win)
+
+                tk.Button(btn_row, text="Mở folder", width=12, command=open_output_folder).pack(side="left")
+                tk.Button(btn_row, text="Đóng", width=12, command=report_win.destroy).pack(side="right")
+
+                preview_status_var.set(f"Đã xuất batch HSK1 vào {output_dir}")
+                preview_approved_var.set(False)
+                hsk30_audio_state["preview_approved"] = False
+
+            finish_when_ready()
+
         refresh_audio_state()
 
         main = tk.Frame(audio_win, bg="#fbfff7")
@@ -3400,6 +3573,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Button(btn_box, text="Chọn cấp độ", width=18, command=choose_level).grid(row=0, column=1, padx=4, pady=4, sticky="ew")
         tk.Button(btn_box, text="Tinh chỉnh", width=18, command=tinh_chinh).grid(row=1, column=0, padx=4, pady=4, sticky="ew")
         tk.Button(btn_box, text="Xuất file", width=18, command=export_hsk30_audio).grid(row=1, column=1, padx=4, pady=4, sticky="ew")
+        tk.Button(btn_box, text="Xuất batch HSK1", width=18, command=export_hsk30_audio_batch).grid(
+            row=2, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="ew"
+        )
         btn_box.columnconfigure(0, weight=1)
         btn_box.columnconfigure(1, weight=1)
 

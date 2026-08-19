@@ -41,6 +41,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 HSK30_AUDIO_ROOT = BASE_DIR / "assets" / "hsk30_audio"
 HSK30_DEFAULT_SOURCE = BASE_DIR / "testdata" / "hsk30" / "hsk1" / "ghiam_HSK1_30.xlsx"
 HSK30_COMMON_ASSET = HSK30_AUDIO_ROOT / "common" / "hsk_1_6_intro_music.m4a"
+HSK30_COMMON_OUTTRO = HSK30_AUDIO_ROOT / "common" / "hsk_outtro.m4a"
 HSK30_HSK1_ASSETS = {
     "intro": HSK30_AUDIO_ROOT / "hsk1" / "hsk1_intro.m4a",
     "part1": HSK30_AUDIO_ROOT / "hsk1" / "hsk1_part1.m4a",
@@ -285,6 +286,7 @@ def validate_hsk30_assets(asset_root: str | Path | None = None) -> Dict[str, obj
     root = Path(asset_root) if asset_root is not None else HSK30_AUDIO_ROOT
     required = {
         "common/hsk_1_6_intro_music.m4a": root / "common" / "hsk_1_6_intro_music.m4a",
+        "common/hsk_outtro.m4a": root / "common" / "hsk_outtro.m4a",
         "hsk1/hsk1_intro.m4a": root / "hsk1" / "hsk1_intro.m4a",
         "hsk1/hsk1_part1.m4a": root / "hsk1" / "hsk1_part1.m4a",
         "hsk1/hsk1_part2.m4a": root / "hsk1" / "hsk1_part2.m4a",
@@ -1151,6 +1153,7 @@ def build_hsk1_phase1b(
         progress_callback("Đang tải asset cố định...")
 
     music = _load_audio_segment(HSK30_COMMON_ASSET)
+    outtro = _load_audio_segment(HSK30_COMMON_OUTTRO)
     intro = _load_audio_segment(HSK30_HSK1_ASSETS["intro"])
     part_assets = {
         1: _load_audio_segment(HSK30_HSK1_ASSETS["part1"]),
@@ -1198,7 +1201,7 @@ def build_hsk1_phase1b(
             }
         )
 
-    fixed_assets_ms = len(music) + len(intro) + sum(len(audio) for audio in part_assets.values())
+    fixed_assets_ms = len(music) + len(outtro) + len(intro) + sum(len(audio) for audio in part_assets.values())
     internal_pauses_ms = counts["internal_pauses_ms"]
 
     part_intro_silences = [
@@ -1280,6 +1283,7 @@ def build_hsk1_phase1b(
                 append_track(_silent_segment(transition_values_ms[part_gap_keys[part]]))
 
         append_track(_silent_segment(transition_values_ms["final_silence"]))
+        append_track(outtro)
         return final_audio, local_breakdown
 
     final_audio, part_breakdown_rendered = compose_final_audio(answer_silences_ms, transition_silence_ms)
@@ -1320,12 +1324,13 @@ def build_hsk1_phase1b(
         "answer_silence_ms": adjusted_answer_total,
         "part_transitions_ms": adjusted_transition_total,
         "final_silence_ms": transition_silence_ms["final_silence"],
+        "outtro_ms": len(outtro),
         "part_breakdown": part_breakdown_rendered,
         "reference_duration_ms": reference_duration_ms,
     }
 
     result = {
-        "exam": "HSK1001",
+        "exam": _normalize_exam_code(report.get("detected_exam", "HSK1001")),
         "output_file": str(out_path),
         "music_ms": len(music),
         "fixed_assets_ms": fixed_assets_ms - len(music),
@@ -1334,6 +1339,7 @@ def build_hsk1_phase1b(
         "answer_silence_ms": adjusted_answer_total,
         "part_transitions_ms": adjusted_transition_total,
         "final_silence_ms": transition_silence_ms["final_silence"],
+        "outtro_ms": len(outtro),
         "part_breakdown": part_breakdown_rendered,
         "unique_tts_requests": counts["unique_tts_requests"],
         "reused_segments": counts["reused_segments"] + counts["reused_question_blocks"],
