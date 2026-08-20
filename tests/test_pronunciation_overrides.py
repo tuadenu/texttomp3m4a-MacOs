@@ -5,14 +5,29 @@ from pipelines.pronunciation_overrides import prepare_spoken_text
 
 
 class PronunciationOverrideTests(unittest.TestCase):
-    def test_erhua_terms_stay_raw_for_all_engines(self):
-        for text in ["小孩儿", "面条儿"]:
-            for engine in ["Google Cloud TTS", "gTTS", "Polly"]:
+    def test_three_word_fallback_terms_override_only_spoken_text(self):
+        for text, spoken in [("一点儿", "一点"), ("小孩儿", "小孩"), ("面条儿", "面条")]:
+            for engine in ["Google Cloud TTS", "gTTS"]:
                 payload = prepare_spoken_text(text, "zh-CN", engine)
-                self.assertFalse(payload.matched)
-                self.assertEqual("raw", payload.mode)
-                self.assertEqual(text, payload.spoken_text)
-                self.assertEqual(None, payload.matched_key)
+                self.assertTrue(payload.matched)
+                self.assertEqual("text_fallback", payload.mode)
+                self.assertEqual(text, payload.source_text)
+                self.assertEqual(spoken, payload.spoken_text)
+                self.assertEqual(text, payload.matched_key)
+
+            polly_payload = prepare_spoken_text(text, "zh-CN", "Polly")
+            self.assertFalse(polly_payload.matched)
+            self.assertEqual("raw", polly_payload.mode)
+            self.assertEqual(text, polly_payload.spoken_text)
+            self.assertEqual(None, polly_payload.matched_key)
+
+    def test_two_word_fallback_inside_sentence(self):
+        payload = prepare_spoken_text("...一点儿, 小孩儿, 面条儿...", "zh-CN", "Google Cloud TTS")
+        self.assertTrue(payload.matched)
+        self.assertEqual("...一点儿, 小孩儿, 面条儿...", payload.source_text)
+        self.assertEqual("...一点, 小孩, 面条...", payload.spoken_text)
+        self.assertEqual("text_fallback", payload.mode)
+        self.assertEqual("一点儿", payload.matched_key)
 
     def test_raw_only_terms_stay_raw(self):
         for text in ["哪儿", "这儿", "玩儿", "儿子", "女儿", "儿童", "儿科"]:
@@ -22,7 +37,7 @@ class PronunciationOverrideTests(unittest.TestCase):
             self.assertEqual(text, payload.spoken_text)
 
     def test_yidianr_stays_raw(self):
-        for engine in ["Google Cloud TTS", "gTTS", "Polly"]:
+        for engine in ["Polly"]:
             payload = prepare_spoken_text("一点儿", "zh-CN", engine)
             self.assertFalse(payload.matched)
             self.assertEqual("raw", payload.mode)
@@ -35,11 +50,24 @@ class PronunciationOverrideTests(unittest.TestCase):
         self.assertEqual("hello", payload.spoken_text)
 
     def test_engine_behavior(self):
-        for engine in ["Google Cloud TTS", "gTTS", "Polly"]:
-            google = prepare_spoken_text("小孩儿", "zh-CN", engine)
-            self.assertFalse(google.matched)
-            self.assertEqual("raw", google.mode)
-            self.assertEqual("小孩儿", google.spoken_text)
+        google = prepare_spoken_text("小孩儿", "zh-CN", "Google Cloud TTS")
+        gtts = prepare_spoken_text("面条儿", "zh-CN", "gTTS")
+        polly = prepare_spoken_text("小孩儿", "zh-CN", "Polly")
+        self.assertTrue(google.matched)
+        self.assertEqual("小孩", google.spoken_text)
+        self.assertEqual("text_fallback", google.mode)
+        self.assertTrue(gtts.matched)
+        self.assertEqual("面条", gtts.spoken_text)
+        self.assertEqual("text_fallback", gtts.mode)
+        self.assertFalse(polly.matched)
+        self.assertEqual("raw", polly.mode)
+        self.assertEqual("小孩儿", polly.spoken_text)
+
+    def test_raw_terms_in_sentence_stay_raw(self):
+        for text in ["...哪儿...", "...这儿...", "...玩儿...", "...儿子...", "...女儿...", "...儿童...", "...儿科..."]:
+            payload = prepare_spoken_text(text, "zh-CN", "Google Cloud TTS")
+            self.assertFalse(payload.matched)
+            self.assertEqual(text, payload.spoken_text)
 
     def test_cache_variant_identity_differs(self):
         raw_payload = prepare_spoken_text("一点儿", "zh-CN", "Google Cloud TTS")
