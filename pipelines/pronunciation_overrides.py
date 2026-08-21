@@ -28,7 +28,7 @@ _CHINESE_LANGUAGE_ALIASES = {
 }
 
 ZH_PRONUNCIATION_OVERRIDES = {
-    "一点儿": {"mode": "text_fallback", "spoken": "一点"},
+    "点儿": {"mode": "text_fallback", "spoken": "点"},
     "小孩儿": {"mode": "text_fallback", "spoken": "小孩"},
     "面条儿": {"mode": "text_fallback", "spoken": "面条"},
 }

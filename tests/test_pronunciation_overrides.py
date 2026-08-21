@@ -5,8 +5,8 @@ from pipelines.pronunciation_overrides import prepare_spoken_text
 
 
 class PronunciationOverrideTests(unittest.TestCase):
-    def test_three_word_fallback_terms_override_only_spoken_text(self):
-        for text, spoken in [("一点儿", "一点"), ("小孩儿", "小孩"), ("面条儿", "面条")]:
+    def test_two_word_fallback_terms_override_only_spoken_text(self):
+        for text, spoken in [("点儿", "点"), ("小孩儿", "小孩"), ("面条儿", "面条")]:
             for engine in ["Google Cloud TTS", "gTTS"]:
                 payload = prepare_spoken_text(text, "zh-CN", engine)
                 self.assertTrue(payload.matched)
@@ -22,12 +22,12 @@ class PronunciationOverrideTests(unittest.TestCase):
             self.assertEqual(None, polly_payload.matched_key)
 
     def test_two_word_fallback_inside_sentence(self):
-        payload = prepare_spoken_text("...一点儿, 小孩儿, 面条儿...", "zh-CN", "Google Cloud TTS")
+        payload = prepare_spoken_text("...点儿, 小孩儿, 面条儿...", "zh-CN", "Google Cloud TTS")
         self.assertTrue(payload.matched)
-        self.assertEqual("...一点儿, 小孩儿, 面条儿...", payload.source_text)
-        self.assertEqual("...一点, 小孩, 面条...", payload.spoken_text)
+        self.assertEqual("...点儿, 小孩儿, 面条儿...", payload.source_text)
+        self.assertEqual("...点, 小孩, 面条...", payload.spoken_text)
         self.assertEqual("text_fallback", payload.mode)
-        self.assertEqual("一点儿", payload.matched_key)
+        self.assertEqual("点儿", payload.matched_key)
 
     def test_raw_only_terms_stay_raw(self):
         for text in ["哪儿", "这儿", "玩儿", "儿子", "女儿", "儿童", "儿科"]:
@@ -36,12 +36,17 @@ class PronunciationOverrideTests(unittest.TestCase):
             self.assertEqual("raw", payload.mode)
             self.assertEqual(text, payload.spoken_text)
 
-    def test_yidianr_stays_raw(self):
-        for engine in ["Polly"]:
+    def test_yidianr_matches_point_rule(self):
+        for engine in ["Google Cloud TTS", "gTTS"]:
             payload = prepare_spoken_text("一点儿", "zh-CN", engine)
-            self.assertFalse(payload.matched)
-            self.assertEqual("raw", payload.mode)
-            self.assertEqual("一点儿", payload.spoken_text)
+            self.assertTrue(payload.matched)
+            self.assertEqual("text_fallback", payload.mode)
+            self.assertEqual("一点", payload.spoken_text)
+
+        polly_payload = prepare_spoken_text("一点儿", "zh-CN", "Polly")
+        self.assertFalse(polly_payload.matched)
+        self.assertEqual("raw", polly_payload.mode)
+        self.assertEqual("一点儿", polly_payload.spoken_text)
 
     def test_non_chinese_stays_raw(self):
         payload = prepare_spoken_text("hello", "vi", "Google Cloud TTS")

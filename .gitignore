@@ -43,6 +43,13 @@ package-lock.json
 
 # Output
 output/
+pron_test/
+pron_test_phoneme/
+testdata/hsk30/hsk1/*.pdf
+testdata/hsk30/hsk1/*.xlsx
+testdata/hsk30/hsk1/hsk1-30-*.m4a
+testdata/hsk30/hsk2/hsk2-30-*.m4a
+testdata/hsk30/hsk2/~$*.xlsx
 
 pipelines/.tts_cache/
 

@@ -37,9 +37,14 @@ from pipelines.pronunciation_overrides import prepare_spoken_text
 from pipelines.hsk30_audio import (
     HSK30_AUDIO_ROOT,
     HSK30_DEFAULT_SOURCE,
+    HSK30_HSK2_SOURCE,
+    build_hsk2_phase1b,
     build_hsk1_phase1b,
+    format_hsk2_build_report,
+    format_hsk2_preview_report,
     format_phase1b_build_report,
     format_phase1_preview_report,
+    parse_hsk2_phase1,
     parse_hsk1_phase1,
     phase1_output_filename,
 )
@@ -2897,14 +2902,78 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         "zh_narrator_voice": "",
         "hsk_speed_profile": "HSK1",
         "speech_rate": 0.90,
+        "speech_rates": {"HSK1": 0.90, "HSK2": 0.70},
         "preview_path": "",
         "preview_report": None,
         "preview_approved": False,
+        "preview_source_signature": None,
     }
+
+    def _hsk30_level_key():
+        return "hsk2" if str(hsk30_audio_state.get("level", "HSK 1")).replace(" ", "").upper() == "HSK2" else "hsk1"
+
+    def _hsk30_level_label():
+        return "HSK 2" if _hsk30_level_key() == "hsk2" else "HSK 1"
+
+    def _hsk30_default_source():
+        return HSK30_HSK2_SOURCE if _hsk30_level_key() == "hsk2" else HSK30_DEFAULT_SOURCE
+
+    def _hsk30_first_exam():
+        return "HSK2001" if _hsk30_level_key() == "hsk2" else "HSK1001"
+
+    def _hsk30_parser():
+        return parse_hsk2_phase1 if _hsk30_level_key() == "hsk2" else parse_hsk1_phase1
+
+    def _hsk30_builder():
+        return build_hsk2_phase1b if _hsk30_level_key() == "hsk2" else build_hsk1_phase1b
+
+    def _hsk30_preview_formatter():
+        return format_hsk2_preview_report if _hsk30_level_key() == "hsk2" else format_phase1_preview_report
+
+    def _hsk30_build_formatter():
+        return format_hsk2_build_report if _hsk30_level_key() == "hsk2" else format_phase1b_build_report
+
+    def _hsk30_speed_label(rate_value, profile=None):
+        profile = profile or ("HSK2" if _hsk30_level_key() == "hsk2" else "HSK1")
+        try:
+            rate = round(float(rate_value or (0.70 if profile == "HSK2" else 0.90)), 2)
+        except Exception:
+            rate = 0.70 if profile == "HSK2" else 0.90
+        labels = {
+            "HSK2": {0.70: "HSK2 chuẩn — 0.70x", 0.72: "HSK2 — 0.72x", 0.75: "HSK2 — 0.75x", 0.80: "HSK2 — 0.80x"},
+            "HSK1": {0.60: "HSK1 thử chậm — 0.60x", 0.70: "HSK1 thử chậm — 0.70x", 0.88: "HSK1 chậm hơn — 0.88x", 0.90: "HSK1 chuẩn — 0.90x", 0.92: "HSK1 nhanh hơn — 0.92x"},
+        }
+        return labels.get(profile, {}).get(rate, f"{profile} custom — {rate:.2f}x")
+
+    def _hsk30_source_signature(path):
+        if not path:
+            return None
+        try:
+            stat = Path(path).stat()
+        except OSError:
+            return None
+        return (stat.st_mtime_ns, stat.st_size)
+
+    def _hsk30_preview_is_stale():
+        report = hsk30_audio_state.get("preview_report")
+        if not report:
+            return False
+        source_path = hsk30_audio_state.get("source_path") or ""
+        return _hsk30_source_signature(source_path) != hsk30_audio_state.get("preview_source_signature")
+
+    def _hsk30_level_from_path(path):
+        name = Path(str(path or "")).name.upper()
+        if "HSK2" in name:
+            return "HSK 2"
+        if "HSK1" in name:
+            return "HSK 1"
+        return None
 
     def _capture_lang_snapshot():
         zh_profile = _google_tts_get_profile("zh")
         slots = zh_profile.get("slots", {}) if isinstance(zh_profile, dict) else {}
+        profile = "HSK2" if _hsk30_level_key() == "hsk2" else "HSK1"
+        speech_rates = hsk30_audio_state.setdefault("speech_rates", {"HSK1": 0.90, "HSK2": 0.70})
         return {
             "engine": combo_engine.get().strip(),
             "speed": combo_toc_do_popup.get().strip(),
@@ -2913,9 +2982,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             "zh_male_voice": (slots.get("Nam", {}) or {}).get("voice_name", "") or "",
             "zh_female_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
             "zh_narrator_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
-            "hsk_speed_profile": hsk30_audio_state.get("hsk_speed_profile", "HSK1"),
-            "speech_rate": hsk30_audio_state.get("speech_rate", 0.90),
+            "hsk_speed_profile": profile,
+            "speech_rate": speech_rates.get(profile, hsk30_audio_state.get("speech_rate", 0.90 if profile == "HSK1" else 0.70)),
             "google_api_key": GOOGLE_TTS_API_KEY,
+            "aws_access_key_id": AWS_ACCESS_KEY_ID,
+            "aws_secret_access_key": AWS_SECRET_ACCESS_KEY,
+            "aws_region": AWS_REGION,
         }
 
     def _get_hsk30_audio_context():
@@ -2934,6 +3006,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             "hsk_speed_profile": snapshot["hsk_speed_profile"],
             "speech_rate": snapshot["speech_rate"],
             "google_api_key": snapshot["google_api_key"],
+            "aws_access_key_id": snapshot["aws_access_key_id"],
+            "aws_secret_access_key": snapshot["aws_secret_access_key"],
+            "aws_region": snapshot["aws_region"],
             "confirmed": bool(vocab_tts_confirmed_var.get()),
             "preview_approved": bool(hsk30_audio_state.get("preview_approved", False)),
         }
@@ -2946,18 +3021,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         except Exception:
             speech_rate = 0.90
         hsk_profile = context.get("hsk_speed_profile", "HSK1") or "HSK1"
-        speech_rate_label = {
-            0.60: "HSK1 thử chậm — 0.60x",
-            0.70: "HSK1 thử chậm — 0.70x",
-            0.88: "HSK1 chậm hơn — 0.88x",
-            0.90: "HSK1 chuẩn — 0.90x",
-            0.92: "HSK1 nhanh hơn — 0.92x",
-            0.97: "HSK4 chậm — 0.97x",
-            0.98: "HSK4 chuẩn — 0.98x",
-            1.00: f"{hsk_profile} chuẩn — 1.00x",
-            1.02: "HSK5-6 nhanh hơn — 1.02x",
-            1.05: "HSK5-6 nhanh hơn — 1.05x",
-        }.get(speech_rate, f"{hsk_profile} custom — {speech_rate:.2f}x")
+        speech_rate_label = _hsk30_speed_label(speech_rate, hsk_profile)
         return (
             f"Tài liệu: {source}\n"
             f"Cấp độ: {context.get('level', 'HSK 3.0')}\n"
@@ -2985,9 +3049,9 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         audio_state_var = tk.StringVar()
         audio_hint_var = tk.StringVar(
-            value="Phase 1A: import Excel, preview HSK1001, chưa gọi TTS hoặc build M4A."
+            value="Phase dry-run: import Excel, preview đề đầu tiên, chưa gọi TTS hoặc build M4A."
         )
-        preview_status_var = tk.StringVar(value="Chưa nạp tài liệu HSK1.")
+        preview_status_var = tk.StringVar(value=f"Chưa nạp tài liệu {_hsk30_level_label()}.")
         preview_report = {"value": None}
         preview_approved_var = tk.BooleanVar(value=False)
         preview_text = None
@@ -3001,7 +3065,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             preview_text.configure(state="disabled")
 
         def _load_preview(source_path=None):
-            path = source_path or hsk30_audio_state.get("source_path") or str(HSK30_DEFAULT_SOURCE)
+            path = source_path or hsk30_audio_state.get("source_path") or str(_hsk30_default_source())
             if not path:
                 preview_status_var.set("Chưa có file Excel nguồn.")
                 preview_report["value"] = None
@@ -3010,10 +3074,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
             try:
                 context = _get_hsk30_audio_context()
-                report = parse_hsk1_phase1(
+                report = _hsk30_parser()(
                     path,
                     sheet_name="Sheet1",
-                    exam_code="HSK1001",
+                    exam_code=_hsk30_first_exam(),
                     asset_root=HSK30_AUDIO_ROOT,
                     lang_state=context,
                 )
@@ -3022,16 +3086,23 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 hsk30_audio_state["preview_path"] = str(path)
                 hsk30_audio_state["source_path"] = str(path)
                 hsk30_audio_state["preview_approved"] = False
+                hsk30_audio_state["preview_source_signature"] = _hsk30_source_signature(path)
                 preview_approved_var.set(False)
                 preview_status_var.set(
-                    f"HSK1001 · {report['question_count']} câu · {report['output_filename']} · assets {'OK' if report['asset_status']['ok'] else 'MISSING'}"
+                    f"{report['detected_exam']} · {report['question_count']} câu · {report['output_filename']} · assets {'OK' if report['asset_status']['ok'] else 'MISSING'}"
                 )
-                _set_preview_text(format_phase1_preview_report(report))
+                preview_header = (
+                    f"Workbook đang nạp: {path}\n"
+                    f"Preview path: {hsk30_audio_state.get('preview_path', '')}\n"
+                    f"Source path: {hsk30_audio_state.get('source_path', '')}\n\n"
+                )
+                _set_preview_text(preview_header + _hsk30_preview_formatter()(report))
                 audio_state_var.set(_format_hsk30_audio_context(_get_hsk30_audio_context()))
                 return report
             except Exception as exc:
                 preview_report["value"] = None
                 hsk30_audio_state["preview_report"] = None
+                hsk30_audio_state["preview_source_signature"] = None
                 preview_status_var.set(f"Lỗi đọc Excel: {exc}")
                 _set_preview_text(f"Lỗi đọc Excel:\n{exc}")
                 messagebox.showerror("Lỗi đọc Excel", str(exc), parent=audio_win)
@@ -3043,25 +3114,60 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             audio_state_var.set(_format_hsk30_audio_context(context))
             if preview_report["value"] is not None:
                 preview_status_var.set(
-                    f"HSK1001 · {preview_report['value']['question_count']} câu · {preview_report['value']['output_filename']} · assets {'OK' if preview_report['value']['asset_status']['ok'] else 'MISSING'}"
+                    f"{preview_report['value'].get('detected_exam', _hsk30_first_exam())} · {preview_report['value']['question_count']} câu · {preview_report['value']['output_filename']} · assets {'OK' if preview_report['value']['asset_status']['ok'] else 'MISSING'}"
                 )
             return context
 
+        def _refresh_hsk30_report_from_disk():
+            source_path = hsk30_audio_state.get("source_path") or str(_hsk30_default_source())
+            if not source_path:
+                raise FileNotFoundError("Chưa có file Excel nguồn.")
+            context = _get_hsk30_audio_context()
+            report = _hsk30_parser()(
+                source_path,
+                sheet_name="Sheet1",
+                exam_code=_hsk30_first_exam(),
+                asset_root=HSK30_AUDIO_ROOT,
+                lang_state=context,
+            )
+            preview_report["value"] = report
+            hsk30_audio_state["preview_report"] = report
+            hsk30_audio_state["preview_path"] = str(source_path)
+            hsk30_audio_state["source_path"] = str(source_path)
+            hsk30_audio_state["preview_source_signature"] = _hsk30_source_signature(source_path)
+            preview_status_var.set(
+                f"{report['detected_exam']} · {report['question_count']} câu · {report['output_filename']} · assets {'OK' if report['asset_status']['ok'] else 'MISSING'}"
+            )
+            return report, context
+
         def choose_source_file():
-            start_source = hsk30_audio_state.get("source_path") or str(HSK30_DEFAULT_SOURCE)
+            start_source = hsk30_audio_state.get("source_path") or str(_hsk30_default_source())
             selected = filedialog.askopenfilename(
                 parent=audio_win,
                 title="Import tài liệu cho HSK 3.0 Audio",
                 initialdir=str(Path(start_source).parent),
                 initialfile=Path(start_source).name,
                 filetypes=[
-                    ("Tài liệu Excel", "*.xlsx;*.xlsm;*.xls"),
-                    ("Tài liệu văn bản", "*.txt;*.md"),
+                    ("Tài liệu Excel", "*.xlsx *.xlsm *.xls"),
+                    ("Tài liệu văn bản", "*.txt *.md"),
                     ("PDF", "*.pdf"),
                     ("Tất cả file", "*.*"),
                 ],
             )
             if selected:
+                chosen_level = _hsk30_level_from_path(selected)
+                if chosen_level and chosen_level != hsk30_audio_state.get("level", "HSK 1"):
+                    hsk30_audio_state["level"] = chosen_level
+                    hsk30_audio_state["hsk_speed_profile"] = "HSK2" if _hsk30_level_key() == "hsk2" else "HSK1"
+                    hsk30_audio_state["source_path"] = selected
+                    hsk30_audio_state["preview_report"] = None
+                    hsk30_audio_state["preview_approved"] = False
+                    hsk30_audio_state["preview_source_signature"] = None
+                    preview_report["value"] = None
+                    preview_approved_var.set(False)
+                    refresh_audio_state()
+                    refresh_level_labels()
+                preview_status_var.set(f"Đang nạp: {selected}")
                 _load_preview(selected)
 
         def choose_level():
@@ -3080,14 +3186,25 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             level_combo = ttk.Combobox(
                 chooser,
                 textvariable=local_level,
-                values=["HSK 1"],
+                values=["HSK 1", "HSK 2"],
                 state="readonly",
             )
             level_combo.pack(fill="x", padx=12, pady=(0, 10))
 
             def save_level():
-                hsk30_audio_state["level"] = "HSK 1"
+                hsk30_audio_state["level"] = local_level.get().strip() or "HSK 1"
+                hsk30_audio_state["hsk_speed_profile"] = "HSK2" if _hsk30_level_key() == "hsk2" else "HSK1"
+                hsk30_audio_state["source_path"] = str(_hsk30_default_source())
+                hsk30_audio_state["preview_report"] = None
+                hsk30_audio_state["preview_approved"] = False
+                hsk30_audio_state["preview_source_signature"] = None
+                preview_report["value"] = None
+                preview_approved_var.set(False)
+                preview_status_var.set(f"Đã chọn {_hsk30_level_label()}, hãy kiểm tra preview.")
                 refresh_audio_state()
+                refresh_level_labels()
+                if Path(hsk30_audio_state["source_path"]).is_file():
+                    _load_preview(hsk30_audio_state["source_path"])
                 chooser.destroy()
 
             btn_row = tk.Frame(chooser)
@@ -3105,24 +3222,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tune_win.grab_set()
 
             def _hsk_speed_label(rate_value):
-                try:
-                    rate = round(float(rate_value or 0.90), 2)
-                except Exception:
-                    rate = 0.90
-                return {
-                    0.60: "HSK1 thử chậm — 0.60x",
-                    0.70: "HSK1 thử chậm — 0.70x",
-                    0.88: "HSK1 chậm hơn — 0.88x",
-                    0.90: "HSK1 chuẩn — 0.90x",
-                    0.92: "HSK1 nhanh hơn — 0.92x",
-                }.get(rate, f"HSK1 custom — {rate:.2f}x")
+                return _hsk30_speed_label(rate_value, "HSK2" if _hsk30_level_key() == "hsk2" else "HSK1")
 
             local_engine = tk.StringVar(value=combo_engine.get().strip())
             local_voice = tk.StringVar(value=combo_giong_popup.get().strip())
             local_zh_male = tk.StringVar(value=hsk30_audio_state.get("zh_male_voice", ""))
             local_zh_female = tk.StringVar(value=hsk30_audio_state.get("zh_female_voice", ""))
             local_zh_narrator = tk.StringVar(value=hsk30_audio_state.get("zh_narrator_voice", "") or hsk30_audio_state.get("zh_female_voice", ""))
-            local_hsk_speed = tk.StringVar(value=_hsk_speed_label(hsk30_audio_state.get("speech_rate", 0.90)))
+            local_hsk_speed = tk.StringVar(value=_hsk_speed_label(hsk30_audio_state.get("speech_rate", 0.70 if _hsk30_level_key() == "hsk2" else 0.90)))
 
             tk.Label(
                 tune_win,
@@ -3143,11 +3250,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 form,
                 textvariable=local_hsk_speed,
                 values=[
-                    "HSK1 thử chậm — 0.60x",
-                    "HSK1 thử chậm — 0.70x",
-                    "HSK1 chậm hơn — 0.88x",
-                    "HSK1 chuẩn — 0.90x",
-                    "HSK1 nhanh hơn — 0.92x",
+                    *(["HSK2 chuẩn — 0.70x", "HSK2 — 0.72x", "HSK2 — 0.75x", "HSK2 — 0.80x"] if _hsk30_level_key() == "hsk2" else ["HSK1 thử chậm — 0.60x", "HSK1 thử chậm — 0.70x", "HSK1 chậm hơn — 0.88x", "HSK1 chuẩn — 0.90x", "HSK1 nhanh hơn — 0.92x"]),
                 ],
                 state="readonly",
             ).grid(row=1, column=1, sticky="ew", pady=4)
@@ -3173,17 +3276,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 hsk30_audio_state["zh_female_voice"] = local_zh_female.get().strip()
                 hsk30_audio_state["zh_narrator_voice"] = local_zh_narrator.get().strip()
                 speed_choice = local_hsk_speed.get().strip()
-                if "0.60" in speed_choice:
-                    hsk30_audio_state["speech_rate"] = 0.60
-                elif "0.70" in speed_choice:
-                    hsk30_audio_state["speech_rate"] = 0.70
-                elif "0.88" in speed_choice:
-                    hsk30_audio_state["speech_rate"] = 0.88
-                elif "0.92" in speed_choice:
-                    hsk30_audio_state["speech_rate"] = 0.92
-                else:
-                    hsk30_audio_state["speech_rate"] = 0.90
-                hsk30_audio_state["hsk_speed_profile"] = "HSK1"
+                speed_match = re.search(r"([0-9]+(?:\.[0-9]+)?)x", speed_choice)
+                default_rate = 0.70 if _hsk30_level_key() == "hsk2" else 0.90
+                rate = float(speed_match.group(1)) if speed_match else default_rate
+                hsk30_audio_state["speech_rate"] = rate
+                hsk30_audio_state.setdefault("speech_rates", {})["HSK2" if _hsk30_level_key() == "hsk2" else "HSK1"] = rate
+                hsk30_audio_state["hsk_speed_profile"] = "HSK2" if _hsk30_level_key() == "hsk2" else "HSK1"
                 refresh_audio_state()
                 if hsk30_audio_state.get("source_path"):
                     _load_preview(hsk30_audio_state.get("source_path"))
@@ -3197,17 +3295,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 local_zh_male.set(hsk30_audio_state["zh_male_voice"])
                 local_zh_female.set(hsk30_audio_state["zh_female_voice"])
                 local_zh_narrator.set(hsk30_audio_state["zh_narrator_voice"])
-                rate = float(hsk30_audio_state.get("speech_rate", 0.90) or 0.90)
-                if rate <= 0.65:
-                    local_hsk_speed.set("HSK1 thử chậm — 0.60x")
-                elif rate <= 0.75:
-                    local_hsk_speed.set("HSK1 thử chậm — 0.70x")
-                elif rate <= 0.885:
-                    local_hsk_speed.set("HSK1 chậm hơn — 0.88x")
-                elif rate >= 0.915:
-                    local_hsk_speed.set("HSK1 nhanh hơn — 0.92x")
-                else:
-                    local_hsk_speed.set(_hsk_speed_label(rate))
+                rate = float(hsk30_audio_state.get("speech_rate", 0.70 if _hsk30_level_key() == "hsk2" else 0.90) or (0.70 if _hsk30_level_key() == "hsk2" else 0.90))
+                local_hsk_speed.set(_hsk_speed_label(rate))
                 refresh_audio_state()
 
             btn_row = tk.Frame(tune_win)
@@ -3217,27 +3306,33 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tk.Button(btn_row, text="Lưu", width=10, command=save_tuning).pack(side="right", padx=(0, 8))
 
         def export_hsk30_audio():
+            exam_code = _hsk30_first_exam()
             context = refresh_audio_state()
-            if preview_report["value"] is None:
+            try:
+                fresh_report, context = _refresh_hsk30_report_from_disk()
+            except Exception as exc:
+                messagebox.showerror("Lỗi đọc Excel", str(exc), parent=audio_win)
+                return
+            if fresh_report is None:
                 messagebox.showwarning(
                     "Chưa có preview",
-                    "Hãy import Excel và xem preview HSK1001 trước khi sang Phase 1B.",
+                    f"Hãy import Excel và xem preview {exam_code} trước khi xuất.",
                     parent=audio_win,
                 )
                 return
             if not preview_approved_var.get():
                 messagebox.showwarning(
                     "Chưa duyệt preview",
-                    "Hãy tick 'Đã duyệt preview HSK1001' trước khi bấm Xuất file.",
+                    f"Hãy tick 'Đã duyệt preview {exam_code}' trước khi bấm Xuất file.",
                     parent=audio_win,
                 )
                 return
 
-            output_name = preview_report["value"].get("output_filename") or "hsk1-30-001.m4a"
-            start_dir = Path(hsk30_audio_state.get("source_path") or str(HSK30_DEFAULT_SOURCE)).parent
+            output_name = fresh_report.get("output_filename") or phase1_output_filename(exam_code)
+            start_dir = Path(hsk30_audio_state.get("source_path") or str(_hsk30_default_source())).parent
             file_path = filedialog.asksaveasfilename(
                 parent=audio_win,
-                title="Lưu file HSK1001",
+                title=f"Lưu file {exam_code}",
                 defaultextension=".m4a",
                 initialdir=str(start_dir),
                 initialfile=output_name,
@@ -3248,14 +3343,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
             progress_win = tk.Toplevel(audio_win)
             set_popup_icon(progress_win)
-            progress_win.title("Đang build HSK1001")
+            progress_win.title(f"Đang build {exam_code}")
             progress_win.geometry("520x150")
             progress_win.minsize(520, 150)
             progress_win.transient(audio_win)
             progress_win.grab_set()
 
-            progress_msg_var = tk.StringVar(value="Đang khởi tạo build thử HSK1001...")
-            tk.Label(progress_win, text="HSK1001 -> hsk1-30-001.m4a", font=("Arial", 12, "bold")).pack(
+            progress_msg_var = tk.StringVar(value=f"Đang khởi tạo build {exam_code}...")
+            tk.Label(progress_win, text=f"{exam_code} -> {output_name}", font=("Arial", 12, "bold")).pack(
                 anchor="w", padx=14, pady=(14, 6)
             )
             tk.Label(progress_win, textvariable=progress_msg_var, wraplength=480, justify="left").pack(
@@ -3272,8 +3367,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     def update_message(message):
                         state["message"] = message
 
-                    state["result"] = build_hsk1_phase1b(
-                        preview_report["value"],
+                    state["result"] = _hsk30_builder()(
+                        fresh_report,
                         file_path,
                         lang_state=context,
                         progress_callback=update_message,
@@ -3298,19 +3393,19 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     pass
 
                 if state["error"] is not None:
-                    messagebox.showerror("Lỗi xuất HSK1001", str(state["error"]), parent=audio_win)
+                    messagebox.showerror(f"Lỗi xuất {exam_code}", str(state["error"]), parent=audio_win)
                     return
 
                 result = state["result"] or {}
                 report_win = tk.Toplevel(audio_win)
                 set_popup_icon(report_win)
-                report_win.title("Phase 1B report")
+                report_win.title(f"{exam_code} report")
                 report_win.geometry("780x560")
                 report_win.minsize(720, 480)
                 report_win.transient(audio_win)
                 report_win.grab_set()
 
-                tk.Label(report_win, text="HSK1001 build report", font=("Arial", 13, "bold")).pack(
+                tk.Label(report_win, text=f"{exam_code} build report", font=("Arial", 13, "bold")).pack(
                     anchor="w", padx=14, pady=(14, 8)
                 )
                 tk.Label(
@@ -3323,7 +3418,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
                 report_text = tk.Text(report_win, wrap="word", font=("Consolas", 10))
                 report_text.pack(fill="both", expand=True, padx=14, pady=(0, 10))
-                report_text.insert("1.0", format_phase1b_build_report(result))
+                report_text.insert("1.0", _hsk30_build_formatter()(result))
                 report_text.configure(state="disabled")
 
                 btn_row = tk.Frame(report_win)
@@ -3355,11 +3450,23 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
         def export_hsk30_audio_batch():
             context = refresh_audio_state()
-            source_path = hsk30_audio_state.get("source_path") or str(HSK30_DEFAULT_SOURCE)
+            level_key = _hsk30_level_key()
+            level_label = _hsk30_level_label()
+            first_exam = _hsk30_first_exam()
+            source_path = hsk30_audio_state.get("source_path") or str(_hsk30_default_source())
             if not source_path or not Path(source_path).is_file():
                 messagebox.showwarning(
                     "Chưa có file nguồn",
-                    "Hãy import Excel HSK1 trước khi xuất batch.",
+                    f"Hãy import Excel {level_label} trước khi xuất batch.",
+                    parent=audio_win,
+                )
+                return
+
+            if _hsk30_preview_is_stale():
+                _load_preview(source_path)
+                messagebox.showwarning(
+                    "Excel đã thay đổi",
+                    f"Nguồn Excel đã được sửa. Preview {first_exam} vừa được nạp lại; hãy kiểm tra và duyệt lại trước khi chạy batch {level_label}.",
                     parent=audio_win,
                 )
                 return
@@ -3367,7 +3474,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             if preview_report["value"] is None:
                 messagebox.showwarning(
                     "Chưa có preview",
-                    "Hãy import Excel và xem preview HSK1001 trước khi xuất batch HSK1.",
+                    f"Hãy import Excel và xem preview {first_exam} trước khi xuất batch {level_label}.",
                     parent=audio_win,
                 )
                 return
@@ -3375,7 +3482,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             if not preview_approved_var.get():
                 messagebox.showwarning(
                     "Chưa duyệt preview",
-                    "Hãy tick 'Đã duyệt preview HSK1001' trước khi bấm Xuất batch HSK1.",
+                    f"Hãy tick 'Đã duyệt preview {first_exam}' trước khi bấm Xuất batch {level_label}.",
                     parent=audio_win,
                 )
                 return
@@ -3383,24 +3490,24 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             start_dir = Path(source_path).parent
             output_dir = filedialog.askdirectory(
                 parent=audio_win,
-                title="Chọn thư mục xuất batch HSK1",
+                title=f"Chọn thư mục xuất batch {level_label}",
                 initialdir=str(start_dir),
             )
             if not output_dir:
                 return
 
-            exam_codes = [f"HSK10{i:02d}" for i in range(1, 8)]
+            exam_codes = [f"HSK2{i:03d}" for i in range(1, 17)] if level_key == "hsk2" else [f"HSK1{i:03d}" for i in range(1, 8)]
             progress_win = tk.Toplevel(audio_win)
             set_popup_icon(progress_win)
-            progress_win.title("Đang build batch HSK1")
+            progress_win.title(f"Đang build batch {level_label}")
             progress_win.geometry("580x190")
             progress_win.minsize(580, 190)
             progress_win.transient(audio_win)
             progress_win.grab_set()
 
-            progress_msg_var = tk.StringVar(value="Đang khởi tạo batch HSK1...")
-            progress_detail_var = tk.StringVar(value="HSK1001 -> HSK1007")
-            tk.Label(progress_win, text="Batch HSK1 3.0 Audio", font=("Arial", 12, "bold")).pack(
+            progress_msg_var = tk.StringVar(value=f"Đang khởi tạo batch {level_label}...")
+            progress_detail_var = tk.StringVar(value=f"{exam_codes[0]} -> {exam_codes[-1]}")
+            tk.Label(progress_win, text=f"Batch {level_label} 3.0 Audio", font=("Arial", 12, "bold")).pack(
                 anchor="w", padx=14, pady=(14, 6)
             )
             tk.Label(progress_win, textvariable=progress_msg_var, wraplength=540, justify="left").pack(
@@ -3425,7 +3532,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     for index, exam_code in enumerate(exam_codes, start=1):
                         state["current"] = index
                         state["message"] = f"Đang build {exam_code}..."
-                        report = parse_hsk1_phase1(
+                        report = _hsk30_parser()(
                             source_path,
                             sheet_name="Sheet1",
                             exam_code=exam_code,
@@ -3433,17 +3540,17 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                             lang_state=context,
                         )
                         output_path = Path(output_dir) / phase1_output_filename(exam_code)
-                        result = build_hsk1_phase1b(
+                        result = _hsk30_builder()(
                             report,
                             output_path,
                             lang_state=context,
                             progress_callback=lambda message, code=exam_code: state.__setitem__("message", f"{code}: {message}"),
                         )
                         state["results"].append(result)
-                    state["message"] = "Batch HSK1 đã build xong."
+                    state["message"] = f"Batch {level_label} đã build xong."
                 except Exception as exc:
                     state["error"] = exc
-                    state["message"] = f"Lỗi batch HSK1: {exc}"
+                    state["message"] = f"Lỗi batch {level_label}: {exc}"
                 finally:
                     state["done"] = True
 
@@ -3463,19 +3570,19 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     pass
 
                 if state["error"] is not None:
-                    messagebox.showerror("Lỗi batch HSK1", str(state["error"]), parent=audio_win)
+                    messagebox.showerror(f"Lỗi batch {level_label}", str(state["error"]), parent=audio_win)
                     return
 
                 batch_results = state["results"]
                 report_win = tk.Toplevel(audio_win)
                 set_popup_icon(report_win)
-                report_win.title("Batch HSK1 report")
+                report_win.title(f"Batch {level_label} report")
                 report_win.geometry("860x620")
                 report_win.minsize(760, 520)
                 report_win.transient(audio_win)
                 report_win.grab_set()
 
-                tk.Label(report_win, text="HSK1 batch build report", font=("Arial", 13, "bold")).pack(
+                tk.Label(report_win, text=f"{level_label} batch build report", font=("Arial", 13, "bold")).pack(
                     anchor="w", padx=14, pady=(14, 8)
                 )
                 tk.Label(
@@ -3519,7 +3626,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 tk.Button(btn_row, text="Mở folder", width=12, command=open_output_folder).pack(side="left")
                 tk.Button(btn_row, text="Đóng", width=12, command=report_win.destroy).pack(side="right")
 
-                preview_status_var.set(f"Đã xuất batch HSK1 vào {output_dir}")
+                preview_status_var.set(f"Đã xuất batch {level_label} vào {output_dir}")
                 preview_approved_var.set(False)
                 hsk30_audio_state["preview_approved"] = False
 
@@ -3549,9 +3656,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Label(main, textvariable=preview_status_var, bg="#fbfff7", fg="#304f30", font=("Arial", 10, "bold")).pack(
             anchor="w", pady=(0, 6)
         )
+        preview_approval_label = tk.StringVar(value=f"Đã duyệt preview {_hsk30_first_exam()}")
         tk.Checkbutton(
             main,
-            text="Đã duyệt preview HSK1001",
+            textvariable=preview_approval_label,
             variable=preview_approved_var,
             bg="#fbfff7",
             command=lambda: hsk30_audio_state.update({"preview_approved": bool(preview_approved_var.get())}),
@@ -3578,7 +3686,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Button(btn_box, text="Chọn cấp độ", width=18, command=choose_level).grid(row=0, column=1, padx=4, pady=4, sticky="ew")
         tk.Button(btn_box, text="Tinh chỉnh", width=18, command=tinh_chinh).grid(row=1, column=0, padx=4, pady=4, sticky="ew")
         tk.Button(btn_box, text="Xuất file", width=18, command=export_hsk30_audio).grid(row=1, column=1, padx=4, pady=4, sticky="ew")
-        tk.Button(btn_box, text="Xuất batch HSK1", width=18, command=export_hsk30_audio_batch).grid(
+        batch_button = tk.Button(btn_box, text=f"Xuất batch {_hsk30_level_label()}", width=18, command=export_hsk30_audio_batch)
+        batch_button.grid(
             row=2, column=0, columnspan=2, padx=4, pady=(4, 4), sticky="ew"
         )
         btn_box.columnconfigure(0, weight=1)
@@ -3590,6 +3699,12 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         tk.Button(bottom, text="Đóng", command=audio_win.destroy).pack(side="right")
 
         refresh_audio_state()
+        def refresh_level_labels():
+            current_level = _hsk30_level_label()
+            current_exam = _hsk30_first_exam()
+            preview_approval_label.set(f"Đã duyệt preview {current_exam}")
+            batch_button.configure(text=f"Xuất batch {current_level}")
+        refresh_level_labels()
         if Path(hsk30_audio_state.get("source_path") or "").is_file():
             _load_preview(hsk30_audio_state.get("source_path"))
         else:
