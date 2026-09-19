@@ -50,6 +50,8 @@ testdata/hsk30/hsk1/*.xlsx
 testdata/hsk30/hsk1/hsk1-30-*.m4a
 testdata/hsk30/hsk2/hsk2-30-*.m4a
 testdata/hsk30/hsk2/~$*.xlsx
+testdata/hsk30/hsk3/hsk3-30-*.m4a
+testdata/hsk30/hsk3/~$*.xlsx
 
 pipelines/.tts_cache/
 
