@@ -2907,7 +2907,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         "zh_narrator_voice": "",
         "hsk_speed_profile": "HSK1",
         "speech_rate": 0.90,
-        "speech_rates": {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.75},
+        "speech_rates": {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90},
         "preview_path": "",
         "preview_report": None,
         "preview_approved": False,
@@ -2942,13 +2942,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     def _hsk30_speed_label(rate_value, profile=None):
         profile = profile or {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
         try:
-            rate = round(float(rate_value or {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.75}.get(profile, 0.75)), 2)
+            rate = round(float(rate_value or {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90}.get(profile, 0.90)), 2)
         except Exception:
-            rate = {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.75}.get(profile, 0.75)
+            rate = {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90}.get(profile, 0.90)
         labels = {
             "HSK2": {0.70: "HSK2 chuẩn — 0.70x", 0.72: "HSK2 — 0.72x", 0.75: "HSK2 — 0.75x", 0.80: "HSK2 — 0.80x"},
             "HSK1": {0.60: "HSK1 thử chậm — 0.60x", 0.70: "HSK1 thử chậm — 0.70x", 0.88: "HSK1 chậm hơn — 0.88x", 0.90: "HSK1 chuẩn — 0.90x", 0.92: "HSK1 nhanh hơn — 0.92x"},
-            "HSK3": {0.70: "HSK3 — 0.70x", 0.72: "HSK3 — 0.72x", 0.75: "HSK3 chuẩn — 0.75x", 0.80: "HSK3 — 0.80x"},
+            "HSK3": {0.70: "HSK3 — 0.70x", 0.72: "HSK3 — 0.72x", 0.75: "HSK3 — 0.75x", 0.80: "HSK3 — 0.80x", 0.90: "HSK3 chuẩn — 0.90x"},
         }
         return labels.get(profile, {}).get(rate, f"{profile} custom — {rate:.2f}x")
 
@@ -2982,7 +2982,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         zh_profile = _google_tts_get_profile("zh")
         slots = zh_profile.get("slots", {}) if isinstance(zh_profile, dict) else {}
         profile = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
-        speech_rates = hsk30_audio_state.setdefault("speech_rates", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.75})
+        speech_rates = hsk30_audio_state.setdefault("speech_rates", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90})
         return {
             "engine": combo_engine.get().strip(),
             "speed": combo_toc_do_popup.get().strip(),
@@ -2992,7 +2992,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             "zh_female_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
             "zh_narrator_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
             "hsk_speed_profile": profile,
-            "speech_rate": speech_rates.get(profile, hsk30_audio_state.get("speech_rate", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.75}[profile])),
+            "speech_rate": speech_rates.get(profile, hsk30_audio_state.get("speech_rate", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90}[profile])),
             "google_api_key": GOOGLE_TTS_API_KEY,
             "aws_access_key_id": AWS_ACCESS_KEY_ID,
             "aws_secret_access_key": AWS_SECRET_ACCESS_KEY,
@@ -3238,7 +3238,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             local_zh_male = tk.StringVar(value=hsk30_audio_state.get("zh_male_voice", ""))
             local_zh_female = tk.StringVar(value=hsk30_audio_state.get("zh_female_voice", ""))
             local_zh_narrator = tk.StringVar(value=hsk30_audio_state.get("zh_narrator_voice", "") or hsk30_audio_state.get("zh_female_voice", ""))
-            local_hsk_speed = tk.StringVar(value=_hsk_speed_label(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.75}[_hsk30_level_key()])))
+            local_hsk_speed = tk.StringVar(value=_hsk_speed_label(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()])))
 
             tk.Label(
                 tune_win,
@@ -3262,7 +3262,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                     *({
                         "hsk1": ["HSK1 thử chậm — 0.60x", "HSK1 thử chậm — 0.70x", "HSK1 chậm hơn — 0.88x", "HSK1 chuẩn — 0.90x", "HSK1 nhanh hơn — 0.92x"],
                         "hsk2": ["HSK2 chuẩn — 0.70x", "HSK2 — 0.72x", "HSK2 — 0.75x", "HSK2 — 0.80x"],
-                        "hsk3": ["HSK3 — 0.70x", "HSK3 — 0.72x", "HSK3 chuẩn — 0.75x", "HSK3 — 0.80x"],
+                        "hsk3": ["HSK3 — 0.70x", "HSK3 — 0.72x", "HSK3 — 0.75x", "HSK3 — 0.80x", "HSK3 chuẩn — 0.90x"],
                     }[_hsk30_level_key()]),
                 ],
                 state="readonly",
@@ -3290,7 +3290,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 hsk30_audio_state["zh_narrator_voice"] = local_zh_narrator.get().strip()
                 speed_choice = local_hsk_speed.get().strip()
                 speed_match = re.search(r"([0-9]+(?:\.[0-9]+)?)x", speed_choice)
-                default_rate = {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.75}[_hsk30_level_key()]
+                default_rate = {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()]
                 rate = float(speed_match.group(1)) if speed_match else default_rate
                 hsk30_audio_state["speech_rate"] = rate
                 profile_key = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
@@ -3309,7 +3309,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 local_zh_male.set(hsk30_audio_state["zh_male_voice"])
                 local_zh_female.set(hsk30_audio_state["zh_female_voice"])
                 local_zh_narrator.set(hsk30_audio_state["zh_narrator_voice"])
-                rate = float(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.75}[_hsk30_level_key()]) or {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.75}[_hsk30_level_key()])
+                rate = float(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()]) or {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()])
                 local_hsk_speed.set(_hsk_speed_label(rate))
                 refresh_audio_state()
 
@@ -3467,13 +3467,6 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             level_key = _hsk30_level_key()
             level_label = _hsk30_level_label()
             first_exam = _hsk30_first_exam()
-            if level_key == "hsk3":
-                messagebox.showinfo(
-                    "Batch HSK3 chưa mở",
-                    "Phase hiện tại chỉ cho phép build HSK3-30-01. Batch HSK3 sẽ mở sau khi duyệt file golden.",
-                    parent=audio_win,
-                )
-                return
             source_path = hsk30_audio_state.get("source_path") or str(_hsk30_default_source())
             if not source_path or not Path(source_path).is_file():
                 messagebox.showwarning(
@@ -3728,10 +3721,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             current_level = _hsk30_level_label()
             current_exam = _hsk30_first_exam()
             preview_approval_label.set(f"Đã duyệt preview {current_exam}")
-            if _hsk30_level_key() == "hsk3":
-                batch_button.configure(text="Batch HSK3 (chưa mở)")
-            else:
-                batch_button.configure(text=f"Xuất batch {current_level}")
+            batch_button.configure(text=f"Xuất batch {current_level}")
         refresh_level_labels()
         if Path(hsk30_audio_state.get("source_path") or "").is_file():
             _load_preview(hsk30_audio_state.get("source_path"))
