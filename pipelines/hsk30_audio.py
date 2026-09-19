@@ -11,6 +11,7 @@ import subprocess
 import zipfile
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 import unicodedata
@@ -2100,8 +2101,10 @@ def _validate_hsk3_shared_pair(q29_text: str, q30_text: str) -> Tuple[str, str, 
     q30_passage, question30 = _split_hsk3_question(q30_text)
     if not passage:
         raise ValueError("Q29 phải có shared passage")
-    if q30_passage:
-        raise ValueError("Q30 phải là question-only")
+    if q30_passage and q30_passage != passage:
+        similarity = SequenceMatcher(None, passage, q30_passage).ratio()
+        if similarity < 0.90:
+            raise ValueError("Q30 chỉ được lặp lại shared passage tương ứng của Q29")
     return passage, question29, question30
 
 
@@ -2172,39 +2175,94 @@ def _resolve_hsk3_sheet_name(excel_path: str | Path, requested: str) -> str:
     raise ValueError(f"Không tìm thấy sheet '{requested}' trong workbook HSK3")
 
 
-def validate_hsk3_workbook(excel_path: str | Path, sheet_name: str = "Sheet1") -> Dict[str, object]:
-    sheet_name = _resolve_hsk3_sheet_name(excel_path, sheet_name)
+def _normalize_hsk3_header(value: object) -> str:
+    text = unicodedata.normalize("NFKD", _clean_text(value))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = text.replace("đ", "d").replace("Đ", "D")
+    return re.sub(r"[^a-z0-9\u4e00-\u9fff]+", "", text.lower())
+
+
+def _hsk3_required_columns(header: Dict[str, str]) -> Dict[str, str]:
+    aliases = {
+        "exam": {"made", "exam", "examcode"},
+        "question_number": {"cau", "socau", "question", "questionnumber"},
+        "content": {"noidungphannghe", "phude", "subtitle", "listeningcontent"},
+    }
+    normalized_columns = {
+        _normalize_hsk3_header(value): column for column, value in header.items() if _clean_text(value)
+    }
+    missing = [name for name, accepted in aliases.items() if not any(key in normalized_columns for key in accepted)]
+    if missing:
+        labels = {"exam": "Mã đề", "question_number": "Câu", "content": "Nội dung phần nghe"}
+        raise ValueError("Workbook HSK3 thiếu cột bắt buộc: " + ", ".join(labels[name] for name in missing))
+    return {
+        name: next(normalized_columns[key] for key in accepted if key in normalized_columns)
+        for name, accepted in aliases.items()
+    }
+
+
+def _is_hsk3_example_row(question_value: object) -> bool:
+    return _normalize_hsk3_header(question_value) in {"vidu", "mau", "example", "shili", "li"}
+
+
+def _load_hsk3_exam_rows(excel_path: str | Path, sheet_name: str) -> Dict[str, object]:
     rows = read_xlsx_rows(excel_path, sheet_name=sheet_name)
     if not rows:
         raise ValueError("Workbook HSK3 không có dữ liệu")
-    header = rows[0].cells
-    expected_headers = {"A": "Mã đề", "B": "Câu", "C": "Nội dung phần nghe"}
-    missing = [name for column, name in expected_headers.items() if header.get(column) != name]
-    if missing:
-        raise ValueError("Workbook HSK3 thiếu cột bắt buộc: " + ", ".join(missing))
 
+    columns = _hsk3_required_columns(rows[0].cells)
     exams: Dict[str, List[XlsxRow]] = {}
     current_exam = ""
     invalid_rows: List[str] = []
+    ignored_example_rows = 0
     for row in rows[1:]:
-        explicit_exam = _normalize_exam_code(row.cells.get("A", ""))
+        explicit_exam = _normalize_exam_code(row.cells.get(columns["exam"], ""))
         if explicit_exam:
             current_exam = explicit_exam
+
+        question_text = _clean_text(row.cells.get(columns["question_number"], ""))
+        content_text = _clean_text(row.cells.get(columns["content"], ""))
+        if _is_hsk3_example_row(question_text) or (not question_text and not content_text):
+            ignored_example_rows += 1
+            continue
         if not current_exam:
             invalid_rows.append(f"Dòng {row.row_number}: thiếu mã đề trước khi forward-fill")
             continue
         if not re.fullmatch(r"HSK3-30-\d{2}", current_exam):
             invalid_rows.append(f"Dòng {row.row_number}: mã đề không hợp lệ '{current_exam}'")
             continue
+
         exams.setdefault(current_exam, []).append(
-            XlsxRow(row.row_number, {**row.cells, "A": current_exam})
+            XlsxRow(
+                row.row_number,
+                {
+                    **row.cells,
+                    "A": current_exam,
+                    "_hsk3_question_number": question_text,
+                    "_hsk3_content": content_text,
+                },
+            )
         )
+
+    return {
+        "columns": columns,
+        "exams": exams,
+        "invalid_rows": invalid_rows,
+        "ignored_example_rows": ignored_example_rows,
+    }
+
+
+def validate_hsk3_workbook(excel_path: str | Path, sheet_name: str = "Sheet1") -> Dict[str, object]:
+    sheet_name = _resolve_hsk3_sheet_name(excel_path, sheet_name)
+    loaded = _load_hsk3_exam_rows(excel_path, sheet_name)
+    exams = loaded["exams"]
+    invalid_rows = list(loaded["invalid_rows"])
 
     expected_exams = [f"HSK3-30-{index:02d}" for index in range(1, 17)]
     summaries: Dict[str, Dict[str, object]] = {}
     for exam in sorted(exams):
         exam_rows = exams[exam]
-        numbers = [_hsk3_number_value(row.cells.get("B", "")) for row in exam_rows]
+        numbers = [_hsk3_number_value(row.cells.get("_hsk3_question_number", "")) for row in exam_rows]
         summaries[exam] = {
             "row_count": len(exam_rows),
             "numbers": numbers,
@@ -2226,8 +2284,8 @@ def validate_hsk3_workbook(excel_path: str | Path, sheet_name: str = "Sheet1") -
             structural_errors.append(f"{exam}: cần 30 câu số 一 đến 三十")
             continue
         for row in exams[exam]:
-            number = _hsk3_number_value(row.cells.get("B", ""))
-            subtitle = _clean_text(row.cells.get("C", ""))
+            number = _hsk3_number_value(row.cells.get("_hsk3_question_number", ""))
+            subtitle = _clean_text(row.cells.get("_hsk3_content", ""))
             try:
                 if number is None or not subtitle:
                     raise ValueError("thiếu số câu hoặc nội dung")
@@ -2241,17 +2299,25 @@ def validate_hsk3_workbook(excel_path: str | Path, sheet_name: str = "Sheet1") -
                     passage, _question = _split_hsk3_question(subtitle)
                     if number < 30 and not passage:
                         raise ValueError(f"Q{number} phải có narration")
-                    if number == 30 and passage:
-                        raise ValueError("Q30 phải là question-only")
                     part3_parsed += 1
             except ValueError as exc:
                 semantic_errors.append(f"{exam} dòng {row.row_number}: {exc}")
+        question_texts = {
+            _hsk3_number_value(row.cells.get("_hsk3_question_number", "")): row.cells.get("_hsk3_content", "")
+            for row in exams[exam]
+        }
+        try:
+            _validate_hsk3_shared_pair(question_texts[29], question_texts[30])
+        except (KeyError, ValueError) as exc:
+            semantic_errors.append(f"{exam}: {exc}")
     structural_errors.extend(semantic_errors)
     return {
         "workbook": str(Path(excel_path)),
         "sheet": sheet_name,
+        "source_columns": loaded["columns"],
         "exam_count": len(exams),
         "exam_codes": sorted(exams),
+        "ignored_example_rows": loaded["ignored_example_rows"],
         "missing_exams": [exam for exam in expected_exams if exam not in exams],
         "invalid_rows": structural_errors,
         "semantic_errors": semantic_errors,
@@ -2277,14 +2343,8 @@ def parse_hsk3_phase1(
     normalized_exam = _normalize_exam_code(exam_code)
     if normalized_exam not in structure["exams"]:
         raise ValueError(f"Không tìm thấy dữ liệu cho {normalized_exam}")
-    rows = read_xlsx_rows(excel_path, sheet_name=sheet_name)
-    current_exam = ""
-    selected: List[XlsxRow] = []
-    for row in rows[1:]:
-        if _clean_text(row.cells.get("A", "")):
-            current_exam = _normalize_exam_code(row.cells["A"])
-        if current_exam == normalized_exam:
-            selected.append(XlsxRow(row.row_number, {**row.cells, "A": current_exam}))
+    loaded = _load_hsk3_exam_rows(excel_path, sheet_name)
+    selected = loaded["exams"].get(normalized_exam, [])
 
     lang_state = dict(lang_state or {})
     rate = _parse_speech_rate(lang_state.get("speech_rate", 0.75), default=0.75)
@@ -2293,9 +2353,9 @@ def parse_hsk3_phase1(
     invalid: List[str] = []
     part_counts = {1: 0, 2: 0, 3: 0}
     for row in selected:
-        number_text = _clean_text(row.cells.get("B", ""))
+        number_text = _clean_text(row.cells.get("_hsk3_question_number", ""))
         number = _hsk3_number_value(number_text)
-        subtitle = _clean_text(row.cells.get("C", ""))
+        subtitle = _clean_text(row.cells.get("_hsk3_content", ""))
         if number is None or not subtitle:
             invalid.append(f"Dòng {row.row_number}: thiếu Câu hoặc Nội dung phần nghe")
             continue
@@ -2311,12 +2371,10 @@ def parse_hsk3_phase1(
                 repeat2 = [dict(segment) for segment in segments]
             else:
                 passage, question = _split_hsk3_question(subtitle)
-                if number == 30 and passage:
-                    raise ValueError("Q30 không được có narration độc lập")
                 if number == 29 and not passage:
                     raise ValueError("Q29 phải có shared passage")
                 narration_label = "NỮ" if number % 2 else "NAM"
-                repeat1 = [] if not passage else [{"speaker_label": narration_label, "speaker_token": "", "source_text": passage, "text": passage}]
+                repeat1 = [] if number == 30 or not passage else [{"speaker_label": narration_label, "speaker_token": "", "source_text": passage, "text": passage}]
                 repeat1.append({"speaker_label": "NỮ", "speaker_token": "问", "source_text": f"问：{question}", "text": question})
                 repeat2 = [dict(segment) for segment in repeat1]
         except ValueError as exc:
@@ -2354,6 +2412,7 @@ def parse_hsk3_phase1(
     return {
         "level": "HSK3", "workbook": str(Path(excel_path)), "sheet": sheet_name, "detected_exam": normalized_exam,
         "question_count": len(items), "part_counts": part_counts, "missing_invalid_rows": invalid,
+        "ignored_example_rows": structure.get("ignored_example_rows", 0),
         "asset_status": validate_hsk30_assets(asset_root=asset_root, level="hsk3"), "lang_state": report_lang,
         "output_filename": phase1_output_filename(normalized_exam), "reference_duration_ms": HSK3_AUDIO_PROFILE["reference_duration_ms"],
         "sample_reference_duration_ms": HSK3_AUDIO_PROFILE["sample_reference_duration_ms"], "tts_requests_made": 0,
@@ -2381,6 +2440,7 @@ def format_hsk3_preview_report(report: Dict[str, object]) -> str:
         f"Part 1 patterns: {report.get('part1_pattern_stats', {})}",
         f"Part 2 patterns: {report.get('part2_pattern_stats', {})}",
         f"Part 3 parsed across workbook: {report.get('part3_parse_count', 0)}",
+        f"Ignored example rows: {report.get('ignored_example_rows', 0)}",
         "TTS requests in dry run: 0", "",
     ]
     for item in report.get("preview_items", []):

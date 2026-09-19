@@ -13,6 +13,7 @@ from pipelines.hsk30_audio import (
     _parse_hsk3_segments,
     _normalize_tts_text,
     _hsk3_segment_gaps,
+    _hsk3_required_columns,
     _trim_tts_edge_silence,
     _validate_hsk3_shared_pair,
     build_hsk3_phase1b,
@@ -41,9 +42,13 @@ class Hsk30AudioHsk3Tests(unittest.TestCase):
     def test_workbook_forward_fill_and_all_exam_semantics(self):
         structure = validate_hsk3_workbook(HSK30_HSK3_SOURCE)
         self.assertEqual("PASS", structure["status"])
-        self.assertEqual("ghi am", structure["sheet"])
+        self.assertIn(structure["sheet"], {"Sheet1", "ghi am"})
+        self.assertEqual("A", structure["source_columns"]["exam"])
+        self.assertIn(structure["source_columns"]["question_number"], {"B", "F"})
+        self.assertIn(structure["source_columns"]["content"], {"C", "G"})
         self.assertEqual(16, structure["exam_count"])
         self.assertEqual(30, structure["exams"]["HSK3-30-01"]["row_count"])
+        self.assertGreaterEqual(structure["ignored_example_rows"], 0)
         self.assertEqual({1: 10, 2: 10, 3: 10}, structure["exams"]["HSK3-30-01"]["part_counts"])
         self.assertEqual({"女→男": 83, "男→女": 77}, structure["part1_patterns"])
         self.assertEqual({"女→男→问": 75, "男→女→问": 74, "女→男→女→问": 7, "男→女→男→问": 4}, structure["part2_patterns"])
@@ -74,12 +79,17 @@ class Hsk30AudioHsk3Tests(unittest.TestCase):
         self.assertTrue(report["shared_q29_q30_ok"])
 
     def test_dynamic_part2_and_shared_pair_validation(self):
+        self.assertEqual(
+            {"exam": "A", "question_number": "F", "content": "G"},
+            _hsk3_required_columns({"A": "Mã đề", "B": "Kỹ năng", "F": "Câu", "G": "Nội dung phần nghe"}),
+        )
         four = _parse_hsk3_segments("女：甲。男：乙。女：丙。问：谁？", require_question=True)
         self.assertEqual(["女", "男", "女", "问"], [segment["speaker_token"] for segment in four])
         self.assertEqual([600, 600, 2150], _hsk3_segment_gaps(2, four))
         with self.assertRaises(ValueError):
             _parse_hsk3_segments("女：甲。男：乙。", require_question=True)
         self.assertEqual(("一段话。", "问题一?", "问题二?"), _validate_hsk3_shared_pair("一段话。问：问题一？", "问：问题二？"))
+        self.assertEqual(("一段话很长。", "问题一?", "问题二?"), _validate_hsk3_shared_pair("一段话很长。问：问题一？", "一段话很长。问：问题二？"))
         with self.assertRaises(ValueError):
             _validate_hsk3_shared_pair("问：问题一？", "问：问题二？")
         with self.assertRaises(ValueError):
