@@ -52,6 +52,11 @@ testdata/hsk30/hsk2/hsk2-30-*.m4a
 testdata/hsk30/hsk2/~$*.xlsx
 testdata/hsk30/hsk3/hsk3-30-*.m4a
 testdata/hsk30/hsk3/~$*.xlsx
+testdata/hsk30/hsk3/audio-hsk3-30/
+testdata/hsk30/hsk3/speed_comparison/
+testdata/hsk30/hsk3/test-hsk3-30-*.m4a
+testdata/hsk30/hsk4/hsk4-30-*.m4a
+testdata/hsk30/hsk4/~$*.xlsx
 
 pipelines/.tts_cache/
 

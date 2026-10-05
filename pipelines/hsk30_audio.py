@@ -46,6 +46,9 @@ HSK30_AUDIO_ROOT = BASE_DIR / "assets" / "hsk30_audio"
 HSK30_DEFAULT_SOURCE = BASE_DIR / "testdata" / "hsk30" / "hsk1" / "ghiam_HSK1_30.xlsx"
 HSK30_HSK2_SOURCE = BASE_DIR / "testdata" / "hsk30" / "hsk2" / "phan_nghe_HSK2_30.xlsx"
 HSK30_HSK3_SOURCE = BASE_DIR / "testdata" / "hsk30" / "hsk3" / "hsk3-30-ghi-am-nghe.xlsx"
+HSK30_HSK4_SOURCE = BASE_DIR / "testdata" / "hsk30" / "hsk4" / "xuat audio hsk 4 đúng (1).xlsx"
+if not HSK30_HSK3_SOURCE.is_file():
+    HSK30_HSK3_SOURCE = BASE_DIR / "testdata" / "hsk30" / "hsk3" / "FILE XUAT NHAC 1.xlsx"
 HSK30_COMMON_ASSET = HSK30_AUDIO_ROOT / "common" / "hsk_1_6_intro_music.m4a"
 HSK30_COMMON_OUTTRO = HSK30_AUDIO_ROOT / "common" / "hsk_outtro.m4a"
 HSK30_HSK1_ASSETS = {
@@ -71,6 +74,11 @@ HSK30_HSK3_ASSETS = {
     "cue_q11_20": HSK30_AUDIO_ROOT / "hsk3" / "hsk3_cue_q11_20.m4a",
     "cue_q21_28": HSK30_AUDIO_ROOT / "hsk3" / "hsk3_cue_q21_28.m4a",
     "cue_q29_30": HSK30_AUDIO_ROOT / "hsk3" / "hsk3_cue_q29_30.m4a",
+}
+HSK30_HSK4_ASSETS = {
+    "intro": HSK30_AUDIO_ROOT / "hsk4" / "hsk4_intro.m4a",
+    "part1": HSK30_AUDIO_ROOT / "hsk4" / "hsk4_part1.m4a",
+    "part2": HSK30_AUDIO_ROOT / "hsk4" / "hsk4_part2.m4a",
 }
 
 HSK2_AUDIO_PROFILE = {
@@ -105,6 +113,24 @@ HSK3_AUDIO_PROFILE = {
     "intro_to_part1_ms": 800,
     "part_intro_ms": 1500,
     "part_gap_ms": 2500,
+    "final_silence_ms": 0,
+}
+
+HSK4_AUDIO_PROFILE = {
+    "level": "HSK4",
+    "reference_duration_ms": 20 * 60 * 1000,
+    "sample_reference_duration_ms": 21 * 60 * 1000 + 9 * 1000,
+    "part_counts": {1: 14, 2: 18},
+    "repetitions": 1,
+    "music_to_intro_ms": 1020,
+    "intro_to_part_ms": 930,
+    "part_start_gap_ms": 3140,
+    "number_to_content_ms": 1200,
+    "speaker_gap_ms": 610,
+    "content_to_question_ms": 2040,
+    "shared_passage_to_number_ms": 2240,
+    "number_to_question_ms": 900,
+    "answer_pause_ms": 16180,
     "final_silence_ms": 0,
 }
 
@@ -286,6 +312,9 @@ def _format_hsk_speed_label(profile: object, rate: object) -> str:
     except Exception:
         numeric_rate = 0.90
     profile_label = _clean_text(profile) or "HSK1"
+    if profile_label == "HSK4":
+        hsk4_label = {0.90: "chậm hơn", 0.95: "chuẩn", 1.00: "nhanh hơn"}.get(numeric_rate, "custom")
+        return f"{profile_label} {hsk4_label} — {numeric_rate:.2f}x"
     if profile_label == "HSK3":
         hsk3_label = {0.70: "chậm", 0.72: "chậm hơn", 0.75: "chuẩn", 0.80: "nhanh hơn"}.get(numeric_rate, "custom")
         return f"{profile_label} {hsk3_label} — {numeric_rate:.2f}x"
@@ -372,6 +401,14 @@ def validate_hsk30_assets(asset_root: str | Path | None = None, level: str = "hs
                 "hsk3_cue_q29_30": root / "hsk3" / "hsk3_cue_q29_30.m4a",
             }.items()
         })
+    elif level_key in {"hsk4", "4"}:
+        required.update({
+            f"hsk4/{name}.m4a": path for name, path in {
+                "hsk4_intro": root / "hsk4" / "hsk4_intro.m4a",
+                "hsk4_part1": root / "hsk4" / "hsk4_part1.m4a",
+                "hsk4_part2": root / "hsk4" / "hsk4_part2.m4a",
+            }.items()
+        })
     elif level_key in {"hsk2", "2"}:
         required.update({
             "hsk2/hsk2_intro.m4a": root / "hsk2" / "hsk2_intro.m4a",
@@ -391,7 +428,7 @@ def validate_hsk30_assets(asset_root: str | Path | None = None, level: str = "hs
     present = [name for name in required if name not in missing]
     return {
         "root": str(root),
-        "level": "HSK3" if level_key in {"hsk3", "3"} else ("HSK2" if level_key in {"hsk2", "2"} else "HSK1"),
+        "level": "HSK4" if level_key in {"hsk4", "4"} else ("HSK3" if level_key in {"hsk3", "3"} else ("HSK2" if level_key in {"hsk2", "2"} else "HSK1")),
         "required": required,
         "missing": missing,
         "present": present,
@@ -410,7 +447,10 @@ def phase1_output_filename(exam_code: str) -> str:
     hsk3_match = re.fullmatch(r"HSK3-30-(\d{2})", normalized)
     if hsk3_match:
         return f"hsk3-30-{int(hsk3_match.group(1)):03d}.m4a"
-    if not hsk1_match and not hsk2_match and not hsk3_match:
+    hsk4_match = re.fullmatch(r"HSK4-30-(\d{2})", normalized)
+    if hsk4_match:
+        return f"hsk4-30-{int(hsk4_match.group(1)):03d}.m4a"
+    if not hsk1_match and not hsk2_match and not hsk3_match and not hsk4_match:
         raise ValueError(f"Không hỗ trợ exam code: {exam_code}")
 
 
@@ -1027,6 +1067,33 @@ def _probe_audio_duration_ms(path: str | Path) -> int:
             raise RuntimeError(f"Không probe được audio: {stderr_text}")
 
         return len(AudioSegment.from_file(io.BytesIO(result.stdout), format="wav"))
+
+
+def _export_audio_atomically(audio: AudioSegment, out_path: Path, export_kwargs: Dict[str, object]) -> int:
+    """Export and probe a temporary file before replacing the published output."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{out_path.stem}-",
+        suffix=".tmp.m4a",
+        dir=str(out_path.parent),
+    )
+    os.close(fd)
+    temp_path = Path(temp_name)
+    try:
+        export_handle = audio.export(str(temp_path), **export_kwargs)
+        try:
+            export_handle.close()
+        except Exception:
+            pass
+        duration_ms = _probe_audio_duration_ms(temp_path)
+        os.replace(temp_path, out_path)
+        return duration_ms
+    except Exception:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
 
 
 def _load_audio_segment(path: str | Path) -> AudioSegment:
@@ -1746,12 +1813,7 @@ def build_hsk1_phase1b(
     }
 
     def _export_and_probe(audio_segment: AudioSegment) -> int:
-        export_handle = audio_segment.export(str(out_path), **export_kwargs)
-        try:
-            export_handle.close()
-        except Exception:
-            pass
-        return _probe_audio_duration_ms(out_path)
+        return _export_audio_atomically(audio_segment, out_path, export_kwargs)
 
     initial_final_duration_ms = _export_and_probe(normalized_audio)
     final_duration_ms = initial_final_duration_ms
@@ -2005,18 +2067,16 @@ def build_hsk2_phase1b(
     peak = normalized_audio.max_dBFS
     if peak and peak != float("-inf") and peak > -4.0:
         normalized_audio = normalized_audio.apply_gain(-4.0 - peak)
-    export_handle = normalized_audio.export(
-        str(out_path),
-        format="ipod",
-        codec="aac",
-        bitrate=FINAL_BITRATE,
-        parameters=["-ac", str(FINAL_CHANNELS), "-ar", str(FINAL_SAMPLE_RATE)],
+    final_duration_ms = _export_audio_atomically(
+        normalized_audio,
+        out_path,
+        {
+            "format": "ipod",
+            "codec": "aac",
+            "bitrate": FINAL_BITRATE,
+            "parameters": ["-ac", str(FINAL_CHANNELS), "-ar", str(FINAL_SAMPLE_RATE)],
+        },
     )
-    try:
-        export_handle.close()
-    except Exception:
-        pass
-    final_duration_ms = _probe_audio_duration_ms(out_path)
     reference_duration_ms = int(profile["reference_duration_ms"])
     fixed_assets_ms = len(intro) + sum(len(audio) for audio in part_assets.values())
     part_transition_total = sum(value for key, value in transitions.items() if key != "final_silence")
@@ -2644,10 +2704,16 @@ def build_hsk3_phase1b(
     peak = normalized_audio.max_dBFS
     if peak and peak != float("-inf") and peak > -4.0:
         normalized_audio = normalized_audio.apply_gain(-4.0 - peak)
-    export_handle = normalized_audio.export(str(out_path), format="ipod", codec="aac", bitrate=FINAL_BITRATE, parameters=["-ac", str(FINAL_CHANNELS), "-ar", str(FINAL_SAMPLE_RATE)])
-    try: export_handle.close()
-    except Exception: pass
-    final_duration_ms = _probe_audio_duration_ms(out_path)
+    final_duration_ms = _export_audio_atomically(
+        normalized_audio,
+        out_path,
+        {
+            "format": "ipod",
+            "codec": "aac",
+            "bitrate": FINAL_BITRATE,
+            "parameters": ["-ac", str(FINAL_CHANNELS), "-ar", str(FINAL_SAMPLE_RATE)],
+        },
+    )
     sample_difference_ms = final_duration_ms - HSK3_AUDIO_PROFILE["sample_reference_duration_ms"]
     duration_qa = "WARN" if abs(sample_difference_ms) > 3 * 60 * 1000 else "INFO"
     fixed_assets_ms = len(fixed["intro"]) + len(fixed["part1"]) + len(fixed["part2"]) + len(fixed["part3"])
@@ -2869,4 +2935,632 @@ def format_hsk3_build_report(report: Dict[str, object]) -> str:
     ])
     for part in (1, 2, 3): lines.append(f"Part{part} duration: {report.get('part_breakdown', {}).get(part, 0)} ms")
     lines += ["", "Reference official: 1380000 ms (~23:00)", f"Sample reference: {report.get('sample_reference_duration_ms', 0)} ms", f"Actual duration: {report.get('actual_duration_ms', 0)} ms", f"Difference from official reference: {report.get('difference_ms', 0)} ms", f"Difference from sample: {report.get('sample_difference_ms', 0)} ms", f"Duration QA: {report.get('duration_qa', 'INFO')}", "Status: INFO"]
+    return "\n".join(lines) + "\n"
+
+
+# HSK4 uses one playback per question and derives shared passages from the
+# workbook's Nhóm câu column. It deliberately does not reuse HSK3 repeat logic.
+HSK4_QUESTION_MARKER_RE = re.compile(r"(?:\d{1,2}\s*[.．、]\s*)?(?:问|問)\s*[：:]")
+HSK4_SPEAKER_RE = re.compile(r"(男|女)\s*[：:]")
+HSK4_GROUP_RE = re.compile(r"(\d{1,2})\s*[–—-]\s*(\d{1,2})")
+HSK4_NARRATION_GROUP_VOICES = {
+    "20–21": "NỮ",
+    "22–23": "NAM",
+    "24–25": "NỮ",
+    "26–27": "NAM",
+    "28–29": "NỮ",
+    "30–32": "NAM",
+}
+
+
+def _hsk4_normalize_group(value: object) -> str:
+    clean = _clean_text(value).replace("—", "–").replace("-", "–")
+    match = HSK4_GROUP_RE.fullmatch(clean)
+    if not match:
+        return clean
+    return f"{int(match.group(1))}–{int(match.group(2))}"
+
+
+def _hsk4_group_range(value: object) -> Optional[List[int]]:
+    group = _hsk4_normalize_group(value)
+    match = HSK4_GROUP_RE.fullmatch(group)
+    if not match:
+        return None
+    start, end = int(match.group(1)), int(match.group(2))
+    if end < start:
+        return None
+    return list(range(start, end + 1))
+
+
+def _hsk4_strip_question_marker(text: str) -> str:
+    clean = _normalize_tts_text(text)
+    return HSK4_QUESTION_MARKER_RE.sub("", clean, count=1).strip()
+
+
+def _hsk4_parse_stimulus(stimulus: str, *, narration_label: str = "NỮ") -> List[Dict[str, str]]:
+    source = _normalize_tts_text(stimulus)
+    if not source:
+        return []
+    matches = list(HSK4_SPEAKER_RE.finditer(source))
+    if not matches:
+        return [{
+            "speaker_label": narration_label,
+            "speaker_token": "",
+            "source_text": source,
+            "text": _strip_speaker_prefix(source),
+        }]
+    if matches[0].start() != 0:
+        raise ValueError("HSK4 stimulus có nội dung trước prefix 男：/女：")
+    segments: List[Dict[str, str]] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(source)
+        spoken = _normalize_tts_text(source[match.end():end])
+        if not spoken:
+            raise ValueError(f"Segment {match.group(1)}： bị rỗng")
+        token = match.group(1)
+        segments.append({
+            "speaker_label": {"男": "NAM", "女": "NỮ"}[token],
+            "speaker_token": token,
+            "source_text": f"{token}：{spoken}",
+            "text": spoken,
+        })
+    return segments
+
+
+def _hsk4_parse_content(text: str, *, narration_label: str = "NỮ") -> Dict[str, object]:
+    source = _normalize_tts_text(text)
+    matches = list(HSK4_QUESTION_MARKER_RE.finditer(source))
+    if len(matches) != 1:
+        raise ValueError("HSK4 mỗi dòng phải có đúng một 问：")
+    marker = matches[0]
+    stimulus_text = source[:marker.start()].strip()
+    question_text = _hsk4_strip_question_marker(source[marker.start():])
+    if not question_text:
+        raise ValueError("Câu hỏi HSK4 bị rỗng")
+    return {
+        "stimulus_text": stimulus_text,
+        "stimulus_segments": _hsk4_parse_stimulus(stimulus_text, narration_label=narration_label),
+        "question": {
+            "speaker_label": "NỮ",
+            "speaker_token": "问",
+            "source_text": source[marker.start():],
+            "text": question_text,
+        },
+    }
+
+
+def _hsk4_required_columns(header: Dict[str, str]) -> Dict[str, str]:
+    aliases = {
+        "exam": {"made", "exam", "examcode"},
+        "part": {"phan", "part"},
+        "group": {"nhomcau", "group", "questiongroup"},
+        "question_number": {"cau", "socau", "question", "questionnumber"},
+        "content": {"noidungphannghe", "phude", "subtitle", "listeningcontent"},
+    }
+    normalized_columns = {
+        _normalize_hsk3_header(value): column for column, value in header.items() if _clean_text(value)
+    }
+    missing = [name for name, accepted in aliases.items() if not any(key in normalized_columns for key in accepted)]
+    if missing:
+        labels = {
+            "exam": "Mã đề", "part": "Phần", "group": "Nhóm câu",
+            "question_number": "Câu", "content": "Nội dung phần nghe",
+        }
+        raise ValueError("Workbook HSK4 thiếu cột bắt buộc: " + ", ".join(labels[name] for name in missing))
+    return {
+        name: next(normalized_columns[key] for key in accepted if key in normalized_columns)
+        for name, accepted in aliases.items()
+    }
+
+
+def _load_hsk4_exam_rows(excel_path: str | Path, sheet_name: str) -> Dict[str, object]:
+    rows = read_xlsx_rows(excel_path, sheet_name=sheet_name)
+    if not rows:
+        raise ValueError("Workbook HSK4 không có dữ liệu")
+    columns = _hsk4_required_columns(rows[0].cells)
+    exams: Dict[str, List[XlsxRow]] = {}
+    invalid_rows: List[str] = []
+    current_exam = ""
+    for row in rows[1:]:
+        explicit_exam = _normalize_exam_code(row.cells.get(columns["exam"], ""))
+        if explicit_exam:
+            current_exam = explicit_exam
+        number_text = _clean_text(row.cells.get(columns["question_number"], ""))
+        content_text = _clean_text(row.cells.get(columns["content"], ""))
+        if not number_text and not content_text:
+            continue
+        if not current_exam:
+            invalid_rows.append(f"Dòng {row.row_number}: thiếu mã đề trước khi forward-fill")
+            continue
+        if not re.fullmatch(r"HSK4-30-\d{2}", current_exam):
+            invalid_rows.append(f"Dòng {row.row_number}: mã đề không hợp lệ '{current_exam}'")
+            continue
+        exams.setdefault(current_exam, []).append(
+            XlsxRow(
+                row.row_number,
+                {
+                    **row.cells,
+                    columns["exam"]: current_exam,
+                    "_hsk4_question_number": number_text,
+                    "_hsk4_content": content_text,
+                    "_hsk4_part": _parse_part_label(row.cells.get(columns["part"], "")),
+                    "_hsk4_group": _hsk4_normalize_group(row.cells.get(columns["group"], "")),
+                },
+            )
+        )
+    return {"columns": columns, "exams": exams, "invalid_rows": invalid_rows}
+
+
+def validate_hsk4_workbook(excel_path: str | Path, sheet_name: str = "Sheet1") -> Dict[str, object]:
+    sheet_name = _resolve_hsk3_sheet_name(excel_path, sheet_name)
+    loaded = _load_hsk4_exam_rows(excel_path, sheet_name)
+    exams = loaded["exams"]
+    expected_exams = [f"HSK4-30-{index:02d}" for index in range(1, 18)]
+    errors = list(loaded["invalid_rows"])
+    summaries: Dict[str, Dict[str, object]] = {}
+    part1_patterns: Counter[str] = Counter()
+    part2_patterns: Counter[str] = Counter()
+    shared_group_counts: Counter[str] = Counter()
+    embedded_marker_count = 0
+
+    for exam in expected_exams:
+        exam_rows = exams.get(exam, [])
+        numbers = [_hsk3_number_value(row.cells.get("_hsk4_question_number", "")) for row in exam_rows]
+        part_counts = {
+            1: sum(1 for row in exam_rows if row.cells.get("_hsk4_part") == 1),
+            2: sum(1 for row in exam_rows if row.cells.get("_hsk4_part") == 2),
+        }
+        summaries[exam] = {
+            "row_count": len(exam_rows),
+            "numbers": numbers,
+            "part_counts": part_counts,
+            "shared_groups": {},
+            "independent_count": 0,
+        }
+        if not exam_rows:
+            errors.append(f"Thiếu {exam}")
+            continue
+        if len(exam_rows) != 32 or numbers != list(range(1, 33)):
+            errors.append(f"{exam}: cần đúng 32 câu số 一 đến 三十二")
+            continue
+        if part_counts != {1: 14, 2: 18}:
+            errors.append(f"{exam}: cần Part 1=14, Part 2=18, nhận được {part_counts}")
+
+        grouped: Dict[str, List[Tuple[XlsxRow, Dict[str, object]]]] = {}
+        for row in exam_rows:
+            number = _hsk3_number_value(row.cells.get("_hsk4_question_number", ""))
+            part = row.cells.get("_hsk4_part")
+            group = row.cells.get("_hsk4_group", "")
+            content = row.cells.get("_hsk4_content", "")
+            if number is None or not content:
+                errors.append(f"{exam} dòng {row.row_number}: thiếu Câu hoặc Nội dung phần nghe")
+                continue
+            if (number <= 14 and part != 1) or (number >= 15 and part != 2):
+                errors.append(f"{exam} Q{number}: Phần không khớp số câu")
+            try:
+                parsed = _hsk4_parse_content(content, narration_label=HSK4_NARRATION_GROUP_VOICES.get(group, "NỮ"))
+            except ValueError as exc:
+                errors.append(f"{exam} Q{number}: {exc}")
+                continue
+            if re.search(r"\d{1,2}\s*[.．、]\s*(?:问|問)\s*[：:]", content):
+                embedded_marker_count += 1
+            stimulus = parsed["stimulus_segments"]
+            if number <= 14:
+                if len(stimulus) < 2:
+                    errors.append(f"{exam} Q{number}: Part 1 cần ít nhất 2 lượt thoại")
+                part1_patterns["→".join(segment["speaker_token"] for segment in stimulus)] += 1
+            elif group == "Độc lập":
+                if not stimulus:
+                    errors.append(f"{exam} Q{number}: câu độc lập thiếu stimulus")
+                part2_patterns["→".join(segment["speaker_token"] for segment in stimulus) or "NARRATION"] += 1
+                summaries[exam]["independent_count"] += 1
+            else:
+                range_numbers = _hsk4_group_range(group)
+                if not range_numbers:
+                    errors.append(f"{exam} Q{number}: Nhóm câu không phải Độc lập hoặc khoảng hợp lệ")
+                grouped.setdefault(group, []).append((row, parsed))
+
+        for group, entries in grouped.items():
+            group_numbers = [_hsk3_number_value(row.cells.get("_hsk4_question_number", "")) for row, _ in entries]
+            expected_group = _hsk4_group_range(group)
+            summaries[exam]["shared_groups"][group] = {
+                "numbers": group_numbers,
+                "size": len(entries),
+            }
+            shared_group_counts[group] += 1
+            if expected_group != group_numbers:
+                errors.append(f"{exam} nhóm {group}: cần các câu {expected_group}, nhận được {group_numbers}")
+            for index, (row, parsed) in enumerate(entries):
+                stimulus = parsed["stimulus_segments"]
+                if index == 0 and not stimulus:
+                    errors.append(f"{exam} nhóm {group}: dòng đầu phải sở hữu shared stimulus")
+                if index > 0 and stimulus:
+                    errors.append(f"{exam} Q{group_numbers[index]}: không được có stimulus mới trong shared group")
+
+    unexpected_exams = sorted(exam for exam in exams if exam not in expected_exams)
+    errors.extend(f"Mã đề ngoài danh sách: {exam}" for exam in unexpected_exams)
+    return {
+        "workbook": str(Path(excel_path)),
+        "sheet": sheet_name,
+        "source_columns": loaded["columns"],
+        "exam_count": len(exams),
+        "exam_codes": sorted(exams),
+        "missing_exams": [exam for exam in expected_exams if exam not in exams],
+        "unexpected_exams": unexpected_exams,
+        "invalid_rows": errors,
+        "semantic_errors": errors,
+        "part1_patterns": dict(part1_patterns),
+        "part2_patterns": dict(part2_patterns),
+        "shared_group_counts": dict(shared_group_counts),
+        "embedded_marker_count": embedded_marker_count,
+        "exams": summaries,
+        "status": "PASS" if not errors and sorted(exams) == expected_exams else "FAIL",
+    }
+
+
+def parse_hsk4_phase1(
+    excel_path: str | Path,
+    sheet_name: str = "Sheet1",
+    exam_code: str = "HSK4-30-01",
+    asset_root: str | Path | None = None,
+    lang_state: Optional[Dict[str, object]] = None,
+) -> Dict[str, object]:
+    sheet_name = _resolve_hsk3_sheet_name(excel_path, sheet_name)
+    structure = validate_hsk4_workbook(excel_path, sheet_name=sheet_name)
+    if structure.get("status") != "PASS":
+        raise ValueError("Workbook HSK4 không hợp lệ: " + "; ".join(structure.get("invalid_rows", [])))
+    normalized_exam = _normalize_exam_code(exam_code)
+    if normalized_exam not in structure["exams"]:
+        raise ValueError(f"Không tìm thấy dữ liệu cho {normalized_exam}")
+    loaded = _load_hsk4_exam_rows(excel_path, sheet_name)
+    selected = loaded["exams"][normalized_exam]
+    lang_state = dict(lang_state or {})
+    rate = _parse_speech_rate(lang_state.get("speech_rate", 0.95), default=0.95)
+    profile = _clean_text(lang_state.get("hsk_speed_profile", "HSK4")) or "HSK4"
+    items: List[Dict[str, object]] = []
+    part_counts = {1: 0, 2: 0}
+    invalid: List[str] = []
+    for row in selected:
+        number_text = _clean_text(row.cells.get("_hsk4_question_number", ""))
+        number = _hsk3_number_value(number_text)
+        part = row.cells.get("_hsk4_part")
+        group = row.cells.get("_hsk4_group", "")
+        content = _clean_text(row.cells.get("_hsk4_content", ""))
+        try:
+            if number is None or part not in (1, 2) or not content:
+                raise ValueError("thiếu số câu, Part hoặc nội dung")
+            parsed = _hsk4_parse_content(content, narration_label=HSK4_NARRATION_GROUP_VOICES.get(group, "NỮ"))
+        except ValueError as exc:
+            invalid.append(f"Dòng {row.row_number}: {exc}")
+            continue
+        question = parsed["question"]
+        stimulus = parsed["stimulus_segments"]
+        item = {
+            "question_number": number,
+            "part": part,
+            "part_label": PART_LABELS[part],
+            "group": group,
+            "is_shared": group != "Độc lập",
+            "source_row": row.row_number,
+            "source_exam": normalized_exam,
+            "source_number": number_text,
+            "question_number_spoken": _spoken_question_number(number_text),
+            "number_speaker_label": "NỮ",
+            "source_text": content,
+            "stimulus_segments": stimulus,
+            "question_segment": question,
+            "question_source": question["source_text"],
+            "question_spoken": question["text"],
+            "repeat1": [*stimulus, question],
+            "repeat2": [],
+        }
+        item["preview"] = _build_item_preview(item)
+        items.append(item)
+        part_counts[part] += 1
+
+    report_lang = {
+        "engine": lang_state.get("engine", ""), "speed": lang_state.get("speed", ""), "voice": lang_state.get("voice", ""),
+        "zh_male_voice": lang_state.get("zh_male_voice", ""), "zh_female_voice": lang_state.get("zh_female_voice", ""),
+        "zh_narrator_voice": lang_state.get("zh_narrator_voice", ""), "hsk_speed_profile": profile,
+        "speech_rate": rate, "speech_rate_label": _format_hsk_speed_label(profile, rate),
+    }
+    shared_groups = structure["exams"][normalized_exam]["shared_groups"]
+    return {
+        "level": "HSK4", "workbook": str(Path(excel_path)), "sheet": sheet_name, "detected_exam": normalized_exam,
+        "question_count": len(items), "part_counts": part_counts, "missing_invalid_rows": invalid,
+        "asset_status": validate_hsk30_assets(asset_root=asset_root, level="hsk4"), "lang_state": report_lang,
+        "output_filename": phase1_output_filename(normalized_exam), "reference_duration_ms": HSK4_AUDIO_PROFILE["reference_duration_ms"],
+        "sample_reference_duration_ms": HSK4_AUDIO_PROFILE["sample_reference_duration_ms"], "tts_requests_made": 0,
+        "preview_items": sorted(items, key=lambda item: int(item["question_number"])),
+        "shared_groups": shared_groups, "independent_count": structure["exams"][normalized_exam]["independent_count"],
+        "shared_group_count": len(shared_groups), "embedded_marker_count": structure["embedded_marker_count"],
+        "part1_pattern_stats": structure["part1_patterns"], "part2_pattern_stats": structure["part2_patterns"],
+        "repetitions": 1, "status": "READY_FOR_REVIEW" if not invalid and len(items) == 32 and part_counts == {1: 14, 2: 18} else "REVIEW_WITH_WARNINGS",
+        "structure": structure,
+    }
+
+
+def format_hsk4_preview_report(report: Dict[str, object]) -> str:
+    lines = [
+        f"{report.get('detected_exam', 'HSK4-30-01')} parse summary", "Level: HSK4",
+        f"Workbook: {report.get('workbook', '')}", f"Sheet: {report.get('sheet', '')}",
+        f"Questions: {report.get('question_count', 0)}", f"Part 1: {report.get('part_counts', {}).get(1, 0)}",
+        f"Part 2: {report.get('part_counts', {}).get(2, 0)}", "Repetitions: 1 (no repeat2)",
+        f"Independent items: {report.get('independent_count', 0)}", f"Shared groups: {report.get('shared_group_count', 0)}",
+        f"Embedded Arabic markers stripped: {report.get('embedded_marker_count', 0)}",
+        f"Missing/invalid rows: {len(report.get('missing_invalid_rows', []))}",
+        f"Asset status: {'OK' if report.get('asset_status', {}).get('ok') else 'MISSING'}",
+        f"HSK speed profile: {report.get('lang_state', {}).get('hsk_speed_profile', 'HSK4')}",
+        f"Speech rate: {report.get('lang_state', {}).get('speech_rate_label', '')}",
+        f"Part 1 patterns: {report.get('part1_pattern_stats', {})}",
+        f"Part 2 patterns: {report.get('part2_pattern_stats', {})}",
+        "TTS requests in dry run: 0", "",
+    ]
+    for item in report.get("preview_items", []):
+        lines.extend([
+            f"Q{item['question_number']:02d} — {item['part_label']}",
+            f"Source row: {item['source_row']}",
+            f"Source number: {item['source_number']}",
+            f"Number spoken: NỮ [{item['question_number_spoken']}]",
+            f"Group: {item['group']}",
+        ])
+        if item["is_shared"]:
+            if item["stimulus_segments"]:
+                lines.append("Shared stimulus owner: this row (plays once for group)")
+                lines.extend(f"  {_render_segment(segment['speaker_label'], segment['text'])}" for segment in item["stimulus_segments"])
+            else:
+                lines.append("Shared stimulus: reuse from first row of group")
+        else:
+            lines.append("Stimulus:")
+            lines.extend(f"  {_render_segment(segment['speaker_label'], segment['text'])}" for segment in item["stimulus_segments"])
+        lines.append(f"Source question: {item['question_source']}")
+        lines.append(f"Spoken question: {item['question_spoken']}")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _hsk4_count_tts(counts: Dict[str, int], reused: bool, audio: AudioSegment) -> None:
+    if reused:
+        counts["reused_segments"] += 1
+    else:
+        counts["unique_tts_requests"] += 1
+        counts["generated_segments"] += 1
+    counts["generated_speech_ms"] += len(audio)
+
+
+def _hsk4_tts_segment(
+    segment: Dict[str, str], *, engine: str, speed: str, lang_state: Dict[str, object], cache_dir: Path,
+    google_api_key: str, tts_provider: Optional[Callable[..., AudioSegment]], counts: Dict[str, int],
+) -> AudioSegment:
+    audio, reused = _synthesize_tts_segment(
+        segment["text"], engine=engine, speed=speed,
+        voice_name=_speaker_voice_name(lang_state, segment["speaker_label"]),
+        speaker_label=segment["speaker_label"], cache_dir=cache_dir, google_api_key=google_api_key,
+        tts_provider=tts_provider, aws_credentials=_aws_credentials_from_lang_state(lang_state),
+        audio_postprocess_version=HSK3_TTS_POSTPROCESS_VERSION,
+    )
+    _hsk4_count_tts(counts, reused, audio)
+    return audio
+
+
+def _hsk4_number_audio(
+    item: Dict[str, object], *, engine: str, speed: str, lang_state: Dict[str, object], cache_dir: Path,
+    google_api_key: str, tts_provider: Optional[Callable[..., AudioSegment]], counts: Dict[str, int],
+) -> AudioSegment:
+    number_text = _clean_text(item["question_number_spoken"])
+    audio, reused = _synthesize_tts_segment(
+        number_text, engine=engine, speed=speed, voice_name=_narrator_voice_name(lang_state),
+        speaker_label="NARRATOR", cache_dir=cache_dir, google_api_key=google_api_key,
+        tts_provider=tts_provider, aws_credentials=_aws_credentials_from_lang_state(lang_state),
+        audio_postprocess_version=HSK3_TTS_POSTPROCESS_VERSION,
+    )
+    _hsk4_count_tts(counts, reused, audio)
+    return audio
+
+
+def _hsk4_segments_audio(
+    segments: List[Dict[str, str]], *, gap_ms: int, gap_key: str, engine: str, speed: str,
+    lang_state: Dict[str, object], cache_dir: Path, google_api_key: str,
+    tts_provider: Optional[Callable[..., AudioSegment]], counts: Dict[str, int],
+) -> AudioSegment:
+    pieces: List[AudioSegment] = []
+    for index, segment in enumerate(segments):
+        pieces.append(_hsk4_tts_segment(
+            segment, engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir,
+            google_api_key=google_api_key, tts_provider=tts_provider, counts=counts,
+        ))
+        if index < len(segments) - 1:
+            pieces.append(_internal_pause_segment(gap_ms))
+            counts["internal_pauses_ms"] += gap_ms
+            counts[gap_key] += gap_ms
+    return sum(pieces, _silent_segment(0)) if pieces else _silent_segment(0)
+
+
+def _hsk4_render_independent(
+    item: Dict[str, object], *, engine: str, speed: str, lang_state: Dict[str, object], cache_dir: Path,
+    google_api_key: str, tts_provider: Optional[Callable[..., AudioSegment]], counts: Dict[str, int],
+) -> Tuple[AudioSegment, List[str]]:
+    profile = HSK4_AUDIO_PROFILE
+    number = _hsk4_number_audio(item, engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir, google_api_key=google_api_key, tts_provider=tts_provider, counts=counts)
+    stimulus = _hsk4_segments_audio(
+        item["stimulus_segments"], gap_ms=profile["speaker_gap_ms"], gap_key="speaker_gap_ms",
+        engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir, google_api_key=google_api_key,
+        tts_provider=tts_provider, counts=counts,
+    )
+    question = _hsk4_tts_segment(
+        item["question_segment"], engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir,
+        google_api_key=google_api_key, tts_provider=tts_provider, counts=counts,
+    )
+    counts["internal_pauses_ms"] += profile["number_to_content_ms"] + profile["content_to_question_ms"]
+    counts["number_to_content_ms"] += profile["number_to_content_ms"]
+    counts["content_to_question_ms"] += profile["content_to_question_ms"]
+    counts["answer_pause_ms"] += profile["answer_pause_ms"]
+    audio = (
+        number + _internal_pause_segment(profile["number_to_content_ms"]) + stimulus
+        + _internal_pause_segment(profile["content_to_question_ms"]) + question
+        + _internal_pause_segment(profile["answer_pause_ms"])
+    )
+    return audio, [f"number{item['question_number']}", f"stimulus{item['question_number']}", f"question{item['question_number']}", "answer_pause"]
+
+
+def _hsk4_render_shared_group(
+    items: List[Dict[str, object]], *, engine: str, speed: str, lang_state: Dict[str, object], cache_dir: Path,
+    google_api_key: str, tts_provider: Optional[Callable[..., AudioSegment]], counts: Dict[str, int],
+) -> Tuple[AudioSegment, List[str]]:
+    profile = HSK4_AUDIO_PROFILE
+    owner = items[0]
+    passage = _hsk4_segments_audio(
+        owner["stimulus_segments"], gap_ms=profile["speaker_gap_ms"], gap_key="speaker_gap_ms",
+        engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir, google_api_key=google_api_key,
+        tts_provider=tts_provider, counts=counts,
+    )
+    counts["internal_pauses_ms"] += profile["shared_passage_to_number_ms"]
+    counts["shared_passage_to_number_ms"] += profile["shared_passage_to_number_ms"]
+    audio = passage + _internal_pause_segment(profile["shared_passage_to_number_ms"])
+    timeline = [f"shared_passage_{owner['group']}", "shared_passage_to_number_gap"]
+    for item in items:
+        number = _hsk4_number_audio(item, engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir, google_api_key=google_api_key, tts_provider=tts_provider, counts=counts)
+        question = _hsk4_tts_segment(
+            item["question_segment"], engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir,
+            google_api_key=google_api_key, tts_provider=tts_provider, counts=counts,
+        )
+        counts["internal_pauses_ms"] += profile["number_to_question_ms"]
+        counts["number_to_question_ms"] += profile["number_to_question_ms"]
+        counts["answer_pause_ms"] += profile["answer_pause_ms"]
+        audio += number + _internal_pause_segment(profile["number_to_question_ms"]) + question + _internal_pause_segment(profile["answer_pause_ms"])
+        timeline.extend([f"number{item['question_number']}", "number_to_question_gap", f"question{item['question_number']}", "answer_pause"])
+    return audio, timeline
+
+
+def build_hsk4_phase1b(
+    report: Dict[str, object], output_file: str | Path, *, lang_state: Optional[Dict[str, object]] = None,
+    tts_provider: Optional[Callable[..., AudioSegment]] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> Dict[str, object]:
+    if not report or report.get("level") != "HSK4" or int(report.get("question_count", 0)) != 32:
+        raise ValueError("Preview HSK4 không hợp lệ hoặc chưa đủ 32 câu.")
+    if report.get("part_counts") != {1: 14, 2: 18}:
+        raise ValueError("Preview HSK4 phải có Part 1=14, Part 2=18.")
+    if report.get("missing_invalid_rows"):
+        raise ValueError("Preview HSK4 có dòng lỗi: " + "; ".join(report["missing_invalid_rows"]))
+    asset_status = validate_hsk30_assets(level="hsk4")
+    if not asset_status.get("ok"):
+        raise FileNotFoundError("Thiếu asset HSK4: " + ", ".join(asset_status.get("missing", [])))
+
+    lang_state = dict(lang_state or report.get("lang_state", {}) or {})
+    engine = _clean_text(lang_state.get("engine", "")) or "Google Cloud TTS"
+    speed_rate = _parse_speech_rate(lang_state.get("speech_rate", 0.95), default=0.95)
+    speed = _format_speech_rate(speed_rate)
+    profile_name = _clean_text(lang_state.get("hsk_speed_profile", "HSK4")) or "HSK4"
+    google_api_key = _clean_text(lang_state.get("google_api_key", ""))
+    if not _clean_text(lang_state.get("zh_female_voice", "")):
+        raise ValueError("Thiếu voice zh nữ từ Lang.")
+
+    out_path = Path(output_file)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    if progress_callback:
+        progress_callback("Đang tải asset HSK4 cố định...")
+    music = _load_audio_segment(HSK30_COMMON_ASSET)
+    intro = _load_audio_segment(HSK30_HSK4_ASSETS["intro"])
+    part1_asset = _load_audio_segment(HSK30_HSK4_ASSETS["part1"])
+    part2_asset = _load_audio_segment(HSK30_HSK4_ASSETS["part2"])
+    outtro = _load_audio_segment(HSK30_COMMON_OUTTRO)
+    cache_dir = _make_tts_cache_dir()
+    counts = {
+        "unique_tts_requests": 0, "reused_segments": 0, "generated_segments": 0,
+        "generated_speech_ms": 0, "internal_pauses_ms": 0, "number_to_content_ms": 0,
+        "speaker_gap_ms": 0, "content_to_question_ms": 0, "shared_passage_to_number_ms": 0,
+        "number_to_question_ms": 0, "answer_pause_ms": 0,
+    }
+    items = {int(item["question_number"]): item for item in report["preview_items"]}
+    groups: Dict[str, List[Dict[str, object]]] = {}
+    for item in report["preview_items"]:
+        if item["is_shared"]:
+            groups.setdefault(item["group"], []).append(item)
+    for group_items in groups.values():
+        group_items.sort(key=lambda item: int(item["question_number"]))
+
+    part_breakdown: Dict[int, int] = {}
+    timeline: List[str] = ["music", "music_to_intro_gap", "hsk4_intro", "intro_to_part_gap", "hsk4_part1", "part1_start_gap"]
+    final_audio = music + _silent_segment(HSK4_AUDIO_PROFILE["music_to_intro_ms"]) + intro + _silent_segment(HSK4_AUDIO_PROFILE["intro_to_part_ms"])
+    final_audio += part1_asset + _silent_segment(HSK4_AUDIO_PROFILE["part_start_gap_ms"])
+    processed_groups: set[str] = set()
+    part_start = len(final_audio)
+    for number in range(1, 15):
+        item = items[number]
+        if progress_callback:
+            progress_callback(f"Đang tạo Q{number:02d}...")
+        audio, item_timeline = _hsk4_render_independent(item, engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir, google_api_key=google_api_key, tts_provider=tts_provider, counts=counts)
+        final_audio += audio
+        timeline.extend(item_timeline)
+    part_breakdown[1] = len(final_audio) - part_start
+    final_audio += part2_asset + _silent_segment(HSK4_AUDIO_PROFILE["part_start_gap_ms"])
+    timeline.extend(["hsk4_part2", "part2_start_gap"])
+    part_start = len(final_audio)
+    for number in range(15, 33):
+        item = items[number]
+        group = item["group"]
+        if item["is_shared"]:
+            if group in processed_groups:
+                continue
+            group_audio, group_timeline = _hsk4_render_shared_group(groups[group], engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir, google_api_key=google_api_key, tts_provider=tts_provider, counts=counts)
+            final_audio += group_audio
+            timeline.extend(group_timeline)
+            processed_groups.add(group)
+        else:
+            audio, item_timeline = _hsk4_render_independent(item, engine=engine, speed=speed, lang_state=lang_state, cache_dir=cache_dir, google_api_key=google_api_key, tts_provider=tts_provider, counts=counts)
+            final_audio += audio
+            timeline.extend(item_timeline)
+    part_breakdown[2] = len(final_audio) - part_start
+    final_audio += _silent_segment(HSK4_AUDIO_PROFILE["final_silence_ms"]) + outtro
+    timeline.extend(["final_silence", "outro"])
+
+    normalized_audio = final_audio.set_channels(FINAL_CHANNELS).set_frame_rate(FINAL_SAMPLE_RATE)
+    peak = normalized_audio.max_dBFS
+    if peak and peak != float("-inf") and peak > -4.0:
+        normalized_audio = normalized_audio.apply_gain(-4.0 - peak)
+    final_duration_ms = _export_audio_atomically(
+        normalized_audio, out_path,
+        {"format": "ipod", "codec": "aac", "bitrate": FINAL_BITRATE, "parameters": ["-ac", str(FINAL_CHANNELS), "-ar", str(FINAL_SAMPLE_RATE)]},
+    )
+    sample_difference_ms = final_duration_ms - HSK4_AUDIO_PROFILE["sample_reference_duration_ms"]
+    fixed_assets_ms = len(intro) + len(part1_asset) + len(part2_asset)
+    part_transition_ms = HSK4_AUDIO_PROFILE["music_to_intro_ms"] + HSK4_AUDIO_PROFILE["intro_to_part_ms"] + 2 * HSK4_AUDIO_PROFILE["part_start_gap_ms"]
+    return {
+        "exam": _normalize_exam_code(report["detected_exam"]), "level": "HSK4", "output_file": str(out_path), "file_size_bytes": out_path.stat().st_size,
+        "music_ms": len(music), "fixed_assets_ms": fixed_assets_ms, "generated_speech_ms": counts["generated_speech_ms"],
+        "edge_trim_version": HSK3_TTS_POSTPROCESS_VERSION, "edge_trim_threshold_db": HSK3_EDGE_SILENCE_THRESHOLD_DB, "edge_trim_safety_pad_ms": HSK3_EDGE_SAFETY_PAD_MS,
+        "internal_pauses_ms": counts["internal_pauses_ms"], "number_to_content_ms": counts["number_to_content_ms"], "speaker_gap_ms": counts["speaker_gap_ms"],
+        "content_to_question_ms": counts["content_to_question_ms"], "shared_passage_to_number_ms": counts["shared_passage_to_number_ms"],
+        "number_to_question_ms": counts["number_to_question_ms"], "answer_pause_ms": counts["answer_pause_ms"], "repeat_gap_ms": 0,
+        "part_transitions_ms": part_transition_ms, "final_silence_ms": HSK4_AUDIO_PROFILE["final_silence_ms"], "outtro_ms": len(outtro),
+        "part_breakdown": part_breakdown, "independent_items": report["independent_count"], "shared_groups": report["shared_group_count"],
+        "shared_passage_count": report["shared_group_count"], "repetitions": 1, "unique_tts_requests": counts["unique_tts_requests"],
+        "reused_segments": counts["reused_segments"], "generated_segments": counts["generated_segments"], "hsk_speed_profile": profile_name,
+        "speech_rate": speed_rate, "speech_rate_label": _format_hsk_speed_label(profile_name, speed_rate), "reference_duration_ms": HSK4_AUDIO_PROFILE["reference_duration_ms"],
+        "sample_reference_duration_ms": HSK4_AUDIO_PROFILE["sample_reference_duration_ms"], "actual_duration_ms": final_duration_ms,
+        "final_duration_ms": final_duration_ms, "difference_ms": final_duration_ms - HSK4_AUDIO_PROFILE["reference_duration_ms"],
+        "sample_difference_ms": sample_difference_ms, "status": "INFO", "duration_qa": "INFO", "audio_path": str(out_path),
+        "timeline": timeline, "one_playback": True, "group_model": "Nhóm câu", "no_repeat2": True,
+    }
+
+
+def format_hsk4_build_report(report: Dict[str, object]) -> str:
+    lines = [
+        f"Exam: {report.get('exam', 'HSK4-30-01')}", f"Output: {report.get('output_file', '')}",
+        f"File size: {report.get('file_size_bytes', 0)} bytes", f"HSK4 speed: {report.get('speech_rate_label', '')}", "",
+        f"Music: {report.get('music_ms', 0)} ms", f"Fixed intro/part assets: {report.get('fixed_assets_ms', 0)} ms",
+        f"Generated speech: {report.get('generated_speech_ms', 0)} ms", f"Edge trim: {report.get('edge_trim_version', '')} / {report.get('edge_trim_safety_pad_ms', 0)} ms",
+        f"Internal pauses: {report.get('internal_pauses_ms', 0)} ms", f"Number to content: {report.get('number_to_content_ms', 0)} ms",
+        f"Speaker gaps: {report.get('speaker_gap_ms', 0)} ms", f"Content to question: {report.get('content_to_question_ms', 0)} ms",
+        f"Shared passage to number: {report.get('shared_passage_to_number_ms', 0)} ms", f"Number to question: {report.get('number_to_question_ms', 0)} ms",
+        f"Answer pauses: {report.get('answer_pause_ms', 0)} ms", f"Part transitions: {report.get('part_transitions_ms', 0)} ms",
+        f"Final silence: {report.get('final_silence_ms', 0)} ms", f"Outro: {report.get('outtro_ms', 0)} ms", "",
+        f"Part1 duration: {report.get('part_breakdown', {}).get(1, 0)} ms", f"Part2 duration: {report.get('part_breakdown', {}).get(2, 0)} ms", "",
+        f"Independent items: {report.get('independent_items', 0)}", f"Shared groups: {report.get('shared_groups', 0)}", f"Shared passage count: {report.get('shared_passage_count', 0)}",
+        f"Repetitions: {report.get('repetitions', 0)}", f"Unique TTS requests: {report.get('unique_tts_requests', 0)}", f"Cache reused: {report.get('reused_segments', 0)}", "",
+        f"Reference official: {report.get('reference_duration_ms', 0)} ms (~20:00)", f"Full sample reference: {report.get('sample_reference_duration_ms', 0)} ms (~21:09)",
+        f"Actual duration: {report.get('actual_duration_ms', 0)} ms", f"Difference from official: {report.get('difference_ms', 0)} ms", f"Difference from sample: {report.get('sample_difference_ms', 0)} ms",
+        "Status: INFO",
+    ]
     return "\n".join(lines) + "\n"

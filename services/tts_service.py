@@ -17,6 +17,10 @@ def process_text_lines(danh_sach, selected_lang_list=None):
 
 
 def _locate_ffmpeg():
+    configured_ffmpeg = getattr(AudioSegment, "ffmpeg", None) or getattr(AudioSegment, "converter", None)
+    if configured_ffmpeg and os.path.isfile(configured_ffmpeg):
+        return configured_ffmpeg
+
     system_ffmpeg = shutil.which("ffmpeg")
     if system_ffmpeg:
         return system_ffmpeg
@@ -30,27 +34,32 @@ def _locate_ffmpeg():
 
 
 def load_audio_segment_from_mp3(temp_mp3, ffmpeg_path=None):
-    """Nạp mp3 tạm an toàn kể cả khi máy không có ffprobe."""
+    """Decode MP3 through ffmpeg so GUI launches do not require ffprobe in PATH."""
+    fallback_ffmpeg = ffmpeg_path or _locate_ffmpeg()
+    fallback_error = None
+    if fallback_ffmpeg:
+        try:
+            result = subprocess.run(
+                [fallback_ffmpeg, "-v", "error", "-y", "-i", temp_mp3, "-f", "wav", "-"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=False,
+                check=False,
+            )
+            if result.returncode == 0 and result.stdout:
+                return AudioSegment.from_wav(io.BytesIO(result.stdout))
+            fallback_error = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+        except Exception as exc:
+            fallback_error = str(exc)
+
     try:
         return AudioSegment.from_mp3(temp_mp3)
     except Exception as primary_error:
-        fallback_ffmpeg = ffmpeg_path or _locate_ffmpeg()
         if not fallback_ffmpeg:
             raise RuntimeError(f"Không nạp được mp3 tạm: {primary_error}") from primary_error
-
-        result = subprocess.run(
-            [fallback_ffmpeg, "-y", "-i", temp_mp3, "-f", "wav", "-"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=False,
-        )
-        if result.returncode != 0 or not result.stdout:
-            stderr_text = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
-            raise RuntimeError(
-                f"Không nạp được mp3 tạm: {primary_error}. Fallback ffmpeg lỗi: {stderr_text}"
-            ) from primary_error
-
-        return AudioSegment.from_file(io.BytesIO(result.stdout), format="wav")
+        raise RuntimeError(
+            f"Không nạp được mp3 tạm: {primary_error}. Fallback ffmpeg lỗi: {fallback_error or 'không có output'}"
+        ) from primary_error
 
 
 def generate_audio_core(

@@ -39,18 +39,23 @@ from pipelines.hsk30_audio import (
     HSK30_DEFAULT_SOURCE,
     HSK30_HSK2_SOURCE,
     HSK30_HSK3_SOURCE,
+    HSK30_HSK4_SOURCE,
     build_hsk2_phase1b,
     build_hsk1_phase1b,
     build_hsk3_phase1b,
+    build_hsk4_phase1b,
     format_hsk2_build_report,
     format_hsk2_preview_report,
     format_phase1b_build_report,
     format_phase1_preview_report,
     format_hsk3_build_report,
     format_hsk3_preview_report,
+    format_hsk4_build_report,
+    format_hsk4_preview_report,
     parse_hsk2_phase1,
     parse_hsk1_phase1,
     parse_hsk3_phase1,
+    parse_hsk4_phase1,
     phase1_output_filename,
 )
 from utils.file_reader import read_excel_vocab, read_text_file
@@ -2907,7 +2912,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         "zh_narrator_voice": "",
         "hsk_speed_profile": "HSK1",
         "speech_rate": 0.90,
-        "speech_rates": {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90},
+        "speech_rates": {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90, "HSK4": 0.95},
         "preview_path": "",
         "preview_report": None,
         "preview_approved": False,
@@ -2916,39 +2921,40 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     def _hsk30_level_key():
         level = str(hsk30_audio_state.get("level", "HSK 1")).replace(" ", "").upper()
-        return {"HSK1": "hsk1", "HSK2": "hsk2", "HSK3": "hsk3"}.get(level, "hsk1")
+        return {"HSK1": "hsk1", "HSK2": "hsk2", "HSK3": "hsk3", "HSK4": "hsk4"}.get(level, "hsk1")
 
     def _hsk30_level_label():
-        return {"hsk1": "HSK 1", "hsk2": "HSK 2", "hsk3": "HSK 3"}[_hsk30_level_key()]
+        return {"hsk1": "HSK 1", "hsk2": "HSK 2", "hsk3": "HSK 3", "hsk4": "HSK 4"}[_hsk30_level_key()]
 
     def _hsk30_default_source():
-        return {"hsk1": HSK30_DEFAULT_SOURCE, "hsk2": HSK30_HSK2_SOURCE, "hsk3": HSK30_HSK3_SOURCE}[_hsk30_level_key()]
+        return {"hsk1": HSK30_DEFAULT_SOURCE, "hsk2": HSK30_HSK2_SOURCE, "hsk3": HSK30_HSK3_SOURCE, "hsk4": HSK30_HSK4_SOURCE}[_hsk30_level_key()]
 
     def _hsk30_first_exam():
-        return {"hsk1": "HSK1001", "hsk2": "HSK2001", "hsk3": "HSK3-30-01"}[_hsk30_level_key()]
+        return {"hsk1": "HSK1001", "hsk2": "HSK2001", "hsk3": "HSK3-30-01", "hsk4": "HSK4-30-01"}[_hsk30_level_key()]
 
     def _hsk30_parser():
-        return {"hsk1": parse_hsk1_phase1, "hsk2": parse_hsk2_phase1, "hsk3": parse_hsk3_phase1}[_hsk30_level_key()]
+        return {"hsk1": parse_hsk1_phase1, "hsk2": parse_hsk2_phase1, "hsk3": parse_hsk3_phase1, "hsk4": parse_hsk4_phase1}[_hsk30_level_key()]
 
     def _hsk30_builder():
-        return {"hsk1": build_hsk1_phase1b, "hsk2": build_hsk2_phase1b, "hsk3": build_hsk3_phase1b}[_hsk30_level_key()]
+        return {"hsk1": build_hsk1_phase1b, "hsk2": build_hsk2_phase1b, "hsk3": build_hsk3_phase1b, "hsk4": build_hsk4_phase1b}[_hsk30_level_key()]
 
     def _hsk30_preview_formatter():
-        return {"hsk1": format_phase1_preview_report, "hsk2": format_hsk2_preview_report, "hsk3": format_hsk3_preview_report}[_hsk30_level_key()]
+        return {"hsk1": format_phase1_preview_report, "hsk2": format_hsk2_preview_report, "hsk3": format_hsk3_preview_report, "hsk4": format_hsk4_preview_report}[_hsk30_level_key()]
 
     def _hsk30_build_formatter():
-        return {"hsk1": format_phase1b_build_report, "hsk2": format_hsk2_build_report, "hsk3": format_hsk3_build_report}[_hsk30_level_key()]
+        return {"hsk1": format_phase1b_build_report, "hsk2": format_hsk2_build_report, "hsk3": format_hsk3_build_report, "hsk4": format_hsk4_build_report}[_hsk30_level_key()]
 
     def _hsk30_speed_label(rate_value, profile=None):
-        profile = profile or {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
+        profile = profile or {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3", "hsk4": "HSK4"}[_hsk30_level_key()]
         try:
-            rate = round(float(rate_value or {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90}.get(profile, 0.90)), 2)
+            rate = round(float(rate_value or {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90, "HSK4": 0.95}.get(profile, 0.90)), 2)
         except Exception:
-            rate = {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90}.get(profile, 0.90)
+            rate = {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90, "HSK4": 0.95}.get(profile, 0.90)
         labels = {
             "HSK2": {0.70: "HSK2 chuẩn — 0.70x", 0.72: "HSK2 — 0.72x", 0.75: "HSK2 — 0.75x", 0.80: "HSK2 — 0.80x"},
             "HSK1": {0.60: "HSK1 thử chậm — 0.60x", 0.70: "HSK1 thử chậm — 0.70x", 0.88: "HSK1 chậm hơn — 0.88x", 0.90: "HSK1 chuẩn — 0.90x", 0.92: "HSK1 nhanh hơn — 0.92x"},
             "HSK3": {0.70: "HSK3 — 0.70x", 0.72: "HSK3 — 0.72x", 0.75: "HSK3 — 0.75x", 0.80: "HSK3 — 0.80x", 0.90: "HSK3 chuẩn — 0.90x"},
+            "HSK4": {0.90: "HSK4 — 0.90x", 0.95: "HSK4 chuẩn — 0.95x", 1.00: "HSK4 — 1.00x"},
         }
         return labels.get(profile, {}).get(rate, f"{profile} custom — {rate:.2f}x")
 
@@ -2970,6 +2976,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     def _hsk30_level_from_path(path):
         name = Path(str(path or "")).name.upper()
+        if re.search(r"HSK\s*4", name):
+            return "HSK 4"
         if "HSK3" in name:
             return "HSK 3"
         if "HSK2" in name:
@@ -2981,8 +2989,8 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
     def _capture_lang_snapshot():
         zh_profile = _google_tts_get_profile("zh")
         slots = zh_profile.get("slots", {}) if isinstance(zh_profile, dict) else {}
-        profile = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
-        speech_rates = hsk30_audio_state.setdefault("speech_rates", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90})
+        profile = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3", "hsk4": "HSK4"}[_hsk30_level_key()]
+        speech_rates = hsk30_audio_state.setdefault("speech_rates", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90, "HSK4": 0.95})
         return {
             "engine": combo_engine.get().strip(),
             "speed": combo_toc_do_popup.get().strip(),
@@ -2992,7 +3000,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             "zh_female_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
             "zh_narrator_voice": (slots.get("Nữ", {}) or {}).get("voice_name", "") or "",
             "hsk_speed_profile": profile,
-            "speech_rate": speech_rates.get(profile, hsk30_audio_state.get("speech_rate", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90}[profile])),
+            "speech_rate": speech_rates.get(profile, hsk30_audio_state.get("speech_rate", {"HSK1": 0.90, "HSK2": 0.70, "HSK3": 0.90, "HSK4": 0.95}[profile])),
             "google_api_key": GOOGLE_TTS_API_KEY,
             "aws_access_key_id": AWS_ACCESS_KEY_ID,
             "aws_secret_access_key": AWS_SECRET_ACCESS_KEY,
@@ -3167,7 +3175,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 chosen_level = _hsk30_level_from_path(selected)
                 if chosen_level and chosen_level != hsk30_audio_state.get("level", "HSK 1"):
                     hsk30_audio_state["level"] = chosen_level
-                    hsk30_audio_state["hsk_speed_profile"] = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
+                    hsk30_audio_state["hsk_speed_profile"] = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3", "hsk4": "HSK4"}[_hsk30_level_key()]
                     hsk30_audio_state["source_path"] = selected
                     hsk30_audio_state["preview_report"] = None
                     hsk30_audio_state["preview_approved"] = False
@@ -3195,14 +3203,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             level_combo = ttk.Combobox(
                 chooser,
                 textvariable=local_level,
-                values=["HSK 1", "HSK 2", "HSK 3"],
+                values=["HSK 1", "HSK 2", "HSK 3", "HSK 4"],
                 state="readonly",
             )
             level_combo.pack(fill="x", padx=12, pady=(0, 10))
 
             def save_level():
                 hsk30_audio_state["level"] = local_level.get().strip() or "HSK 1"
-                hsk30_audio_state["hsk_speed_profile"] = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
+                hsk30_audio_state["hsk_speed_profile"] = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3", "hsk4": "HSK4"}[_hsk30_level_key()]
                 hsk30_audio_state["source_path"] = str(_hsk30_default_source())
                 hsk30_audio_state["preview_report"] = None
                 hsk30_audio_state["preview_approved"] = False
@@ -3231,14 +3239,14 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
             tune_win.grab_set()
 
             def _hsk_speed_label(rate_value):
-                return _hsk30_speed_label(rate_value, {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()])
+                return _hsk30_speed_label(rate_value, {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3", "hsk4": "HSK4"}[_hsk30_level_key()])
 
             local_engine = tk.StringVar(value=combo_engine.get().strip())
             local_voice = tk.StringVar(value=combo_giong_popup.get().strip())
             local_zh_male = tk.StringVar(value=hsk30_audio_state.get("zh_male_voice", ""))
             local_zh_female = tk.StringVar(value=hsk30_audio_state.get("zh_female_voice", ""))
             local_zh_narrator = tk.StringVar(value=hsk30_audio_state.get("zh_narrator_voice", "") or hsk30_audio_state.get("zh_female_voice", ""))
-            local_hsk_speed = tk.StringVar(value=_hsk_speed_label(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()])))
+            local_hsk_speed = tk.StringVar(value=_hsk_speed_label(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90, "hsk4": 0.95}[_hsk30_level_key()])))
 
             tk.Label(
                 tune_win,
@@ -3263,6 +3271,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                         "hsk1": ["HSK1 thử chậm — 0.60x", "HSK1 thử chậm — 0.70x", "HSK1 chậm hơn — 0.88x", "HSK1 chuẩn — 0.90x", "HSK1 nhanh hơn — 0.92x"],
                         "hsk2": ["HSK2 chuẩn — 0.70x", "HSK2 — 0.72x", "HSK2 — 0.75x", "HSK2 — 0.80x"],
                         "hsk3": ["HSK3 — 0.70x", "HSK3 — 0.72x", "HSK3 — 0.75x", "HSK3 — 0.80x", "HSK3 chuẩn — 0.90x"],
+                        "hsk4": ["HSK4 — 0.90x", "HSK4 chuẩn — 0.95x", "HSK4 — 1.00x"],
                     }[_hsk30_level_key()]),
                 ],
                 state="readonly",
@@ -3290,10 +3299,10 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 hsk30_audio_state["zh_narrator_voice"] = local_zh_narrator.get().strip()
                 speed_choice = local_hsk_speed.get().strip()
                 speed_match = re.search(r"([0-9]+(?:\.[0-9]+)?)x", speed_choice)
-                default_rate = {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()]
+                default_rate = {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90, "hsk4": 0.95}[_hsk30_level_key()]
                 rate = float(speed_match.group(1)) if speed_match else default_rate
                 hsk30_audio_state["speech_rate"] = rate
-                profile_key = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3"}[_hsk30_level_key()]
+                profile_key = {"hsk1": "HSK1", "hsk2": "HSK2", "hsk3": "HSK3", "hsk4": "HSK4"}[_hsk30_level_key()]
                 hsk30_audio_state.setdefault("speech_rates", {})[profile_key] = rate
                 hsk30_audio_state["hsk_speed_profile"] = profile_key
                 refresh_audio_state()
@@ -3309,7 +3318,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 local_zh_male.set(hsk30_audio_state["zh_male_voice"])
                 local_zh_female.set(hsk30_audio_state["zh_female_voice"])
                 local_zh_narrator.set(hsk30_audio_state["zh_narrator_voice"])
-                rate = float(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()]) or {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90}[_hsk30_level_key()])
+                rate = float(hsk30_audio_state.get("speech_rate", {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90, "hsk4": 0.95}[_hsk30_level_key()]) or {"hsk1": 0.90, "hsk2": 0.70, "hsk3": 0.90, "hsk4": 0.95}[_hsk30_level_key()])
                 local_hsk_speed.set(_hsk_speed_label(rate))
                 refresh_audio_state()
 
@@ -3514,6 +3523,7 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 "hsk1": [f"HSK1{i:03d}" for i in range(1, 8)],
                 "hsk2": [f"HSK2{i:03d}" for i in range(1, 17)],
                 "hsk3": [f"HSK3-30-{i:02d}" for i in range(1, 17)],
+                "hsk4": [f"HSK4-30-{i:02d}" for i in range(1, 18)],
             }[level_key]
             progress_win = tk.Toplevel(audio_win)
             set_popup_icon(progress_win)
@@ -3549,6 +3559,22 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                 try:
                     for index, exam_code in enumerate(exam_codes, start=1):
                         state["current"] = index
+                        output_path = Path(output_dir) / phase1_output_filename(exam_code)
+                        if output_path.is_file() and output_path.stat().st_size > 0:
+                            state["message"] = f"Bỏ qua {exam_code}: file đã tồn tại"
+                            state["results"].append({
+                                "exam": exam_code,
+                                "level": level_label,
+                                "output_file": str(output_path),
+                                "file_size_bytes": output_path.stat().st_size,
+                                "status": "SKIP_EXISTING",
+                                "final_duration_ms": 0,
+                                "difference_ms": 0,
+                                "unique_tts_requests": 0,
+                                "reused_segments": 0,
+                            })
+                            continue
+
                         state["message"] = f"Đang build {exam_code}..."
                         report = _hsk30_parser()(
                             source_path,
@@ -3557,7 +3583,6 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
                             asset_root=HSK30_AUDIO_ROOT,
                             lang_state=context,
                         )
-                        output_path = Path(output_dir) / phase1_output_filename(exam_code)
                         result = _hsk30_builder()(
                             report,
                             output_path,
