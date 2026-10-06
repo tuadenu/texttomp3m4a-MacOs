@@ -19,6 +19,7 @@ AppData/client_secret.json
 AppData/config.json
 AppData/*.mp3
 AppData/**/*.mp3
+AppData/hsk30_audio_cache/
 
 TextToMp3Portable/secrets.enc
 TextToMp3Portable/AppData/
@@ -57,6 +58,12 @@ testdata/hsk30/hsk3/speed_comparison/
 testdata/hsk30/hsk3/test-hsk3-30-*.m4a
 testdata/hsk30/hsk4/hsk4-30-*.m4a
 testdata/hsk30/hsk4/~$*.xlsx
+testdata/hsk30/hsk5/hsk5-30-*.m4a
+testdata/hsk30/hsk5/hsk5-30-*.report.json
+testdata/hsk30/hsk5/~$*.xlsx
+testdata/hsk30/hsk5/Audio/
+testdata/hsk30/hsk5/Audio_v2/
+testdata/hsk30/hsk5/audio-hsk5-30/
 
 pipelines/.tts_cache/
 

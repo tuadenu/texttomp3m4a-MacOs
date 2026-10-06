@@ -39,18 +39,23 @@ def load_audio_segment_from_mp3(temp_mp3, ffmpeg_path=None):
     fallback_error = None
     if fallback_ffmpeg:
         try:
-            result = subprocess.run(
-                [fallback_ffmpeg, "-v", "error", "-y", "-i", temp_mp3, "-f", "wav", "-"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=False,
-                check=False,
-            )
-            if result.returncode == 0 and result.stdout:
-                return AudioSegment.from_wav(io.BytesIO(result.stdout))
-            fallback_error = result.stderr.decode("utf-8", errors="replace") if result.stderr else ""
+            for attempt in range(2):
+                result = subprocess.run(
+                    [fallback_ffmpeg, "-v", "error", "-y", "-i", str(temp_mp3), "-f", "wav", "-"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=False,
+                    check=False,
+                )
+                if result.returncode == 0 and result.stdout:
+                    return AudioSegment.from_wav(io.BytesIO(result.stdout))
+                stderr = result.stderr.decode("utf-8", errors="replace").strip() if result.stderr else ""
+                fallback_error = f"exit={result.returncode}, file={temp_mp3}, {stderr or 'empty stdout/stderr'}"
+                # Retry a terminated decoder or empty response, not a known invalid MP3.
+                if result.returncode >= 0 and stderr:
+                    break
         except Exception as exc:
-            fallback_error = str(exc)
+            fallback_error = f"file={temp_mp3}: {exc}"
 
     try:
         return AudioSegment.from_mp3(temp_mp3)

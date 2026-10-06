@@ -1,0 +1,24 @@
+HSK5 3.0 fixed assets v2 — extracted from HSK(五级)样卷.mp3
+Audio format: AAC-LC, 48 kHz, mono, ~32 kbps.
+
+IMPORTANT:
+- Group-cue assets include the natural trailing silence from the official sample up to the exact start of the group's shared passage.
+- Therefore builder MUST NOT add another cue_to_passage gap after these assets.
+- hsk5_part2.m4a includes Part 2 guidance + the Q20–21 lead-in + its natural trailing silence before the Q20–21 shared passage. Do NOT add a separate Q20–21 cue or part-start gap after it.
+- Do NOT use the old hsk5_cue_q11_19.m4a; it was incomplete. Use hsk5_cue_q11_12.m4a.
+
+Source cuts (seconds from sample start):
+hsk5_cue_q11_12.m4a  start=460.166259  duration=5.716621
+hsk5_cue_q13_14.m4a  start=544.414581  duration=5.513447
+hsk5_cue_q15_16.m4a  start=629.938118  duration=5.441837
+hsk5_cue_q17_19.m4a  start=709.961361  duration=5.618117
+hsk5_part2.m4a        start=840.434444  duration=16.365941
+hsk5_cue_q22_23.m4a  start=940.169116  duration=5.460453
+hsk5_cue_q24_26.m4a  start=1041.301338 duration=5.602699
+hsk5_cue_q27_29.m4a  start=1171.163446 duration=5.139592
+hsk5_cue_q30_32.m4a  start=1311.180975 duration=5.391700
+hsk5_cue_q33_35.m4a  start=1438.798277 duration=5.249592
+
+Unchanged/previously verified sample-derived assets included in package:
+hsk5_intro.m4a
+hsk5_part1.m4a
