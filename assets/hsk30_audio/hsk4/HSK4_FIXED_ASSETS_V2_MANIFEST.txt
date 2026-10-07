@@ -1,0 +1,11 @@
+HSK4 3.0 fixed group cues v2
+Source: HSK(四级)样卷.mp3
+Each asset includes the natural trailing silence up to the start of the shared passage.
+Do NOT add an extra cue-to-passage gap after these assets.
+
+hsk4_cue_q20_21.m4a: sample 788.540s -> 793.470s; asset duration 4.949s
+hsk4_cue_q22_23.m4a: sample 858.840s -> 864.640s; asset duration 5.803s
+hsk4_cue_q24_25.m4a: sample 929.820s -> 935.185s; asset duration 5.376s
+hsk4_cue_q26_27.m4a: sample 995.440s -> 1001.455s; asset duration 6.016s
+hsk4_cue_q28_29.m4a: sample 1064.820s -> 1070.050s; asset duration 5.248s
+hsk4_cue_q30_32.m4a: sample 1137.140s -> 1143.115s; asset duration 5.995s

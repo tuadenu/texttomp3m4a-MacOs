@@ -7,6 +7,8 @@ from pydub.generators import Sine
 
 from pipelines.hsk30_audio import (
     HSK30_HSK4_SOURCE,
+    HSK30_HSK4_ASSETS,
+    HSK4_AUDIO_PROFILE,
     _load_hsk4_exam_rows,
     _hsk4_parse_content,
     build_hsk4_phase1b,
@@ -90,6 +92,30 @@ class Hsk30AudioHsk4Tests(unittest.TestCase):
         self.assertEqual("hsk4-30-001.m4a", phase1_output_filename("HSK4-30-01"))
         self.assertEqual("hsk4-30-017.m4a", phase1_output_filename("HSK4-30-17"))
 
+    def test_group_cue_mapping_and_missing_assets_fail_before_tts(self):
+        expected = {20: "cue_q20_21", 22: "cue_q22_23", 24: "cue_q24_25",
+                    26: "cue_q26_27", 28: "cue_q28_29", 30: "cue_q30_32"}
+        self.assertEqual(expected, HSK4_AUDIO_PROFILE["cues_before_question"])
+        self.assertEqual(0, HSK4_AUDIO_PROFILE["cue_to_stimulus_ms"])
+        self.assertEqual(9, len(HSK30_HSK4_ASSETS))
+        preview = parse_hsk4_phase1(HSK30_HSK4_SOURCE, lang_state=self._lang_state())
+        with TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            for path in validate_hsk30_assets(root, level="hsk4")["missing"]:
+                target = root / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"fixture")
+            for key in expected.values():
+                target = root / "hsk4" / f"hsk4_{key}.m4a"
+                target.unlink()
+                status = validate_hsk30_assets(root, level="hsk4")
+                self.assertEqual([f"hsk4/hsk4_{key}.m4a"], status["missing"])
+                with patch("pipelines.hsk30_audio.validate_hsk30_assets", return_value=status), \
+                     patch("pipelines.hsk30_audio._synthesize_tts_segment", side_effect=AssertionError("No TTS")):
+                    with self.assertRaisesRegex(FileNotFoundError, f"hsk4_{key}.m4a"):
+                        build_hsk4_phase1b(preview, root / "output.m4a")
+                target.write_bytes(b"fixture")
+
     def test_fake_build_plays_each_question_once_and_shared_passage_once(self):
         report = parse_hsk4_phase1(HSK30_HSK4_SOURCE, lang_state=self._lang_state())
         tts_calls = []
@@ -118,6 +144,38 @@ class Hsk30AudioHsk4Tests(unittest.TestCase):
         self.assertTrue(all(not text.startswith(("男:", "女:", "问:", "男：", "女：", "问：")) for text in tts_calls))
 
         timeline = result["timeline"]
+        self.assertEqual(1, timeline.count("outro"))
+        self.assertEqual("outro", timeline[-1])
+        self.assertEqual(0.95, result["speech_rate"])
+        self.assertEqual("edge_trim_v1", result["edge_trim_version"])
+        self.assertEqual(-45, result["edge_trim_threshold_db"])
+        self.assertEqual(80, result["edge_trim_safety_pad_ms"])
+        self.assertEqual({1: 3140, 2: 3140}, result["part_start_gaps_ms"])
+        self.assertEqual(6, len(result["fixed_asset_boundaries"]))
+        self.assertEqual(["20–21", "22–23", "24–25", "26–27", "28–29", "30–32"],
+                         [entry["group"] for entry in result["fixed_asset_boundaries"]])
+        for boundary in result["fixed_asset_boundaries"]:
+            self.assertEqual(1, timeline.count(boundary["asset"]))
+            passage = f"shared_passage_{boundary['group']}"
+            self.assertEqual(1, timeline.count(passage))
+            start = timeline.index(passage)
+            self.assertEqual(["answer_pause", boundary["asset"]], timeline[start - 2:start])
+            self.assertEqual(0, boundary["manual_gap_ms"])
+            self.assertEqual(boundary["asset_end_ms"], boundary["passage_start_ms"])
+            expected = [passage, "shared_passage_to_number_gap"]
+            first, last = map(int, boundary["group"].split("–"))
+            for number in range(first, last + 1):
+                expected += [f"number{number}", "number_to_question_gap", f"question{number}", "answer_pause"]
+            self.assertEqual(expected, timeline[start:start + len(expected)])
+        self.assertNotIn("cue_to_stimulus_gap", timeline)
+        independent_part2 = timeline[timeline.index("hsk4_part2"):timeline.index("hsk4_cue_q20_21")]
+        self.assertFalse(any("cue_" in token for token in independent_part2))
+        self.assertEqual([f"number{number}" for number in range(15, 20)],
+                         [token for token in independent_part2 if token.startswith("number")])
+        expected_spoken = {item["question_number_spoken"] for item in report["preview_items"]}
+        expected_spoken.update(segment["text"] for item in report["preview_items"]
+                               for segment in [*item["stimulus_segments"], item["question_segment"]])
+        self.assertTrue(set(tts_calls).issubset(expected_spoken))
         group_start = timeline.index("shared_passage_20–21")
         self.assertEqual(
             ["shared_passage_20–21", "shared_passage_to_number_gap", "number20", "number_to_question_gap", "question20", "answer_pause", "number21", "number_to_question_gap", "question21", "answer_pause"],

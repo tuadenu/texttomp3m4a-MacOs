@@ -80,6 +80,8 @@ HSK30_HSK4_ASSETS = {
     "intro": HSK30_AUDIO_ROOT / "hsk4" / "hsk4_intro.m4a",
     "part1": HSK30_AUDIO_ROOT / "hsk4" / "hsk4_part1.m4a",
     "part2": HSK30_AUDIO_ROOT / "hsk4" / "hsk4_part2.m4a",
+    **{f"cue_q{group}": HSK30_AUDIO_ROOT / "hsk4" / f"hsk4_cue_q{group}.m4a"
+       for group in ("20_21", "22_23", "24_25", "26_27", "28_29", "30_32")},
 }
 HSK30_HSK5_ASSET_DIRECTORY = "hsk5_30_fixed_assets_v2"
 HSK30_HSK5_ASSETS = {
@@ -139,6 +141,9 @@ HSK4_AUDIO_PROFILE = {
     "shared_passage_to_number_ms": 2240,
     "number_to_question_ms": 900,
     "answer_pause_ms": 16180,
+    "cue_to_stimulus_ms": 0,
+    "cues_before_question": {20: "cue_q20_21", 22: "cue_q22_23", 24: "cue_q24_25",
+                             26: "cue_q26_27", 28: "cue_q28_29", 30: "cue_q30_32"},
     "final_silence_ms": 0,
 }
 
@@ -448,11 +453,8 @@ def validate_hsk30_assets(asset_root: str | Path | None = None, level: str = "hs
         })
     elif level_key in {"hsk4", "4"}:
         required.update({
-            f"hsk4/{name}.m4a": path for name, path in {
-                "hsk4_intro": root / "hsk4" / "hsk4_intro.m4a",
-                "hsk4_part1": root / "hsk4" / "hsk4_part1.m4a",
-                "hsk4_part2": root / "hsk4" / "hsk4_part2.m4a",
-            }.items()
+            f"hsk4/hsk4_{name}.m4a": root / "hsk4" / f"hsk4_{name}.m4a"
+            for name in HSK30_HSK4_ASSETS
         })
     elif level_key in {"hsk2", "2"}:
         required.update({
@@ -3611,6 +3613,7 @@ def _build_single_playback_exam(
     }
     if level == "HSK5":
         counts["speech_metrics"] = []
+    if level in {"HSK4", "HSK5"}:
         counts["group_passage_ms"] = {}
     items = {int(item["question_number"]): item for item in report["preview_items"]}
     groups: Dict[str, List[Dict[str, object]]] = {}
@@ -3646,7 +3649,11 @@ def _build_single_playback_exam(
             item = items[number]
             if progress_callback:
                 progress_callback(f"Đang tạo Q{number:02d}...")
-            if number in cue_assets:
+            cue_matches_group = level != "HSK4" or (
+                item["is_shared"] and profile["cues_before_question"].get(number) ==
+                "cue_q" + item["group"].replace("–", "_")
+            )
+            if number in cue_assets and cue_matches_group:
                 asset_start = len(final_audio)
                 final_audio += cue_assets[number]
                 asset_end = len(final_audio)
@@ -3656,7 +3663,7 @@ def _build_single_playback_exam(
                 if cue_gap:
                     final_audio += _silent_segment(cue_gap)
                     timeline.append("cue_to_stimulus_gap")
-                if level == "HSK5":
+                if level in {"HSK4", "HSK5"}:
                     pending_fixed_asset = {"asset": cue_token, "path": str(assets[profile['cues_before_question'][number]]),
                                            "asset_start_ms": asset_start, "asset_end_ms": asset_end,
                                            "manual_gap_ms": cue_gap}
@@ -3667,7 +3674,7 @@ def _build_single_playback_exam(
                 if group in processed_groups:
                     continue
                 audio, item_timeline = _hsk4_render_shared_group(groups[group], **kwargs)
-                if level == "HSK5" and pending_fixed_asset is not None:
+                if level in {"HSK4", "HSK5"} and pending_fixed_asset is not None:
                     passage_start = len(final_audio)
                     fixed_asset_boundaries.append({**pending_fixed_asset, "group": group,
                                                    "passage_start_ms": passage_start,
@@ -3725,6 +3732,7 @@ def format_hsk4_build_report(report: Dict[str, object]) -> str:
         f"Exam: {report.get('exam', 'HSK4-30-01')}", f"Output: {report.get('output_file', '')}",
         f"File size: {report.get('file_size_bytes', 0)} bytes", f"HSK4 speed: {report.get('speech_rate_label', '')}", "",
         f"Music: {report.get('music_ms', 0)} ms", f"Fixed intro/part assets: {report.get('fixed_assets_ms', 0)} ms",
+        f"Fixed group cues: {report.get('fixed_cues_ms', 0)} ms",
         f"Generated speech: {report.get('generated_speech_ms', 0)} ms", f"Edge trim: {report.get('edge_trim_version', '')} / {report.get('edge_trim_safety_pad_ms', 0)} ms",
         f"Internal pauses: {report.get('internal_pauses_ms', 0)} ms", f"Number to content: {report.get('number_to_content_ms', 0)} ms",
         f"Speaker gaps: {report.get('speaker_gap_ms', 0)} ms", f"Content to question: {report.get('content_to_question_ms', 0)} ms",
@@ -3738,6 +3746,9 @@ def format_hsk4_build_report(report: Dict[str, object]) -> str:
         f"Actual duration: {report.get('actual_duration_ms', 0)} ms", f"Difference from official: {report.get('difference_ms', 0)} ms", f"Difference from sample: {report.get('sample_difference_ms', 0)} ms",
         "Status: INFO",
     ]
+    for boundary in report.get("fixed_asset_boundaries", []):
+        lines.append(f"{boundary['group']}: {boundary['asset']}; asset {boundary['asset_start_ms']}..{boundary['asset_end_ms']} ms; "
+                     f"passage starts {boundary['passage_start_ms']} ms; added gap {boundary['manual_gap_ms']} ms")
     return "\n".join(lines) + "\n"
 
 
