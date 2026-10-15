@@ -66,6 +66,10 @@ testdata/hsk30/hsk5/~$*.xlsx
 testdata/hsk30/hsk5/Audio/
 testdata/hsk30/hsk5/Audio_v2/
 testdata/hsk30/hsk5/audio-hsk5-30/
+testdata/hsk30/hsk6/hsk6-30-*.m4a
+testdata/hsk30/hsk6/*.report.json
+testdata/hsk30/hsk6/audio-hsk6-30/
+testdata/hsk30/hsk6/~$*.xlsx
 
 pipelines/.tts_cache/
 

@@ -1,0 +1,146 @@
+{
+  "title": "HSK6 3.0 fixed assets v1 / derived from user-supplied sample",
+  "source_audio": "HSK(六级)样卷.mp3",
+  "sample_duration_s": 1895.523265,
+  "format": "AAC-LC 48kHz mono ~32kbps",
+  "important": [
+    "Every group cue includes trailing natural cue-to-passage silence; append next shared passage directly with NO extra gap.",
+    "hsk6_part1, hsk6_part2 and hsk6_part3 include their natural part-start transition silence; do not add a second part_start_gap.",
+    "Part 1 Q1–Q8 are independent listening passages even though Excel labels their Nhóm câu as 1–8.",
+    "Part 2 Q9–Q28 and Part 3 Q29–Q40 are shared-passage groups: cue once, stimulus once, number/question once per item.",
+    "The common HSK1–6 intro music and shared outro are not included and should be reused from the existing application.",
+    "Boundaries determined from silence analysis; manually audition against source before production batch."
+  ],
+  "assets": [
+    {
+      "file": "hsk6_intro.m4a",
+      "source_start_s": 30.229,
+      "source_end_s": 34.324,
+      "source_duration_s": 4.095,
+      "asset_duration_s": 4.095,
+      "notes": "Exam announcement after common music; includes natural outro silence",
+      "size_bytes": 18561,
+      "sha256": "a36879ff6301aa1771c75a05bf4814157bf55ecd13befac0f5651e7fefc7c052"
+    },
+    {
+      "file": "hsk6_part1.m4a",
+      "source_start_s": 34.324,
+      "source_end_s": 67.829,
+      "source_duration_s": 33.505,
+      "asset_duration_s": 33.505,
+      "notes": "Part 1 instructions/example + natural start gap; no extra part_start_gap",
+      "size_bytes": 143365,
+      "sha256": "47163589f0f712fb288244764b438b57e8e8412601c344e4628fc07f0a462b13"
+    },
+    {
+      "file": "hsk6_part2.m4a",
+      "source_start_s": 363.24,
+      "source_end_s": 378.85,
+      "source_duration_s": 15.61,
+      "asset_duration_s": 15.61,
+      "notes": "Part 2 guidance + natural start gap; cue Q9–11 comes NEXT",
+      "size_bytes": 67070,
+      "sha256": "6744907280a7191b704d9cdaa7d6331dbf26c194fa4d7c674f1ca1268227a64d"
+    },
+    {
+      "file": "hsk6_cue_q9_11.m4a",
+      "source_start_s": 378.85,
+      "source_end_s": 383.244,
+      "source_duration_s": 4.394,
+      "asset_duration_s": 4.394,
+      "notes": "Cue Q9–11 with natural cue-to-passage pause",
+      "size_bytes": 19883,
+      "sha256": "acc07ca7827d143a3e8360d20b7935a12c8f5e053d9f9c187e345b258fcd5695"
+    },
+    {
+      "file": "hsk6_cue_q12_14.m4a",
+      "source_start_s": 505.277,
+      "source_end_s": 510.365,
+      "source_duration_s": 5.088,
+      "asset_duration_s": 5.088,
+      "notes": "Cue Q12–14 with natural cue-to-passage pause",
+      "size_bytes": 22886,
+      "sha256": "440cc1683b63793805ed776c33c9589a4a3d095c597b312d3f883049ce68beb9"
+    },
+    {
+      "file": "hsk6_cue_q15_17.m4a",
+      "source_start_s": 641.347,
+      "source_end_s": 645.755,
+      "source_duration_s": 4.408,
+      "asset_duration_s": 4.408,
+      "notes": "Cue Q15–17 with natural cue-to-passage pause",
+      "size_bytes": 19392,
+      "sha256": "05a1a191e3ea514a8039c3272c48486d0d488bf52918a5c8c6c7787cc2d55b39"
+    },
+    {
+      "file": "hsk6_cue_q18_21.m4a",
+      "source_start_s": 762.561,
+      "source_end_s": 767.714,
+      "source_duration_s": 5.153,
+      "asset_duration_s": 5.153,
+      "notes": "Cue Q18–21 with natural cue-to-passage pause",
+      "size_bytes": 22988,
+      "sha256": "6f109a3edcfafe6988db88d6015e439c54e6e2d71c47f40297bf7d562d7760c3"
+    },
+    {
+      "file": "hsk6_cue_q22_25.m4a",
+      "source_start_s": 930.384,
+      "source_end_s": 935.365,
+      "source_duration_s": 4.981,
+      "asset_duration_s": 4.981,
+      "notes": "Cue Q22–25 with natural cue-to-passage pause",
+      "size_bytes": 22397,
+      "sha256": "d7b3b84d6b8f1c1af1c1a4eecb247ff0027ecad90183dd2a4693ab31a76273c6"
+    },
+    {
+      "file": "hsk6_cue_q26_28.m4a",
+      "source_start_s": 1099.8,
+      "source_end_s": 1105.186,
+      "source_duration_s": 5.386,
+      "asset_duration_s": 5.386,
+      "notes": "Cue Q26–28 with natural cue-to-passage pause",
+      "size_bytes": 24406,
+      "sha256": "609d14830f2476b6b123b4987c2e41aa130ace9f67b94b8a7d3610e021bcd61e"
+    },
+    {
+      "file": "hsk6_part3.m4a",
+      "source_start_s": 1234.149,
+      "source_end_s": 1250.909,
+      "source_duration_s": 16.76,
+      "asset_duration_s": 16.76,
+      "notes": "Part 3 guidance + natural start gap; cue Q29–32 comes NEXT",
+      "size_bytes": 72441,
+      "sha256": "ec3412460c4e6bd4cd61087b293ea68d9921d6157924aa49afbad8b67ed1d692"
+    },
+    {
+      "file": "hsk6_cue_q29_32.m4a",
+      "source_start_s": 1250.909,
+      "source_end_s": 1256.319,
+      "source_duration_s": 5.41,
+      "asset_duration_s": 5.41,
+      "notes": "Cue Q29–32 with natural cue-to-passage pause",
+      "size_bytes": 24061,
+      "sha256": "b9e0063d007a6797ac9e263339d33365d41b23daa6183264ecb3b331b3751ea0"
+    },
+    {
+      "file": "hsk6_cue_q33_36.m4a",
+      "source_start_s": 1443.522,
+      "source_end_s": 1448.426,
+      "source_duration_s": 4.904,
+      "asset_duration_s": 4.904,
+      "notes": "Cue Q33–36 with natural cue-to-passage pause",
+      "size_bytes": 21909,
+      "sha256": "79d6b8b7d803f9d5bdade061409dc6b185592d6eba24c9358000e54ed48a27b0"
+    },
+    {
+      "file": "hsk6_cue_q37_40.m4a",
+      "source_start_s": 1657.608,
+      "source_end_s": 1662.697,
+      "source_duration_s": 5.089,
+      "asset_duration_s": 5.089,
+      "notes": "Cue Q37–40 with natural cue-to-passage pause",
+      "size_bytes": 22390,
+      "sha256": "2f160d63f1001978db5ae84ed52fbf9a963e47930b4e4843610d5d0e2b129513"
+    }
+  ]
+}
