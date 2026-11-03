@@ -350,6 +350,13 @@ def _normalize_exam_code(exam_code: str) -> str:
     return _clean_text(exam_code).upper()
 
 
+def _normalize_hsk1_exam_id(exam_code: str) -> str:
+    """Accept legacy HSK1 IDs and the newer ``-30`` workbook suffix."""
+    normalized = _normalize_exam_code(exam_code)
+    match = re.fullmatch(r"(HSK\d{4})(?:-30)?", normalized)
+    return match.group(1) if match else normalized
+
+
 def _parse_part_label(value: str) -> Optional[int]:
     clean = _clean_text(value)
     for prefix, part_number in PART_HEADING_MAP.items():
@@ -537,7 +544,8 @@ def phase1_output_filename(exam_code: str) -> str:
     if hsk5_match:
         return f"hsk5-30-{int(hsk5_match.group(1)):03d}.m4a"
     normalized = _normalize_exam_code(exam_code)
-    hsk1_match = re.fullmatch(r"HSK1(\d{3})", normalized)
+    hsk1_exam_id = _normalize_hsk1_exam_id(normalized)
+    hsk1_match = re.fullmatch(r"HSK1(\d{3})", hsk1_exam_id)
     if hsk1_match:
         return f"hsk1-30-{hsk1_match.group(1)}.m4a"
     hsk2_match = re.fullmatch(r"HSK2(\d{3})", normalized)
@@ -561,7 +569,7 @@ def parse_hsk1_phase1(
     lang_state: Optional[Dict[str, str]] = None,
 ) -> Dict[str, object]:
     rows = read_xlsx_rows(excel_path, sheet_name=sheet_name)
-    normalized_exam = _normalize_exam_code(exam_code)
+    normalized_exam = _normalize_hsk1_exam_id(exam_code)
     question_rows: List[XlsxRow] = []
     fixed_rows: List[int] = []
     invalid_rows: List[str] = []
@@ -570,10 +578,11 @@ def parse_hsk1_phase1(
     in_exam_block = False
 
     for row in rows:
-        exam_value = _clean_text(row.cells.get("A", ""))
+        source_exam_value = _clean_text(row.cells.get("A", ""))
+        exam_value = _normalize_hsk1_exam_id(source_exam_value)
         part_heading = _parse_part_label(row.cells.get("H", ""))
 
-        if row.row_number == 1 or exam_value == "Mã đề":
+        if row.row_number == 1 or source_exam_value.casefold() == "mã đề":
             continue
 
         if in_exam_block and len(question_rows) >= 20:
@@ -589,8 +598,8 @@ def parse_hsk1_phase1(
         if not exam_value:
             continue
 
-        if not re.fullmatch(r"HSK\d{4}", exam_value):
-            invalid_rows.append(f"Dòng {row.row_number}: mã đề không hợp lệ '{exam_value}'")
+        if not re.fullmatch(r"HSK\d{4}(?:-30)?", source_exam_value):
+            invalid_rows.append(f"Dòng {row.row_number}: mã đề không hợp lệ '{source_exam_value}'")
             continue
 
         if exam_value == normalized_exam:

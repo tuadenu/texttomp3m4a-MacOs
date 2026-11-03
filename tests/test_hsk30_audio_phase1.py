@@ -3,6 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from openpyxl import Workbook
 from pydub import AudioSegment
 from pydub.generators import Sine
 
@@ -20,6 +21,31 @@ from pipelines.hsk30_audio import (
 
 
 class Hsk30AudioPhase1Tests(unittest.TestCase):
+    @staticmethod
+    def _write_minimal_hsk1_workbook(path, exam_id):
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Sheet1"
+        sheet.append(["Mã đề", "Kỹ năng", "Phần", "Dạng bài", "Nhóm câu", "Số câu", "", "Phụ đề", "", "", ""])
+        for index in range(1, 21):
+            part = (index - 1) // 5 + 1
+            content_h = "女：你好。" if part >= 3 else "三本新书"
+            content_j = "男：你好。" if part == 3 else ("问：学校在哪里？" if part == 4 else "")
+            sheet.append([
+                exam_id,
+                "Nghe",
+                f"Phần {part}",
+                "Dạng bài",
+                "1–5",
+                "一",
+                "。",
+                content_h,
+                "。",
+                content_j,
+                "。",
+            ])
+        workbook.save(path)
+
     def test_hsk1001_preview_summary_and_patterns(self):
         report = parse_hsk1_phase1(
             HSK30_DEFAULT_SOURCE,
@@ -79,6 +105,24 @@ class Hsk30AudioPhase1Tests(unittest.TestCase):
 
     def test_output_filename_mapping(self):
         self.assertEqual("hsk1-30-007.m4a", phase1_output_filename("HSK1007"))
+        self.assertEqual("hsk1-30-007.m4a", phase1_output_filename("HSK1007-30"))
+
+    def test_hsk1_parser_accepts_legacy_and_30_suffix_exam_ids(self):
+        with TemporaryDirectory() as tmpdir:
+            legacy_path = Path(tmpdir) / "legacy.xlsx"
+            current_path = Path(tmpdir) / "current.xlsx"
+            self._write_minimal_hsk1_workbook(legacy_path, "HSK1001")
+            self._write_minimal_hsk1_workbook(current_path, "HSK1001-30")
+
+            legacy_report = parse_hsk1_phase1(legacy_path, exam_code="HSK1001")
+            current_report = parse_hsk1_phase1(current_path, exam_code="HSK1001")
+            suffixed_request_report = parse_hsk1_phase1(current_path, exam_code="HSK1001-30")
+
+        for report in (legacy_report, current_report, suffixed_request_report):
+            self.assertEqual("HSK1001", report["detected_exam"])
+            self.assertEqual(20, report["question_count"])
+            self.assertEqual({1: 5, 2: 5, 3: 5, 4: 5}, report["part_counts"])
+            self.assertEqual("hsk1-30-001.m4a", report["output_filename"])
 
     def test_phase1b_build_report_hits_pass_range_with_cached_reuse(self):
         report = parse_hsk1_phase1(
