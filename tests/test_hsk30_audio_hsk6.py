@@ -344,6 +344,11 @@ class Hsk6AudioTests(unittest.TestCase):
         self.assertEqual(1, client.calls)
         sleep.assert_not_called()
 
+        client = FlakyClient("unused")
+        client.calls = 1
+        result = audio._hsk6_google_synthesize_with_retry(client, "text", "voice", "config", timeout=90)
+        self.assertEqual(90, result["timeout"])
+
     def test_approved_batch_continues_after_failure_and_resumes_verified_outputs(self):
         boundaries = [{"group": group, "manual_gap_ms": 0, "asset_end_ms": 40,
                        "passage_start_ms": 40}

@@ -70,6 +70,9 @@ testdata/hsk30/hsk6/hsk6-30-*.m4a
 testdata/hsk30/hsk6/*.report.json
 testdata/hsk30/hsk6/audio-hsk6-30/
 testdata/hsk30/hsk6/~$*.xlsx
+testdata/hsk30/hsk79/hsk79-*.m4a
+testdata/hsk30/hsk79/*.report.json
+testdata/hsk30/hsk79/~$*.xlsx
 
 pipelines/.tts_cache/
 

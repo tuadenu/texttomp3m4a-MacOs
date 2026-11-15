@@ -1,0 +1,119 @@
+{
+  "source_file": "HSK(七-九级)样卷听力.mp3",
+  "source_duration_s": 1897.586939,
+  "status": "v1 proposed cuts, verify speech boundaries by listening before production",
+  "asset_sample_rate_hz": 48000,
+  "asset_channels": 1,
+  "asset_codec": "AAC-LC",
+  "assets": [
+    {
+      "name": "hsk79_intro.m4a",
+      "source_start_s": 0.0,
+      "source_end_s": 30.294,
+      "cut_duration_s": 30.294,
+      "output_duration_s": 30.294,
+      "description": "Initial recording through first guidance boundary; includes initial silence/music if any",
+      "sha256": "dc483bc2f2df1e5318f0b6c1e33ecbb8bb722ef68aa55f177849193b503ca04d"
+    },
+    {
+      "name": "hsk79_part1_q1_5.m4a",
+      "source_start_s": 30.294,
+      "source_end_s": 80.375,
+      "cut_duration_s": 50.081,
+      "output_duration_s": 50.081,
+      "description": "Part 1 instructions and introduction to Q1-5; last ~3.09 s quiet before passage",
+      "sha256": "ae368beaed2a89e938d2b6f967b35de33ba0aa9e60f6972f3197f46603800cdd"
+    },
+    {
+      "name": "hsk79_part1_after_q1_5.m4a",
+      "source_start_s": 171.765,
+      "source_end_s": 175.825,
+      "cut_duration_s": 4.06,
+      "output_duration_s": 4.06,
+      "description": "Post-passage spoken cue with ~2.11 s leading quiet; follows Q1-5 passage, before 74.54 s work pause",
+      "sha256": "6cd9998add5f8b862a84a514ef2f6d17b5105770f38ee776b7f55be3be381e90"
+    },
+    {
+      "name": "hsk79_cue_q6_10.m4a",
+      "source_start_s": 250.364,
+      "source_end_s": 255.703,
+      "cut_duration_s": 5.339,
+      "output_duration_s": 5.339,
+      "description": "Q6-10 cue, ~3.17 s quiet before second passage",
+      "sha256": "d0e2cda7da4d992eeb72e0f4a6bc56c4fa1c2c712d3132dfa80fdfea7972dda6"
+    },
+    {
+      "name": "hsk79_part1_after_q6_10.m4a",
+      "source_start_s": 344.359,
+      "source_end_s": 348.282,
+      "cut_duration_s": 3.923,
+      "output_duration_s": 3.923,
+      "description": "Post-passage spoken cue with ~2.10 s leading quiet; before 74.39 s work pause",
+      "sha256": "8d94f11411c1a3dd1d8bdebb8d4d45d6c714d3ec89df8ed40c5a6d8366298704"
+    },
+    {
+      "name": "hsk79_part2_q11_16.m4a",
+      "source_start_s": 422.67,
+      "source_end_s": 434.371,
+      "cut_duration_s": 11.701,
+      "output_duration_s": 11.701,
+      "description": "Part 2 instructions and Q11-16 cue; ~3.11 s trailing quiet before passage",
+      "sha256": "bbe62c49256964658d5bf7152d1135cb2a9f6218a8933ca832428d3491a233cc"
+    },
+    {
+      "name": "hsk79_cue_q17_22.m4a",
+      "source_start_s": 743.207,
+      "source_end_s": 749.107,
+      "cut_duration_s": 5.9,
+      "output_duration_s": 5.9,
+      "description": "Group cue Q17-22; ~3.12 s trailing quiet before passage",
+      "sha256": "1d5b2453609d1575faae30c89180560a57a35f72d07514197c68c0825eeffdca"
+    },
+    {
+      "name": "hsk79_part3_q23_28.m4a",
+      "source_start_s": 1012.629,
+      "source_end_s": 1024.894,
+      "cut_duration_s": 12.265,
+      "output_duration_s": 12.265,
+      "description": "Part 3 instructions and Q23-28 cue; ~3.07 s trailing quiet before passage",
+      "sha256": "a433bb45634b884e5c54eaf5b034f66a55c4d053cf4a77c1f11a3f2995d22e8e"
+    },
+    {
+      "name": "hsk79_cue_q29_34.m4a",
+      "source_start_s": 1301.669,
+      "source_end_s": 1308.031,
+      "cut_duration_s": 6.362,
+      "output_duration_s": 6.362,
+      "description": "Group cue Q29-34; ~3.17 s trailing quiet before passage",
+      "sha256": "aec81a26072f6f945462ccd3d4587b8ab559e77a64847e1183d657958ae50a44"
+    },
+    {
+      "name": "hsk79_cue_q35_40.m4a",
+      "source_start_s": 1583.743,
+      "source_end_s": 1589.924,
+      "cut_duration_s": 6.181,
+      "output_duration_s": 6.181,
+      "description": "Group cue Q35-40; ~3.13 s trailing quiet before passage",
+      "sha256": "4f90128806b67a4e541339435f58bfea9163c965a54b7d9e1a91fe1a367b8914"
+    },
+    {
+      "name": "hsk79_outro.m4a",
+      "source_start_s": 1875.333,
+      "source_end_s": 1877.28,
+      "cut_duration_s": 1.947,
+      "output_duration_s": 1.947,
+      "description": "Spoken end cue; ~20.26 s trailing silent tail of source deliberately excluded",
+      "sha256": "d93d9f19cbe0e8e223f26f8dea7915d94b9c73949f0c51a7a03c2f167dd32e5f"
+    }
+  ],
+  "audio_rules": {
+    "part1_two_answer_blocks_s": [
+      74.539274,
+      74.388073
+    ],
+    "part2_part3_individual_answer_blocks": 30,
+    "part2_3_answer_pause_median_s": 14.042891,
+    "part1_statement_text_not_spoken": "Check against sample; PDF statements are on paper",
+    "note": "No extra silence between fixed group cue and stimulus; cue assets already contain their natural trailing silence. Part1 after-cues include leading silence. Do not append a generic intro music if initial asset contains music."
+  }
+}

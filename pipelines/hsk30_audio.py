@@ -1409,12 +1409,13 @@ def _deallocate_weighted(deficit_ms: int, values_ms: List[int], mins_ms: List[in
     return remaining
 
 
-def _hsk6_google_synthesize_with_retry(client, synthesis_input, voice, audio_config):
+def _hsk6_google_synthesize_with_retry(client, synthesis_input, voice, audio_config, timeout=None):
     from google.api_core.exceptions import InvalidArgument
 
     for attempt in range(3):
         try:
-            return client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+            options = {"timeout": timeout} if timeout is not None else {}
+            return client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config, **options)
         except InvalidArgument as exc:
             if "Failed to synthesize with voice" not in str(exc) or attempt == 2:
                 raise
@@ -1435,6 +1436,8 @@ def _synthesize_tts_segment(
     audio_postprocess_version: str = "",
     audio_metrics: Optional[Dict[str, int]] = None,
     retry_google_voice_failure: bool = False,
+    tts_timeout_s: Optional[float] = None,
+    close_google_client_before_audio_decode: bool = False,
 ) -> Tuple[AudioSegment, bool]:
     normalized_text = _normalize_tts_text(text)
     if not normalized_text:
@@ -1559,10 +1562,18 @@ def _synthesize_tts_segment(
         audio_kwargs["speaking_rate"] = speech_rate
     selected = texttospeech.VoiceSelectionParams(**voice_kwargs)
     config = texttospeech.AudioConfig(**audio_kwargs)
-    if retry_google_voice_failure:
-        response = _hsk6_google_synthesize_with_retry(client, synthesis_input, selected, config)
-    else:
-        response = client.synthesize_speech(input=synthesis_input, voice=selected, audio_config=config)
+    try:
+        if retry_google_voice_failure:
+            response = _hsk6_google_synthesize_with_retry(client, synthesis_input, selected, config, timeout=tts_timeout_s)
+        else:
+            options = {"timeout": tts_timeout_s} if tts_timeout_s is not None else {}
+            response = client.synthesize_speech(input=synthesis_input, voice=selected, audio_config=config, **options)
+    finally:
+        if close_google_client_before_audio_decode:
+            transport = getattr(client, "transport", None)
+            close = getattr(transport, "close", None)
+            if callable(close):
+                close()
     temp_mp3 = cache_path.with_suffix(".tmp.mp3")
     with open(temp_mp3, "wb") as fp:
         fp.write(response.audio_content)

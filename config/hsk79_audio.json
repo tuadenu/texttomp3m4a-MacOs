@@ -1,0 +1,49 @@
+{
+  "mapping_status": "Group 17-22 role pairs follow the first/second speaker casting measured from the supplied sample audio; interview roles follow the host/expert mapping.",
+  "role_policy": "Configured per group. Unlabelled roles use the mapped dialogue turn position, not gender inferred from the role name.",
+  "number": "NỮ",
+  "question": "NỮ",
+  "groups": {
+    "1–5": {"narration": "NAM", "roles": {}},
+    "6–10": {"narration": "NỮ", "roles": {}},
+    "11–16": {
+      "narration": "NAM",
+      "roles": {
+        "主持人": "NỮ",
+        "记者": "NỮ",
+        "专家": "NAM",
+        "研究者": "NAM",
+        "负责人": "NAM",
+        "经理": "NAM",
+        "导演": "NAM",
+        "研究员": "NAM",
+        "工程师": "NAM",
+        "学者": "NAM"
+      }
+    },
+    "17–22": {
+      "narration": "NỮ",
+      "roles": {
+        "甲": "NỮ",
+        "乙": "NAM",
+        "甲方": "NỮ",
+        "乙方": "NAM",
+        "卖方": "NỮ",
+        "买方": "NAM",
+        "女方": "NỮ",
+        "男方": "NAM",
+        "服务商": "NỮ",
+        "实验室": "NAM",
+        "出租方": "NỮ",
+        "承租方": "NAM",
+        "货主": "NỮ",
+        "承运方": "NAM",
+        "出版社": "NỮ",
+        "印刷厂": "NAM"
+      }
+    },
+    "23–28": {"narration": "NAM", "roles": {}},
+    "29–34": {"narration": "NỮ", "roles": {}},
+    "35–40": {"narration": "NAM", "roles": {}}
+  }
+}
