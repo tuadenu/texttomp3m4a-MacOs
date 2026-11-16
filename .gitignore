@@ -20,6 +20,7 @@ AppData/config.json
 AppData/*.mp3
 AppData/**/*.mp3
 AppData/hsk30_audio_cache/
+AppData/hskk30_audio_cache/
 
 TextToMp3Portable/secrets.enc
 TextToMp3Portable/AppData/

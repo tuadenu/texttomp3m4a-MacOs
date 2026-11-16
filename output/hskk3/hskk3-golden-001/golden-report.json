@@ -1,0 +1,1764 @@
+{
+  "status": "GOLDEN_EXPERIMENTAL",
+  "exam": "HSKK3-01",
+  "output_root": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001",
+  "export_exam": true,
+  "export_answers": true,
+  "exam_audio": {
+    "status": "GOLDEN_EXPERIMENTAL",
+    "exam": "HSKK3-01",
+    "exam_number": 1,
+    "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/exam/hskk3-30-001.m4a",
+    "output_metadata": {
+      "codec": "aac",
+      "profile": "LC",
+      "bitrate_bps": 96001,
+      "sample_rate_hz": 48000,
+      "channels": 1,
+      "duration_seconds": 968.789333,
+      "true_peak_dbtp": -4.5,
+      "integrated_loudness_lufs": -23.9,
+      "loudness_range_lu": 8.3,
+      "encoder": "aac_at",
+      "encoder_mode": "AudioToolbox CBR",
+      "target_bitrate_kbps": 96,
+      "average_bitrate_kbps": 96.0,
+      "bytes": 11808799,
+      "duration_ms": 968787,
+      "source_pcm_duration_ms": 968737,
+      "encoder_edge_guard_ms": 25,
+      "pcm_peak_ceiling_dbfs": -2.0,
+      "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/exam/hskk3-30-001.m4a"
+    },
+    "timeline": [
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_intro_part1_q1.m4a",
+        "start_ms": 0,
+        "end_ms": 120191,
+        "duration_ms": 120191,
+        "source_cut": {
+          "start": 0,
+          "end": 120.191
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q01 number to stimulus",
+        "start_ms": 120191,
+        "end_ms": 120191,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 1016,
+        "natural_head_ms": 35,
+        "actual_active_to_active_ms": 1051,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q01 stimulus TTS",
+        "start_ms": 120191,
+        "end_ms": 124483,
+        "duration_ms": 4292,
+        "question_number": 1,
+        "source_text": "今天早上我起得很早，因为要去参加一个活动。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q01: speech end to original beep",
+        "start_ms": 124483,
+        "end_ms": 126576,
+        "duration_ms": 2093,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 27,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 126576,
+        "end_ms": 127382,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q01: repeat time to next cue",
+        "start_ms": 127382,
+        "end_ms": 137801,
+        "duration_ms": 10419,
+        "target_active_to_active_ms": 10580,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 75,
+        "actual_active_to_active_ms": 10580
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q2_number.m4a",
+        "start_ms": 137801,
+        "end_ms": 139198,
+        "duration_ms": 1397,
+        "source_cut": {
+          "start": 135.727,
+          "end": 137.124
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q02 number to stimulus",
+        "start_ms": 139198,
+        "end_ms": 139198,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 987,
+        "natural_head_ms": 20,
+        "actual_active_to_active_ms": 1007,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q02 stimulus TTS",
+        "start_ms": 139198,
+        "end_ms": 143053,
+        "duration_ms": 3855,
+        "question_number": 2,
+        "source_text": "老师让我们先读问题，再听下面的内容。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q02: speech end to original beep",
+        "start_ms": 143053,
+        "end_ms": 145138,
+        "duration_ms": 2085,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 35,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 145138,
+        "end_ms": 145944,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q02: repeat time to next cue",
+        "start_ms": 145944,
+        "end_ms": 156343,
+        "duration_ms": 10399,
+        "target_active_to_active_ms": 10580,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 95,
+        "actual_active_to_active_ms": 10580
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q3_number.m4a",
+        "start_ms": 156343,
+        "end_ms": 157948,
+        "duration_ms": 1605,
+        "source_cut": {
+          "start": 153.268,
+          "end": 154.873
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q03 number to stimulus",
+        "start_ms": 157948,
+        "end_ms": 157948,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 1015,
+        "natural_head_ms": 50,
+        "actual_active_to_active_ms": 1065,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q03 stimulus TTS",
+        "start_ms": 157948,
+        "end_ms": 161746,
+        "duration_ms": 3798,
+        "question_number": 3,
+        "source_text": "从这里一直往前走，过了桥就是公园。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q03: speech end to original beep",
+        "start_ms": 161746,
+        "end_ms": 163823,
+        "duration_ms": 2077,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 43,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 163823,
+        "end_ms": 164629,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q03: repeat time to next cue",
+        "start_ms": 164629,
+        "end_ms": 175028,
+        "duration_ms": 10399,
+        "target_active_to_active_ms": 10580,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 95,
+        "actual_active_to_active_ms": 10580
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q4_number.m4a",
+        "start_ms": 175028,
+        "end_ms": 176639,
+        "duration_ms": 1611,
+        "source_cut": {
+          "start": 170.862,
+          "end": 172.473
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q04 number to stimulus",
+        "start_ms": 176639,
+        "end_ms": 176639,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 1061,
+        "natural_head_ms": 15,
+        "actual_active_to_active_ms": 1076,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q04 stimulus TTS",
+        "start_ms": 176639,
+        "end_ms": 180694,
+        "duration_ms": 4055,
+        "question_number": 4,
+        "source_text": "姐姐今天没上班，正在家里照顾小孩子。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q04: speech end to original beep",
+        "start_ms": 180694,
+        "end_ms": 182779,
+        "duration_ms": 2085,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 35,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 182779,
+        "end_ms": 183585,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q04: repeat time to next cue",
+        "start_ms": 183585,
+        "end_ms": 193999,
+        "duration_ms": 10414,
+        "target_active_to_active_ms": 10580,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 10580
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q5_number.m4a",
+        "start_ms": 193999,
+        "end_ms": 195609,
+        "duration_ms": 1610,
+        "source_cut": {
+          "start": 188.919,
+          "end": 190.529
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q05 number to stimulus",
+        "start_ms": 195609,
+        "end_ms": 195609,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 1035,
+        "natural_head_ms": 25,
+        "actual_active_to_active_ms": 1060,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q05 stimulus TTS",
+        "start_ms": 195609,
+        "end_ms": 199667,
+        "duration_ms": 4058,
+        "question_number": 5,
+        "source_text": "今天外面风很大，出门最好多穿一件衣服。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q05: speech end to original beep",
+        "start_ms": 199667,
+        "end_ms": 201764,
+        "duration_ms": 2097,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 23,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 201764,
+        "end_ms": 202570,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q05: repeat time to next cue",
+        "start_ms": 202570,
+        "end_ms": 212979,
+        "duration_ms": 10409,
+        "target_active_to_active_ms": 10580,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 85,
+        "actual_active_to_active_ms": 10580
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q6_number.m4a",
+        "start_ms": 212979,
+        "end_ms": 214545,
+        "duration_ms": 1566,
+        "source_cut": {
+          "start": 206.858,
+          "end": 208.424
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q06 number to stimulus",
+        "start_ms": 214545,
+        "end_ms": 214545,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 1071,
+        "natural_head_ms": 40,
+        "actual_active_to_active_ms": 1111,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q06 stimulus TTS",
+        "start_ms": 214545,
+        "end_ms": 218471,
+        "duration_ms": 3926,
+        "question_number": 6,
+        "source_text": "这家饭店的面条儿味道不错，价格也不贵。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q06: speech end to original beep",
+        "start_ms": 218471,
+        "end_ms": 220570,
+        "duration_ms": 2099,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 21,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 220570,
+        "end_ms": 221376,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q06: repeat time to next cue",
+        "start_ms": 221376,
+        "end_ms": 231780,
+        "duration_ms": 10404,
+        "target_active_to_active_ms": 10580,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 90,
+        "actual_active_to_active_ms": 10580
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q7_number.m4a",
+        "start_ms": 231780,
+        "end_ms": 233324,
+        "duration_ms": 1544,
+        "source_cut": {
+          "start": 224.648,
+          "end": 226.192
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q07 number to stimulus",
+        "start_ms": 233324,
+        "end_ms": 233324,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 1004,
+        "natural_head_ms": 40,
+        "actual_active_to_active_ms": 1044,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q07 stimulus TTS",
+        "start_ms": 233324,
+        "end_ms": 236929,
+        "duration_ms": 3605,
+        "question_number": 7,
+        "source_text": "周末我喜欢画画，有时候也会听音乐。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q07: speech end to original beep",
+        "start_ms": 236929,
+        "end_ms": 239019,
+        "duration_ms": 2090,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 30,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 239019,
+        "end_ms": 239825,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q07: repeat time to next cue",
+        "start_ms": 239825,
+        "end_ms": 250239,
+        "duration_ms": 10414,
+        "target_active_to_active_ms": 10580,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 10580
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q8_number.m4a",
+        "start_ms": 250239,
+        "end_ms": 251613,
+        "duration_ms": 1374,
+        "source_cut": {
+          "start": 243.086,
+          "end": 244.46
+        }
+      },
+      {
+        "kind": "natural_gap",
+        "name": "Q08 number to stimulus",
+        "start_ms": 251613,
+        "end_ms": 251613,
+        "duration_ms": 0,
+        "inserted_silence_ms": 0,
+        "natural_tail_ms": 1014,
+        "natural_head_ms": 40,
+        "actual_active_to_active_ms": 1054,
+        "target_active_to_active_ms": null
+      },
+      {
+        "kind": "tts_question",
+        "name": "Q08 stimulus TTS",
+        "start_ms": 251613,
+        "end_ms": 256284,
+        "duration_ms": 4671,
+        "question_number": 8,
+        "source_text": "这台电脑突然不能用了，我关机以后又重新打开了。",
+        "voice": "Zhiyu",
+        "speed": 1.0,
+        "engine": "Polly",
+        "cache_profile": "hskk3_pcm_48k_v1"
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q08: speech end to original beep",
+        "start_ms": 256284,
+        "end_ms": 258363,
+        "duration_ms": 2079,
+        "target_active_to_active_ms": 2200,
+        "natural_tail_ms": 41,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 2200
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_repeat_beep.m4a",
+        "start_ms": 258363,
+        "end_ms": 259169,
+        "duration_ms": 806,
+        "source_cut": {
+          "start": 124.513,
+          "end": 125.319
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q08: repeat time to next cue",
+        "start_ms": 259169,
+        "end_ms": 270088,
+        "duration_ms": 10919,
+        "target_active_to_active_ms": 11090,
+        "natural_tail_ms": 86,
+        "natural_head_ms": 85,
+        "actual_active_to_active_ms": 11090
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_part2_q9_start.m4a",
+        "start_ms": 270088,
+        "end_ms": 288811,
+        "duration_ms": 18723,
+        "source_cut": {
+          "start": 261.241,
+          "end": 279.964
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Part 2 answer window 1/5",
+        "start_ms": 288811,
+        "end_ms": 303828,
+        "duration_ms": 15017,
+        "target_active_to_active_ms": 15190,
+        "natural_tail_ms": 93,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 15190
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q9_end_q10_start.m4a",
+        "start_ms": 303828,
+        "end_ms": 308941,
+        "duration_ms": 5113,
+        "source_cut": {
+          "start": 295.097,
+          "end": 300.21
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Part 2 answer window 2/5",
+        "start_ms": 308941,
+        "end_ms": 323963,
+        "duration_ms": 15022,
+        "target_active_to_active_ms": 15190,
+        "natural_tail_ms": 88,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 15190
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q10_end_q11_start.m4a",
+        "start_ms": 323963,
+        "end_ms": 329410,
+        "duration_ms": 5447,
+        "source_cut": {
+          "start": 315.325,
+          "end": 320.772
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Part 2 answer window 3/5",
+        "start_ms": 329410,
+        "end_ms": 344423,
+        "duration_ms": 15013,
+        "target_active_to_active_ms": 15190,
+        "natural_tail_ms": 97,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 15190
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q11_end_q12_start.m4a",
+        "start_ms": 344423,
+        "end_ms": 350212,
+        "duration_ms": 5789,
+        "source_cut": {
+          "start": 335.82,
+          "end": 341.609
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Part 2 answer window 4/5",
+        "start_ms": 350212,
+        "end_ms": 365228,
+        "duration_ms": 15016,
+        "target_active_to_active_ms": 15190,
+        "natural_tail_ms": 94,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 15190
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q12_end_q13_start.m4a",
+        "start_ms": 365228,
+        "end_ms": 371015,
+        "duration_ms": 5787,
+        "source_cut": {
+          "start": 356.734,
+          "end": 362.521
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Part 2 answer window 5/5",
+        "start_ms": 371015,
+        "end_ms": 386028,
+        "duration_ms": 15013,
+        "target_active_to_active_ms": 15190,
+        "natural_tail_ms": 97,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 15190
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q13_end_q14_prepare_REVIEW.m4a",
+        "start_ms": 386028,
+        "end_ms": 398117,
+        "duration_ms": 12089,
+        "source_cut": {
+          "start": 377.456,
+          "end": 389.545
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q14 preparation",
+        "start_ms": 398117,
+        "end_ms": 578588,
+        "duration_ms": 180471,
+        "target_active_to_active_ms": 180660,
+        "natural_tail_ms": 109,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 180660
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q14_answer_start.m4a",
+        "start_ms": 578588,
+        "end_ms": 584191,
+        "duration_ms": 5603,
+        "source_cut": {
+          "start": 570.049,
+          "end": 575.652
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q14 answer window",
+        "start_ms": 584191,
+        "end_ms": 674193,
+        "duration_ms": 90002,
+        "target_active_to_active_ms": 90180,
+        "natural_tail_ms": 98,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 90180
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q14_end_q15_prepare_REVIEW.m4a",
+        "start_ms": 674193,
+        "end_ms": 687235,
+        "duration_ms": 13042,
+        "source_cut": {
+          "start": 665.672,
+          "end": 678.714
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q15 preparation",
+        "start_ms": 687235,
+        "end_ms": 867678,
+        "duration_ms": 180443,
+        "target_active_to_active_ms": 180610,
+        "natural_tail_ms": 87,
+        "natural_head_ms": 80,
+        "actual_active_to_active_ms": 180610
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q15_answer_start.m4a",
+        "start_ms": 867678,
+        "end_ms": 873942,
+        "duration_ms": 6264,
+        "source_cut": {
+          "start": 859.166,
+          "end": 865.43
+        }
+      },
+      {
+        "kind": "silence_gap",
+        "name": "Q15 answer window",
+        "start_ms": 873942,
+        "end_ms": 963948,
+        "duration_ms": 90006,
+        "target_active_to_active_ms": 90190,
+        "natural_tail_ms": 84,
+        "natural_head_ms": 100,
+        "actual_active_to_active_ms": 90190
+      },
+      {
+        "kind": "fixed_asset_pcm_from_source_mp3",
+        "name": "hskk3_q15_end_outro.m4a",
+        "start_ms": 963948,
+        "end_ms": 968736,
+        "duration_ms": 4788,
+        "source_cut": {
+          "start": 955.459,
+          "end": 960.247
+        }
+      }
+    ],
+    "qa_checks": {
+      "fixed_asset_order_ok": true,
+      "candidate_check_intro_count": 3,
+      "candidate_check_intro_asr": "你叫什么名字？你是哪国人？你的准考证号码后五位是多少？",
+      "spoken_exam_questions_q1_q8": 8,
+      "original_beeps": 8,
+      "speech_to_beep_gaps": 8,
+      "repeat_intervals_q1_q8": 8,
+      "question_number_to_content_gaps": 8,
+      "part2_response_windows": 5,
+      "part3_prepare_windows": 2,
+      "part3_response_windows": 2,
+      "intro_count": 1,
+      "outro_count": 1,
+      "spoken_q9_q15": 0,
+      "read_part3_questions": false
+    },
+    "join_quality": {
+      "decoded_sample_rate_hz": 48000,
+      "decoded_channels": 1,
+      "max_sample_peak_dbfs": -4.48,
+      "clipping_detected": false,
+      "join_count": 58,
+      "max_sample_step_dbfs": -84.29,
+      "worst_boundary": {
+        "at_ms": 288811,
+        "from": "hskk3_part2_q9_start.m4a",
+        "to": "Part 2 answer window 1/5",
+        "sample_step_dbfs": -84.29,
+        "local_20ms_peak_dbfs": -74.75
+      },
+      "boundaries": [
+        {
+          "at_ms": 120191,
+          "from": "hskk3_intro_part1_q1.m4a",
+          "to": "Q01 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -78.27
+        },
+        {
+          "at_ms": 124483,
+          "from": "Q01 stimulus TTS",
+          "to": "Q01: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -63.07
+        },
+        {
+          "at_ms": 126576,
+          "from": "Q01: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 127382,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q01: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 137801,
+          "from": "Q01: repeat time to next cue",
+          "to": "hskk3_q2_number.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 139198,
+          "from": "hskk3_q2_number.m4a",
+          "to": "Q02 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -70.31
+        },
+        {
+          "at_ms": 143053,
+          "from": "Q02 stimulus TTS",
+          "to": "Q02: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -55.5
+        },
+        {
+          "at_ms": 145138,
+          "from": "Q02: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 145944,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q02: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 156343,
+          "from": "Q02: repeat time to next cue",
+          "to": "hskk3_q3_number.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 157948,
+          "from": "hskk3_q3_number.m4a",
+          "to": "Q03 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -78.27
+        },
+        {
+          "at_ms": 161746,
+          "from": "Q03 stimulus TTS",
+          "to": "Q03: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -58.49
+        },
+        {
+          "at_ms": 163823,
+          "from": "Q03: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 164629,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q03: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 175028,
+          "from": "Q03: repeat time to next cue",
+          "to": "hskk3_q4_number.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 176639,
+          "from": "hskk3_q4_number.m4a",
+          "to": "Q04 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -57.84
+        },
+        {
+          "at_ms": 180694,
+          "from": "Q04 stimulus TTS",
+          "to": "Q04: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -52.36
+        },
+        {
+          "at_ms": 182779,
+          "from": "Q04: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 183585,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q04: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 193999,
+          "from": "Q04: repeat time to next cue",
+          "to": "hskk3_q5_number.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 195609,
+          "from": "hskk3_q5_number.m4a",
+          "to": "Q05 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -76.33
+        },
+        {
+          "at_ms": 199667,
+          "from": "Q05 stimulus TTS",
+          "to": "Q05: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -55.19
+        },
+        {
+          "at_ms": 201764,
+          "from": "Q05: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 202570,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q05: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 212979,
+          "from": "Q05: repeat time to next cue",
+          "to": "hskk3_q6_number.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 214545,
+          "from": "hskk3_q6_number.m4a",
+          "to": "Q06 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -78.27
+        },
+        {
+          "at_ms": 218471,
+          "from": "Q06 stimulus TTS",
+          "to": "Q06: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -54.46
+        },
+        {
+          "at_ms": 220570,
+          "from": "Q06: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 221376,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q06: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 231780,
+          "from": "Q06: repeat time to next cue",
+          "to": "hskk3_q7_number.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 233324,
+          "from": "hskk3_q7_number.m4a",
+          "to": "Q07 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -66.79
+        },
+        {
+          "at_ms": 236929,
+          "from": "Q07 stimulus TTS",
+          "to": "Q07: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -52.14
+        },
+        {
+          "at_ms": 239019,
+          "from": "Q07: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 239825,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q07: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 250239,
+          "from": "Q07: repeat time to next cue",
+          "to": "hskk3_q8_number.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 251613,
+          "from": "hskk3_q8_number.m4a",
+          "to": "Q08 stimulus TTS",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -80.77
+        },
+        {
+          "at_ms": 256284,
+          "from": "Q08 stimulus TTS",
+          "to": "Q08: speech end to original beep",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -55.5
+        },
+        {
+          "at_ms": 258363,
+          "from": "Q08: speech end to original beep",
+          "to": "hskk3_repeat_beep.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 259169,
+          "from": "hskk3_repeat_beep.m4a",
+          "to": "Q08: repeat time to next cue",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 270088,
+          "from": "Q08: repeat time to next cue",
+          "to": "hskk3_part2_q9_start.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -78.27
+        },
+        {
+          "at_ms": 288811,
+          "from": "hskk3_part2_q9_start.m4a",
+          "to": "Part 2 answer window 1/5",
+          "sample_step_dbfs": -84.29,
+          "local_20ms_peak_dbfs": -74.75
+        },
+        {
+          "at_ms": 303828,
+          "from": "Part 2 answer window 1/5",
+          "to": "hskk3_q9_end_q10_start.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -74.75
+        },
+        {
+          "at_ms": 308941,
+          "from": "hskk3_q9_end_q10_start.m4a",
+          "to": "Part 2 answer window 2/5",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -76.33
+        },
+        {
+          "at_ms": 323963,
+          "from": "Part 2 answer window 2/5",
+          "to": "hskk3_q10_end_q11_start.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -74.75
+        },
+        {
+          "at_ms": 329410,
+          "from": "hskk3_q10_end_q11_start.m4a",
+          "to": "Part 2 answer window 3/5",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -74.75
+        },
+        {
+          "at_ms": 344423,
+          "from": "Part 2 answer window 3/5",
+          "to": "hskk3_q11_end_q12_start.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -74.75
+        },
+        {
+          "at_ms": 350212,
+          "from": "hskk3_q11_end_q12_start.m4a",
+          "to": "Part 2 answer window 4/5",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -74.75
+        },
+        {
+          "at_ms": 365228,
+          "from": "Part 2 answer window 4/5",
+          "to": "hskk3_q12_end_q13_start.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -76.33
+        },
+        {
+          "at_ms": 371015,
+          "from": "hskk3_q12_end_q13_start.m4a",
+          "to": "Part 2 answer window 5/5",
+          "sample_step_dbfs": -84.29,
+          "local_20ms_peak_dbfs": -76.33
+        },
+        {
+          "at_ms": 386028,
+          "from": "Part 2 answer window 5/5",
+          "to": "hskk3_q13_end_q14_prepare_REVIEW.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 398117,
+          "from": "hskk3_q13_end_q14_prepare_REVIEW.m4a",
+          "to": "Q14 preparation",
+          "sample_step_dbfs": -84.29,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 578588,
+          "from": "Q14 preparation",
+          "to": "hskk3_q14_answer_start.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 584191,
+          "from": "hskk3_q14_answer_start.m4a",
+          "to": "Q14 answer window",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -78.27
+        },
+        {
+          "at_ms": 674193,
+          "from": "Q14 answer window",
+          "to": "hskk3_q14_end_q15_prepare_REVIEW.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -78.27
+        },
+        {
+          "at_ms": 687235,
+          "from": "hskk3_q14_end_q15_prepare_REVIEW.m4a",
+          "to": "Q15 preparation",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 867678,
+          "from": "Q15 preparation",
+          "to": "hskk3_q15_answer_start.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 873942,
+          "from": "hskk3_q15_answer_start.m4a",
+          "to": "Q15 answer window",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": null
+        },
+        {
+          "at_ms": 963948,
+          "from": "Q15 answer window",
+          "to": "hskk3_q15_end_outro.m4a",
+          "sample_step_dbfs": -90.31,
+          "local_20ms_peak_dbfs": -76.33
+        }
+      ],
+      "join_discontinuities_pass": true
+    },
+    "duration_ms": 968737,
+    "source_excel_sha256": "b1cba6a4115374134bc1ec74638de861d3e9818e7b6d1d389ba37c30f74205f1",
+    "answer_excel_sha256": "0de9608cc345741ccbc48f412c5208de58c393093c738c13088973d37f2c8fb6",
+    "source_audio_sha256": "844271e97474431fdf9bf77e3321c6891010a313f3466017d483f84ed55ab152",
+    "asset_zip_sha256": "9846170ec6966e84b384a4f3eefc929a3b8330ed734b16ae7b90f630bbf0dbb6",
+    "asset_review_asr": {
+      "hskk3_q13_end_q14_prepare_REVIEW.m4a": "第13题结束，现在开始准备第14题，可以在试卷上写提纲，准备时间为三分钟。",
+      "hskk3_q14_end_q15_prepare_REVIEW.m4a": "第十四题结束，现在开始准备第十五题，可以在试卷上写提纲，准备时间为三分钟。"
+    },
+    "asset_review_method": "Local Whisper base ASR compared with the official sample PDF and transcript. Human listening has not been completed; fixed-asset boundary sign-off and production batch remain locked.",
+    "fixed_asset_boundary_status": "ASR_ONLY_USER_LISTEN_REQUIRED",
+    "production_gate_reason": "The two REVIEW clips contain no recognized sample question, but all cut boundaries still require user listening approval before any production batch.",
+    "fixed_asset_review_sources": {
+      "README.txt": "BẢN CẮT THỬ NGHIỆM / CHƯA DUYỆT\n19 file: 8 số/chỉ dẫn đầu (Q1 nằm trong intro), 1 beep, 5 chuyển đoạn Part2, 4 block Q14-15, 1 outro.\nTất cả cắt từ MP3 mẫu. Không thêm nhạc HSK1-6 khi chưa kiểm tra.\nĐặc biệt nghe hai file có hậu tố REVIEW: nếu có câu hỏi riêng của đề mẫu thì KHÔNG dùng nguyên file cho đề mới. Xác minh câu hỏi Q14-15 có được đọc hay chỉ hiển thị trên đề giấy.\nThời gian ngoài asset: từ hết câu nghe tới beep ~2.2s; sau beep 10.56-10.60s, Q8 11.09s; Part2 15.09-15.29s; chuẩn bị 180.61-180.66s; trả lời 90.18-90.19s. Đây là khoảng im lặng thực đo -45dB, không phải thời lượng silence cần chèn nguyên xi: trừ padding đầu/cuối.\nGiữ nguyên nội dung MP3, không edge-trim asset tự động. Không batch trước golden.\n",
+      "MANIFEST.json": "{\n  \"status\": \"PROVISIONAL_AUDIT_ONLY_NOT_APPROVED_FOR_BATCH\",\n  \"source_file\": \"Ba╠ën sao HSK∩╝êΣ╕ëτ║º∩╝ëσÅúΦ»¡µá╖σì╖.mp3\",\n  \"source_sha256\": \"844271e97474431fdf9bf77e3321c6891010a313f3466017d483f84ed55ab152\",\n  \"source_duration_seconds\": 980.27102,\n  \"method\": \"silencedetect -45dB, spectral detection of repeated tone; semantic labels inferred from supplied transcript and temporal boundaries, not ASR or listening certified\",\n  \"codec\": \"AAC-LC 48000 Hz mono 32 kbps\",\n  \"assets\": [\n    {\n      \"file\": \"hskk3_intro_part1_q1.m4a\",\n      \"start\": 0,\n      \"end\": 120.191,\n      \"encoded_duration\": 120.191,\n      \"note\": \"Full fixed opening through Q1 number, including candidate check and its original waits; review all words before use.\",\n      \"sha256\": \"0f4a9870c98698e4d838701e41f99afad53f466f1fdd387b2e16d39812ab2cb8\"\n    },\n    {\n      \"file\": \"hskk3_q2_number.m4a\",\n      \"start\": 135.727,\n      \"end\": 137.124,\n      \"encoded_duration\": 1.397,\n      \"note\": \"Q2 number cue\",\n      \"sha256\": \"4f41ad0e7f3790ea2bfc924e4b760e2b3cd7ba73307182b6c025a4e594670077\"\n    },\n    {\n      \"file\": \"hskk3_q3_number.m4a\",\n      \"start\": 153.268,\n      \"end\": 154.873,\n      \"encoded_duration\": 1.605,\n      \"note\": \"Q3 number cue\",\n      \"sha256\": \"7e73195c5d34b1d1093d64bd05ad94aca2b08e65226304625586ebcd4133cc87\"\n    },\n    {\n      \"file\": \"hskk3_q4_number.m4a\",\n      \"start\": 170.862,\n      \"end\": 172.473,\n      \"encoded_duration\": 1.611,\n      \"note\": \"Q4 number cue\",\n      \"sha256\": \"8e3bf2cfae4bcc9abb9e7362db3092b5639b451ece93c74828ff6156ec8ec857\"\n    },\n    {\n      \"file\": \"hskk3_q5_number.m4a\",\n      \"start\": 188.919,\n      \"end\": 190.529,\n      \"encoded_duration\": 1.61,\n      \"note\": \"Q5 number cue\",\n      \"sha256\": \"059fb459206dce055cdf1b32cdfebe95220c1a1567c6e55c3601abb53f01cd4d\"\n    },\n    {\n      \"file\": \"hskk3_q6_number.m4a\",\n      \"start\": 206.858,\n      \"end\": 208.424,\n      \"encoded_duration\": 1.566,\n      \"note\": \"Q6 number cue\",\n      \"sha256\": \"87b36c7c81b66252b681b4f57bcfa2a93afd472fee77eb3f5120e6f07b5413f1\"\n    },\n    {\n      \"file\": \"hskk3_q7_number.m4a\",\n      \"start\": 224.648,\n      \"end\": 226.192,\n      \"encoded_duration\": 1.544,\n      \"note\": \"Q7 number cue\",\n      \"sha256\": \"63a354496841950ea06653c7e5788ad996bc76fd0c24310c3ff08078e3445d13\"\n    },\n    {\n      \"file\": \"hskk3_q8_number.m4a\",\n      \"start\": 243.086,\n      \"end\": 244.46,\n      \"encoded_duration\": 1.374,\n      \"note\": \"Q8 number cue\",\n      \"sha256\": \"f4388f0f689ebdd1d4066564523d5e7c283f70a7135c2f50747c1a341e024142\"\n    },\n    {\n      \"file\": \"hskk3_repeat_beep.m4a\",\n      \"start\": 124.513,\n      \"end\": 125.319,\n      \"encoded_duration\": 0.806,\n      \"note\": \"Measured narrowband ~688Hz tone; reuse per Q1-8\",\n      \"sha256\": \"ee7eafee0791f96fbe7303997a3cb91623dcc7d1dc37eeb481ab073745a74328\"\n    },\n    {\n      \"file\": \"hskk3_part2_q9_start.m4a\",\n      \"start\": 261.241,\n      \"end\": 279.964,\n      \"encoded_duration\": 18.723,\n      \"note\": \"End Q1-8, Part 2 instructions and Q9 start (review labels)\",\n      \"sha256\": \"9779c14cbbc135c417d2401fe50e312ffa649a18fd7c931f9abfdc3228e9114c\"\n    },\n    {\n      \"file\": \"hskk3_q9_end_q10_start.m4a\",\n      \"start\": 295.097,\n      \"end\": 300.21,\n      \"encoded_duration\": 5.113,\n      \"note\": \"Q9 end and Q10 start\",\n      \"sha256\": \"fc3c6e967ee648dbc156280578764c5115a226878b4466aeb02f9c9177ed2206\"\n    },\n    {\n      \"file\": \"hskk3_q10_end_q11_start.m4a\",\n      \"start\": 315.325,\n      \"end\": 320.772,\n      \"encoded_duration\": 5.447,\n      \"note\": \"Q10 end and Q11 start\",\n      \"sha256\": \"fb5a16bb845fee3c4938c9ae1f2fd4d7d90f10af23421cabac480d4e922be306\"\n    },\n    {\n      \"file\": \"hskk3_q11_end_q12_start.m4a\",\n      \"start\": 335.82,\n      \"end\": 341.609,\n      \"encoded_duration\": 5.789,\n      \"note\": \"Q11 end and Q12 start\",\n      \"sha256\": \"0474531ddb2e511ca6fd5dfaf4392c67e6c3b3098aa1ad8242497148f41f05be\"\n    },\n    {\n      \"file\": \"hskk3_q12_end_q13_start.m4a\",\n      \"start\": 356.734,\n      \"end\": 362.521,\n      \"encoded_duration\": 5.787,\n      \"note\": \"Q12 end and Q13 start\",\n      \"sha256\": \"452a9a28b03dba3584a0e81a321c3524d8321f4cbee03b342fd13bd3f5e40358\"\n    },\n    {\n      \"file\": \"hskk3_q13_end_q14_prepare_REVIEW.m4a\",\n      \"start\": 377.456,\n      \"end\": 389.545,\n      \"encoded_duration\": 12.089,\n      \"note\": \"Q13 end and Part 3 Q14 preparation instructions; VERIFY NO SAMPLE QUESTION INSIDE BEFORE USE\",\n      \"sha256\": \"ee2d1fde5fed8064341f40a46b6a5b1b9ab908ba1a9b5918da98ad3a33f6df14\"\n    },\n    {\n      \"file\": \"hskk3_q14_answer_start.m4a\",\n      \"start\": 570.049,\n      \"end\": 575.652,\n      \"encoded_duration\": 5.603,\n      \"note\": \"End preparation and begin Q14 response\",\n      \"sha256\": \"a969e4e64ab5a506ae5001ecb5af20a62ccb7520274e1e93e0396740434bed58\"\n    },\n    {\n      \"file\": \"hskk3_q14_end_q15_prepare_REVIEW.m4a\",\n      \"start\": 665.672,\n      \"end\": 678.714,\n      \"encoded_duration\": 13.042,\n      \"note\": \"End Q14 and Q15 preparation instructions; VERIFY NO SAMPLE QUESTION INSIDE BEFORE USE\",\n      \"sha256\": \"65621fe91c5a1dc9064ce96cdb31a7e253f2f291c3fd85b3e1916420af528234\"\n    },\n    {\n      \"file\": \"hskk3_q15_answer_start.m4a\",\n      \"start\": 859.166,\n      \"end\": 865.43,\n      \"encoded_duration\": 6.264,\n      \"note\": \"End preparation and begin Q15 response\",\n      \"sha256\": \"ec577c17ac5b11f13d75729bb3115265526b5b70011f2f0003420825eee4c8f8\"\n    },\n    {\n      \"file\": \"hskk3_q15_end_outro.m4a\",\n      \"start\": 955.459,\n      \"end\": 960.247,\n      \"encoded_duration\": 4.788,\n      \"note\": \"Q15 end and exam closing; excludes ~20s trailing silence\",\n      \"sha256\": \"8a714ca90a9608c59297d4fd87e42c09af79f76f387f7fd4418e3801a257f1d2\"\n    }\n  ],\n  \"critical_review\": \"Confirm by ear that the two preparation assets do not contain the reference-paper question text. If they do, split it out and use the current exam question only if sample plays it. Listen for opening/ending music and every clip boundary. Do not add common HSK music automatically.\"\n}"
+    },
+    "fixed_asset_manifest_status": "PROVISIONAL_AUDIT_ONLY_NOT_APPROVED_FOR_BATCH",
+    "fixed_asset_hashes_ok": true,
+    "fixed_asset_durations_ok": true,
+    "part3_questions_read": false,
+    "read_part3_questions": false,
+    "engine": "Polly",
+    "voice": "Zhiyu",
+    "speed": 1.0,
+    "bitrate_kbps": 96,
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "tts_cache_profile": "hskk3_pcm_48k_v1",
+    "cache_new_segments": 0,
+    "cache_reused_segments": 8,
+    "unique_tts_requests": 0,
+    "fixed_asset_input": "Decoded from exact MP3 source cuts; ZIP 32 kbps AAC not used as PCM cache.",
+    "added_common_hsk_music": false,
+    "production_batch_approved": false,
+    "warnings": []
+  },
+  "answer_audio": {
+    "status": "GOLDEN_EXPERIMENTAL",
+    "exam": "HSKK3-01",
+    "exam_number": 1,
+    "output_files": [
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q01-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q02-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q03-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q04-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q05-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q06-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q07-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q08-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q09-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q10-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q11-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q12-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q13-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q14-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q15-answer.m4a",
+      "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-answer.m4a"
+    ],
+    "individual_files": [
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96342,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 4.352,
+        "true_peak_dbtp": -7.6,
+        "integrated_loudness_lufs": -22.8,
+        "loudness_range_lu": 0.4,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.34,
+        "bytes": 54591,
+        "duration_ms": 4342,
+        "source_pcm_duration_ms": 4292,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q01-answer.m4a",
+        "question_number": 1,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/b04803028bf6a1246fdf7399146bbdf5ee76facc89ffa1439d84fd1dc68da7ff.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96378,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 3.925333,
+        "true_peak_dbtp": -5.0,
+        "integrated_loudness_lufs": -23.8,
+        "loudness_range_lu": 0.3,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.38,
+        "bytes": 49391,
+        "duration_ms": 3905,
+        "source_pcm_duration_ms": 3855,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q02-answer.m4a",
+        "question_number": 2,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/359ec4a322032ce4e8ab58351603d4073121bc26d2859b7324cafda186e961cd.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96385,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 3.861333,
+        "true_peak_dbtp": -7.2,
+        "integrated_loudness_lufs": -23.2,
+        "loudness_range_lu": 0.4,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.39,
+        "bytes": 48611,
+        "duration_ms": 3848,
+        "source_pcm_duration_ms": 3798,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q03-answer.m4a",
+        "question_number": 3,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/bf6250cc8668382144c0b91600e4ed68578941d059304efb18dd2e5b8bf6e1a1.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96361,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 4.117333,
+        "true_peak_dbtp": -7.5,
+        "integrated_loudness_lufs": -22.8,
+        "loudness_range_lu": 0.7,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.36,
+        "bytes": 51731,
+        "duration_ms": 4105,
+        "source_pcm_duration_ms": 4055,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q04-answer.m4a",
+        "question_number": 4,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/410cff6eb7a63e27be656279116877195bafac37b861ae8082005919e2cc830f.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96361,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 4.117333,
+        "true_peak_dbtp": -6.9,
+        "integrated_loudness_lufs": -23.1,
+        "loudness_range_lu": 0.7,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.36,
+        "bytes": 51731,
+        "duration_ms": 4108,
+        "source_pcm_duration_ms": 4058,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q05-answer.m4a",
+        "question_number": 5,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/be1e87063d456ccb062979ef983b0045fa14b9350dfc25cc6371e90a7c3b80b6.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96372,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 3.989333,
+        "true_peak_dbtp": -7.2,
+        "integrated_loudness_lufs": -23.3,
+        "loudness_range_lu": 0.7,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.37,
+        "bytes": 50171,
+        "duration_ms": 3976,
+        "source_pcm_duration_ms": 3926,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q06-answer.m4a",
+        "question_number": 6,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/4459b611c68314630547b25427a7ea5e49581c975c5c76ee210cbdcd6c09ad24.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96405,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 3.669333,
+        "true_peak_dbtp": -6.2,
+        "integrated_loudness_lufs": -22.3,
+        "loudness_range_lu": 0.5,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.41,
+        "bytes": 46271,
+        "duration_ms": 3655,
+        "source_pcm_duration_ms": 3605,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q07-answer.m4a",
+        "question_number": 7,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/d0c71381c14244cdef7429d74d36df969c9dbc93f2e69d8c3b8a9ab17c0698e9.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96314,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 4.736,
+        "true_peak_dbtp": -6.7,
+        "integrated_loudness_lufs": -23.3,
+        "loudness_range_lu": 0.3,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.31,
+        "bytes": 59271,
+        "duration_ms": 4721,
+        "source_pcm_duration_ms": 4671,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q08-answer.m4a",
+        "question_number": 8,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/6ab3a6061f8076dd5e47ef345a1df4899c9d4ec70eadfe09c38966efb71283b3.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96317,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 4.693333,
+        "true_peak_dbtp": -6.6,
+        "integrated_loudness_lufs": -22.8,
+        "loudness_range_lu": 0.2,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.32,
+        "bytes": 58751,
+        "duration_ms": 4682,
+        "source_pcm_duration_ms": 4632,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q09-answer.m4a",
+        "question_number": 9,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/faef2729117348d79343204951e364346cca9da46407ecb98babdd4bb74329db.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96286,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 5.205333,
+        "true_peak_dbtp": -5.0,
+        "integrated_loudness_lufs": -23.0,
+        "loudness_range_lu": 0.8,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.29,
+        "bytes": 64991,
+        "duration_ms": 5203,
+        "source_pcm_duration_ms": 5153,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q10-answer.m4a",
+        "question_number": 10,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/3d10484c8771f67ac0a2cc94eccffad67f219fb3ec117b3aab29c258baa9548e.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96335,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 4.437333,
+        "true_peak_dbtp": -8.6,
+        "integrated_loudness_lufs": -23.4,
+        "loudness_range_lu": 0.4,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.33,
+        "bytes": 55631,
+        "duration_ms": 4428,
+        "source_pcm_duration_ms": 4378,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q11-answer.m4a",
+        "question_number": 11,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/2a6d3a424cd8de8fc0b0eb7979ee1d886d7773261da433b4ac7a941922353308.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96265,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 5.610667,
+        "true_peak_dbtp": -6.4,
+        "integrated_loudness_lufs": -23.2,
+        "loudness_range_lu": 1.0,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.27,
+        "bytes": 69931,
+        "duration_ms": 5590,
+        "source_pcm_duration_ms": 5540,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q12-answer.m4a",
+        "question_number": 12,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/10dc96ff4d3805d27fc385fcf0bc27822cc0ccb0603c12506ab7efca60ec3b4c.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96305,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 4.885333,
+        "true_peak_dbtp": -5.2,
+        "integrated_loudness_lufs": -23.1,
+        "loudness_range_lu": 1.1,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.31,
+        "bytes": 61091,
+        "duration_ms": 4870,
+        "source_pcm_duration_ms": 4820,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q13-answer.m4a",
+        "question_number": 13,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/d1cf4f9f4f3b72c3cbf0b443a2812489a8d09678eb83c227b2c8541b60774f3a.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96083,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 18.005333,
+        "true_peak_dbtp": -7.1,
+        "integrated_loudness_lufs": -23.4,
+        "loudness_range_lu": 1.1,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.08,
+        "bytes": 220991,
+        "duration_ms": 17997,
+        "source_pcm_duration_ms": 17947,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q14-answer.m4a",
+        "question_number": 14,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/db63f70fe5976d543ae181f45456ff4b8e985efb26fcaa679f642e02ca848c16.wav"
+      },
+      {
+        "codec": "aac",
+        "profile": "LC",
+        "bitrate_bps": 96085,
+        "sample_rate_hz": 48000,
+        "channels": 1,
+        "duration_seconds": 17.450667,
+        "true_peak_dbtp": -5.3,
+        "integrated_loudness_lufs": -23.5,
+        "loudness_range_lu": 1.2,
+        "encoder": "aac_at",
+        "encoder_mode": "AudioToolbox CBR",
+        "target_bitrate_kbps": 96,
+        "average_bitrate_kbps": 96.08,
+        "bytes": 214231,
+        "duration_ms": 17437,
+        "source_pcm_duration_ms": 17387,
+        "encoder_edge_guard_ms": 25,
+        "pcm_peak_ceiling_dbfs": -2.0,
+        "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-q15-answer.m4a",
+        "question_number": 15,
+        "cache_reused": true,
+        "cache_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/AppData/hskk30_audio_cache/pcm/hskk3_pcm_48k_v1/eae03e9af479c92e3c5db972f01109e5b933866dd556f5f56e6f6d41c9aa5d50.wav"
+      }
+    ],
+    "combined_file": {
+      "codec": "aac",
+      "profile": "LC",
+      "bitrate_bps": 96015,
+      "sample_rate_hz": 48000,
+      "channels": 1,
+      "duration_seconds": 98.474667,
+      "true_peak_dbtp": -5.1,
+      "integrated_loudness_lufs": -23.3,
+      "loudness_range_lu": 1.3,
+      "encoder": "aac_at",
+      "encoder_mode": "AudioToolbox CBR",
+      "target_bitrate_kbps": 96,
+      "average_bitrate_kbps": 96.02,
+      "bytes": 1201727,
+      "duration_ms": 98469,
+      "source_pcm_duration_ms": 98419,
+      "encoder_edge_guard_ms": 25,
+      "pcm_peak_ceiling_dbfs": -2.0,
+      "output_file": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/output/hskk3/hskk3-golden-001/answers/hskk3-30-001-answer.m4a"
+    },
+    "answer_count": 15,
+    "engine": "Polly",
+    "voice": "Zhiyu",
+    "speed": 1.0,
+    "bitrate_kbps": 96,
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "cache_profile": "hskk3_pcm_48k_v1",
+    "cache_reused_segments": 15,
+    "cache_generated_segments": 0,
+    "unique_tts_requests": 0,
+    "exam_source_sha256": "b1cba6a4115374134bc1ec74638de861d3e9818e7b6d1d389ba37c30f74205f1",
+    "answer_source_sha256": "0de9608cc345741ccbc48f412c5208de58c393093c738c13088973d37f2c8fb6",
+    "production_batch_approved": false
+  },
+  "source_validation": {
+    "status": "PASS",
+    "exam_source": {
+      "path": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/testdata/hskk/hskk3/audio đề thi hsk 3 30.xlsx",
+      "sha256": "b1cba6a4115374134bc1ec74638de861d3e9818e7b6d1d389ba37c30f74205f1",
+      "sheet": "Sheet1",
+      "header_row": 1,
+      "columns": {
+        "exam_code": 0,
+        "skill": 1,
+        "part": 2,
+        "task_type": 3,
+        "question_number": 4,
+        "content": 5
+      }
+    },
+    "answer_source": {
+      "path": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/testdata/hskk/hskk3/audio đáp án hskk 3-30.xlsx",
+      "sha256": "0de9608cc345741ccbc48f412c5208de58c393093c738c13088973d37f2c8fb6",
+      "sheet": "Sheet1",
+      "header_row": 1,
+      "columns": {
+        "exam_code": 0,
+        "skill": 1,
+        "part": 2,
+        "task_type": 3,
+        "question_number": 4,
+        "content": 5
+      }
+    },
+    "exam_count": 30,
+    "exam_rows": 450,
+    "answer_rows": 450,
+    "q1_q8_match_count": 240,
+    "exam_part2_blank_cells": 150,
+    "answer_non_empty_content_count": 450
+  },
+  "reference_review": {
+    "pdf_path": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/assets/hskk30/hskk3/mẫu audio hskk 30/Bản sao HSK（三级）口语样卷.pdf",
+    "pdf_sha256": "68d0dbb4597bf3283a979a8922dbec7eb27a0e6ee205125ab4526142851d1913",
+    "pdf_sha256_matches_reviewed": true,
+    "pdf_pages": 2,
+    "transcript_path": "/Users/vungocnguyenanh/Projects/texttomp3m4a-hsk-publish/assets/hskk30/hskk3/mẫu audio hskk 30/HSK3_KHAU_NGU_lấy chữ.docx",
+    "transcript_sha256": "762698e692759d72d60c3439241f688bf5ae9abb5c5dd29df20912ae0d147ff2",
+    "transcript_sha256_matches_reviewed": true,
+    "part3_question_texts_on_paper": [
+      "请介绍一下你的一位家人。",
+      "你喜欢做什么样的工作？为什么？"
+    ],
+    "part3_questions_read_in_sample_audio": false,
+    "part3_audio_evidence": "Local ASR on the two full transition windows and the two REVIEW clips contains only the question-number transition and three-minute preparation instructions."
+  },
+  "engine": "Polly",
+  "voice": "Zhiyu",
+  "speed": 1.0,
+  "bitrate_kbps": 96,
+  "sample_rate_hz": 48000,
+  "channels": 1,
+  "aac_profile": "AAC-LC",
+  "fixed_assets_source": "decoded from exact cuts in supplied original MP3; ZIP 32 kbps audio not used",
+  "fixed_asset_boundary_status": "ASR_ONLY_USER_LISTEN_REQUIRED",
+  "production_gate_reason": "The two REVIEW clips contain no recognized sample question, but all cut boundaries still require user listening approval before any production batch.",
+  "fixed_asset_review": {
+    "README.txt": "BẢN CẮT THỬ NGHIỆM / CHƯA DUYỆT\n19 file: 8 số/chỉ dẫn đầu (Q1 nằm trong intro), 1 beep, 5 chuyển đoạn Part2, 4 block Q14-15, 1 outro.\nTất cả cắt từ MP3 mẫu. Không thêm nhạc HSK1-6 khi chưa kiểm tra.\nĐặc biệt nghe hai file có hậu tố REVIEW: nếu có câu hỏi riêng của đề mẫu thì KHÔNG dùng nguyên file cho đề mới. Xác minh câu hỏi Q14-15 có được đọc hay chỉ hiển thị trên đề giấy.\nThời gian ngoài asset: từ hết câu nghe tới beep ~2.2s; sau beep 10.56-10.60s, Q8 11.09s; Part2 15.09-15.29s; chuẩn bị 180.61-180.66s; trả lời 90.18-90.19s. Đây là khoảng im lặng thực đo -45dB, không phải thời lượng silence cần chèn nguyên xi: trừ padding đầu/cuối.\nGiữ nguyên nội dung MP3, không edge-trim asset tự động. Không batch trước golden.\n",
+    "MANIFEST.json": "{\n  \"status\": \"PROVISIONAL_AUDIT_ONLY_NOT_APPROVED_FOR_BATCH\",\n  \"source_file\": \"Ba╠ën sao HSK∩╝êΣ╕ëτ║º∩╝ëσÅúΦ»¡µá╖σì╖.mp3\",\n  \"source_sha256\": \"844271e97474431fdf9bf77e3321c6891010a313f3466017d483f84ed55ab152\",\n  \"source_duration_seconds\": 980.27102,\n  \"method\": \"silencedetect -45dB, spectral detection of repeated tone; semantic labels inferred from supplied transcript and temporal boundaries, not ASR or listening certified\",\n  \"codec\": \"AAC-LC 48000 Hz mono 32 kbps\",\n  \"assets\": [\n    {\n      \"file\": \"hskk3_intro_part1_q1.m4a\",\n      \"start\": 0,\n      \"end\": 120.191,\n      \"encoded_duration\": 120.191,\n      \"note\": \"Full fixed opening through Q1 number, including candidate check and its original waits; review all words before use.\",\n      \"sha256\": \"0f4a9870c98698e4d838701e41f99afad53f466f1fdd387b2e16d39812ab2cb8\"\n    },\n    {\n      \"file\": \"hskk3_q2_number.m4a\",\n      \"start\": 135.727,\n      \"end\": 137.124,\n      \"encoded_duration\": 1.397,\n      \"note\": \"Q2 number cue\",\n      \"sha256\": \"4f41ad0e7f3790ea2bfc924e4b760e2b3cd7ba73307182b6c025a4e594670077\"\n    },\n    {\n      \"file\": \"hskk3_q3_number.m4a\",\n      \"start\": 153.268,\n      \"end\": 154.873,\n      \"encoded_duration\": 1.605,\n      \"note\": \"Q3 number cue\",\n      \"sha256\": \"7e73195c5d34b1d1093d64bd05ad94aca2b08e65226304625586ebcd4133cc87\"\n    },\n    {\n      \"file\": \"hskk3_q4_number.m4a\",\n      \"start\": 170.862,\n      \"end\": 172.473,\n      \"encoded_duration\": 1.611,\n      \"note\": \"Q4 number cue\",\n      \"sha256\": \"8e3bf2cfae4bcc9abb9e7362db3092b5639b451ece93c74828ff6156ec8ec857\"\n    },\n    {\n      \"file\": \"hskk3_q5_number.m4a\",\n      \"start\": 188.919,\n      \"end\": 190.529,\n      \"encoded_duration\": 1.61,\n      \"note\": \"Q5 number cue\",\n      \"sha256\": \"059fb459206dce055cdf1b32cdfebe95220c1a1567c6e55c3601abb53f01cd4d\"\n    },\n    {\n      \"file\": \"hskk3_q6_number.m4a\",\n      \"start\": 206.858,\n      \"end\": 208.424,\n      \"encoded_duration\": 1.566,\n      \"note\": \"Q6 number cue\",\n      \"sha256\": \"87b36c7c81b66252b681b4f57bcfa2a93afd472fee77eb3f5120e6f07b5413f1\"\n    },\n    {\n      \"file\": \"hskk3_q7_number.m4a\",\n      \"start\": 224.648,\n      \"end\": 226.192,\n      \"encoded_duration\": 1.544,\n      \"note\": \"Q7 number cue\",\n      \"sha256\": \"63a354496841950ea06653c7e5788ad996bc76fd0c24310c3ff08078e3445d13\"\n    },\n    {\n      \"file\": \"hskk3_q8_number.m4a\",\n      \"start\": 243.086,\n      \"end\": 244.46,\n      \"encoded_duration\": 1.374,\n      \"note\": \"Q8 number cue\",\n      \"sha256\": \"f4388f0f689ebdd1d4066564523d5e7c283f70a7135c2f50747c1a341e024142\"\n    },\n    {\n      \"file\": \"hskk3_repeat_beep.m4a\",\n      \"start\": 124.513,\n      \"end\": 125.319,\n      \"encoded_duration\": 0.806,\n      \"note\": \"Measured narrowband ~688Hz tone; reuse per Q1-8\",\n      \"sha256\": \"ee7eafee0791f96fbe7303997a3cb91623dcc7d1dc37eeb481ab073745a74328\"\n    },\n    {\n      \"file\": \"hskk3_part2_q9_start.m4a\",\n      \"start\": 261.241,\n      \"end\": 279.964,\n      \"encoded_duration\": 18.723,\n      \"note\": \"End Q1-8, Part 2 instructions and Q9 start (review labels)\",\n      \"sha256\": \"9779c14cbbc135c417d2401fe50e312ffa649a18fd7c931f9abfdc3228e9114c\"\n    },\n    {\n      \"file\": \"hskk3_q9_end_q10_start.m4a\",\n      \"start\": 295.097,\n      \"end\": 300.21,\n      \"encoded_duration\": 5.113,\n      \"note\": \"Q9 end and Q10 start\",\n      \"sha256\": \"fc3c6e967ee648dbc156280578764c5115a226878b4466aeb02f9c9177ed2206\"\n    },\n    {\n      \"file\": \"hskk3_q10_end_q11_start.m4a\",\n      \"start\": 315.325,\n      \"end\": 320.772,\n      \"encoded_duration\": 5.447,\n      \"note\": \"Q10 end and Q11 start\",\n      \"sha256\": \"fb5a16bb845fee3c4938c9ae1f2fd4d7d90f10af23421cabac480d4e922be306\"\n    },\n    {\n      \"file\": \"hskk3_q11_end_q12_start.m4a\",\n      \"start\": 335.82,\n      \"end\": 341.609,\n      \"encoded_duration\": 5.789,\n      \"note\": \"Q11 end and Q12 start\",\n      \"sha256\": \"0474531ddb2e511ca6fd5dfaf4392c67e6c3b3098aa1ad8242497148f41f05be\"\n    },\n    {\n      \"file\": \"hskk3_q12_end_q13_start.m4a\",\n      \"start\": 356.734,\n      \"end\": 362.521,\n      \"encoded_duration\": 5.787,\n      \"note\": \"Q12 end and Q13 start\",\n      \"sha256\": \"452a9a28b03dba3584a0e81a321c3524d8321f4cbee03b342fd13bd3f5e40358\"\n    },\n    {\n      \"file\": \"hskk3_q13_end_q14_prepare_REVIEW.m4a\",\n      \"start\": 377.456,\n      \"end\": 389.545,\n      \"encoded_duration\": 12.089,\n      \"note\": \"Q13 end and Part 3 Q14 preparation instructions; VERIFY NO SAMPLE QUESTION INSIDE BEFORE USE\",\n      \"sha256\": \"ee2d1fde5fed8064341f40a46b6a5b1b9ab908ba1a9b5918da98ad3a33f6df14\"\n    },\n    {\n      \"file\": \"hskk3_q14_answer_start.m4a\",\n      \"start\": 570.049,\n      \"end\": 575.652,\n      \"encoded_duration\": 5.603,\n      \"note\": \"End preparation and begin Q14 response\",\n      \"sha256\": \"a969e4e64ab5a506ae5001ecb5af20a62ccb7520274e1e93e0396740434bed58\"\n    },\n    {\n      \"file\": \"hskk3_q14_end_q15_prepare_REVIEW.m4a\",\n      \"start\": 665.672,\n      \"end\": 678.714,\n      \"encoded_duration\": 13.042,\n      \"note\": \"End Q14 and Q15 preparation instructions; VERIFY NO SAMPLE QUESTION INSIDE BEFORE USE\",\n      \"sha256\": \"65621fe91c5a1dc9064ce96cdb31a7e253f2f291c3fd85b3e1916420af528234\"\n    },\n    {\n      \"file\": \"hskk3_q15_answer_start.m4a\",\n      \"start\": 859.166,\n      \"end\": 865.43,\n      \"encoded_duration\": 6.264,\n      \"note\": \"End preparation and begin Q15 response\",\n      \"sha256\": \"ec577c17ac5b11f13d75729bb3115265526b5b70011f2f0003420825eee4c8f8\"\n    },\n    {\n      \"file\": \"hskk3_q15_end_outro.m4a\",\n      \"start\": 955.459,\n      \"end\": 960.247,\n      \"encoded_duration\": 4.788,\n      \"note\": \"Q15 end and exam closing; excludes ~20s trailing silence\",\n      \"sha256\": \"8a714ca90a9608c59297d4fd87e42c09af79f76f387f7fd4418e3801a257f1d2\"\n    }\n  ],\n  \"critical_review\": \"Confirm by ear that the two preparation assets do not contain the reference-paper question text. If they do, split it out and use the current exam question only if sample plays it. Listen for opening/ending music and every clip boundary. Do not add common HSK music automatically.\"\n}"
+  },
+  "fixed_asset_manifest_status": "PROVISIONAL_AUDIT_ONLY_NOT_APPROVED_FOR_BATCH",
+  "fixed_asset_hashes_ok": true,
+  "fixed_asset_durations_ok": true,
+  "read_part3_questions": false,
+  "production_batch_approved": false
+}

@@ -74,6 +74,8 @@ from pipelines.hsk30_audio import (
     parse_hsk6_phase1,
     phase1_output_filename,
 )
+from pipelines.hskk30_audio_ui import open_hskk30_audio_popup as show_hskk30_audio_popup
+from pipelines.hskk30_tts import synthesize_hskk3_pcm as _synthesize_hskk3_pcm
 from pipelines.hsk79_audio import (
     HSK30_HSK79_SOURCE,
     HSK79_BATCH_APPROVED,
@@ -976,6 +978,21 @@ def tao_file_google_mp3(text, lang="vi", gender="Mặc định", voice_name="", 
         f.write(response.audio_content)
 
     print(f"✅ Đã tạo file bằng Google Cloud TTS: {file_out}")
+
+
+def synthesize_hskk3_pcm(text, *, engine, voice, speed, sample_rate_hz, sample_format):
+    return _synthesize_hskk3_pcm(
+        text,
+        engine=engine,
+        voice=voice,
+        speed=speed,
+        sample_rate_hz=sample_rate_hz,
+        sample_format=sample_format,
+        google_api_key=GOOGLE_TTS_API_KEY,
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        aws_region=AWS_REGION,
+    )
 
 #=========================
     
@@ -3848,7 +3865,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
         else:
             _set_preview_text("Chưa có file Excel nguồn hợp lệ.")
 
-    
+    def open_hskk30_popup():
+        show_hskk30_audio_popup(
+            popup,
+            set_popup_icon,
+            _get_hsk30_audio_context,
+            synthesize_hskk3_pcm,
+        )
 
     
     
@@ -8228,6 +8251,13 @@ def mo_popup_chon_lang(mo_tu_ben_ngoai=False):
 
     button_grid.columnconfigure(0, weight=1)
     button_grid.columnconfigure(1, weight=1)
+
+    tk.Button(
+        button_grid,
+        text="HSKK 3.0 – Khẩu ngữ",
+        bg="#eaf6ff",
+        command=open_hskk30_popup,
+    ).grid(row=5, column=0, padx=3, pady=4, sticky="ew", ipady=2)
 
     tk.Button(
         button_grid,
